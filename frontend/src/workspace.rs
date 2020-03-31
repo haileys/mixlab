@@ -22,7 +22,7 @@ impl Counter {
     }
 }
 
-type WindowSet = BTreeMap<WindowId, (NodeRef, WindowProps)>;
+type WindowSet = BTreeMap<WindowId, WindowProps>;
 
 pub struct Workspace {
     link: ComponentLink<Self>,
@@ -95,6 +95,8 @@ impl Component for Workspace {
 
         workspace.create_window();
         workspace.create_window();
+        workspace.create_window();
+        workspace.create_window();
 
         workspace
     }
@@ -102,7 +104,7 @@ impl Component for Workspace {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         return match msg {
             WorkspaceMsg::DragStart(window, ev) => {
-                if let Some((_node, props)) = self.windows.get_mut(&window) {
+                if let Some(props) = self.windows.get_mut(&window) {
                     self.mouse = MouseMode::Drag(Drag {
                         window,
                         origin: Coords { x: ev.page_x(), y: ev.page_y() },
@@ -187,10 +189,10 @@ impl Component for Workspace {
             let delta = mouse_pos.sub(drag.origin);
             drag.origin = mouse_pos;
 
-            if let Some((node, props)) = windows.get_mut(&drag.window) {
+            if let Some(props) = windows.get_mut(&drag.window) {
                 props.position = props.position.add(delta);
 
-                if let Some(el) = node.cast::<HtmlElement>() {
+                if let Some(el) = props.refs.window.cast::<HtmlElement>() {
                     el.style().set_property("left", &format!("{}px", props.position.x));
                     el.style().set_property("top", &format!("{}px", props.position.y));
                 }
@@ -226,8 +228,8 @@ impl Component for Workspace {
                 onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
                 oncontextmenu={self.link.callback(WorkspaceMsg::ContextMenu)}
             >
-                { for self.windows.values().cloned().map(|(ref_, props)|
-                    html! { <Window with props ref={ref_} /> }) }
+                { for self.windows.values().cloned().map(|props|
+                    html! { <Window with props /> }) }
 
                 <Connections connections={connections} width={1000} height={1000} />
             </div>
@@ -241,13 +243,30 @@ impl Workspace {
 
         let kind = match id.0 {
             0 => WindowKind::SineGenerator,
-            1 => WindowKind::OutputDevice,
+            1 => WindowKind::SineGenerator,
+            2 => WindowKind::OutputDevice,
+            3 => WindowKind::Mixer2ch,
             _ => unreachable!(),
         };
 
-        let window = WindowProps {
+        let refs = WindowRef {
+            window: NodeRef::default(),
+            inputs: match kind {
+                WindowKind::SineGenerator => vec![],
+                WindowKind::OutputDevice => vec![NodeRef::default()],
+                WindowKind::Mixer2ch => vec![NodeRef::default(), NodeRef::default()],
+            },
+            outputs: match kind {
+                WindowKind::SineGenerator => vec![NodeRef::default()],
+                WindowKind::OutputDevice => vec![],
+                WindowKind::Mixer2ch => vec![NodeRef::default()],
+            },
+        };
+
+        let props = WindowProps {
             id: id,
-            kind: kind,
+            kind,
+            refs,
             name: format!("{:?}", kind),
             workspace: self.link.clone(),
             position: Coords {
@@ -257,11 +276,11 @@ impl Workspace {
             z_index: self.gen_z_index.next(),
         };
 
-        self.windows.insert(id, (NodeRef::default(), window));
+        self.windows.insert(id, props);
     }
 
     fn screen_coords_for_terminal(&self, window: WindowId, terminal_node: &NodeRef) -> Option<Coords> {
-        let (_, window_props) = self.windows.get(&window)?;
+        let window_props = self.windows.get(&window)?;
         let terminal_node = terminal_node.cast::<HtmlElement>()?;
         let terminal_coords = Coords { x: terminal_node.offset_left() + 9, y: terminal_node.offset_top() + 9 };
         Some(window_props.position.add(terminal_coords))
@@ -274,13 +293,12 @@ pub struct WindowId(usize);
 pub struct Window {
     link: ComponentLink<Self>,
     props: WindowProps,
-    terminal_noderef: NodeRef,
 }
 
 #[derive(Debug)]
 pub enum WindowMsg {
     DragStart(MouseEvent),
-    SelectTerminal(MouseEvent),
+    SelectTerminal(MouseEvent, NodeRef),
 }
 
 #[derive(Properties, Clone)]
@@ -291,12 +309,21 @@ pub struct WindowProps {
     pub workspace: ComponentLink<Workspace>,
     pub position: Coords,
     pub z_index: usize,
+    pub refs: WindowRef,
+}
+
+#[derive(Clone)]
+pub struct WindowRef {
+    window: NodeRef,
+    inputs: Vec<NodeRef>,
+    outputs: Vec<NodeRef>,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum WindowKind {
     SineGenerator,
     OutputDevice,
+    Mixer2ch,
 }
 
 impl Component for Window {
@@ -307,7 +334,6 @@ impl Component for Window {
         Window {
             link,
             props,
-            terminal_noderef: NodeRef::default(),
         }
     }
 
@@ -317,9 +343,9 @@ impl Component for Window {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DragStart(self.props.id, ev));
             }
-            WindowMsg::SelectTerminal(ev) => {
+            WindowMsg::SelectTerminal(ev, terminal_ref) => {
                 self.props.workspace.send_message(
-                    WorkspaceMsg::SelectTerminal(self.props.id, self.terminal_noderef.clone()));
+                    WorkspaceMsg::SelectTerminal(self.props.id, terminal_ref));
 
                 ev.stop_immediate_propagation();
             }
@@ -332,7 +358,7 @@ impl Component for Window {
         let _ = write!(&mut window_style, "z-index:{};", self.props.z_index);
 
         html! {
-            <div class="module-window" style={window_style}>
+            <div class="module-window" style={window_style} ref={self.props.refs.window.clone()}>
                 <div class="module-window-title"
                     onmousedown={self.link.callback(|ev: MouseEvent| WindowMsg::DragStart(ev))}
                 >
@@ -349,36 +375,34 @@ impl Component for Window {
 
 impl Window {
     fn view_inputs(&self) -> Html {
-        match self.props.kind {
-            WindowKind::SineGenerator => html! {},
-            WindowKind::OutputDevice => {
-                html! {
-                    <div class="module-window-inputs">
+        html! {
+            <div class="module-window-inputs">
+                { for self.props.refs.inputs.iter().cloned().map(|terminal_ref| {
+                    html! {
                         <div class="module-window-terminal"
-                            ref={self.terminal_noderef.clone()}
-                            onclick={self.link.callback(WindowMsg::SelectTerminal)}
+                            ref={terminal_ref.clone()}
+                            onclick={self.link.callback(move |ev| WindowMsg::SelectTerminal(ev, terminal_ref.clone()))}
                         >
                         </div>
-                    </div>
-                }
-            }
+                    }
+                }) }
+            </div>
         }
     }
 
     fn view_outputs(&self) -> Html {
-        match self.props.kind {
-            WindowKind::SineGenerator => {
-                html! {
-                    <div class="module-window-outputs">
+        html! {
+            <div class="module-window-outputs">
+                { for self.props.refs.outputs.iter().cloned().map(|terminal_ref| {
+                    html! {
                         <div class="module-window-terminal"
-                            ref={self.terminal_noderef.clone()}
-                            onclick={self.link.callback(WindowMsg::SelectTerminal)}
+                            ref={terminal_ref.clone()}
+                            onclick={self.link.callback(move |ev| WindowMsg::SelectTerminal(ev, terminal_ref.clone()))}
                         >
                         </div>
-                    </div>
-                }
-            }
-            WindowKind::OutputDevice => html! {},
+                    }
+                }) }
+            </div>
         }
     }
 }
