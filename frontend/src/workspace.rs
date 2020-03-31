@@ -164,18 +164,20 @@ impl Component for Workspace {
                 match &self.mouse {
                     MouseMode::Normal => {
                         self.mouse = MouseMode::Connect(window, node, None);
+                        false
                     }
                     MouseMode::Connect(start_window, start_node, _) => {
                         // don't let user connect a node to itself
                         if *start_node != node {
                             self.connections.push((*start_window, start_node.clone(), window, node));
                             self.mouse = MouseMode::Normal;
+                            true
+                        } else {
+                            false
                         }
                     }
-                    MouseMode::Drag(_) => {}
+                    MouseMode::Drag(_) => false,
                 }
-
-                false
             }
         };
 
