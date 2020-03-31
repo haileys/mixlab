@@ -12,6 +12,14 @@ body {
     background-color:#f0f0f5;
     width:100%;
     height:100%;
+    z-index:-2;
+}
+
+.workspace-connections {
+    position:absolute;
+    left:0px;
+    top:0px;
+    z-index:-1;
 }
 
 .module-window {
@@ -32,5 +40,38 @@ body {
 
 .module-window-content {
     background-color:#ffffff;
-    padding:8px;
+    flex-flow:row nowrap;
+}
+
+.module-window-inputs {
+    display:flex;
+    flex-flow:column nowrap;
+    padding-top:8px;
+    margin-left:-17px;
+    align-items:flex-start;
+}
+
+.module-window-outputs {
+    display:flex;
+    flex-flow:column nowrap;
+    padding-top:8px;
+    margin-right:-17px;
+    align-items:flex-end;
+}
+
+.module-window-terminal {
+    margin:0px 8px 8px 8px;
+    border:1px solid #0b0b10;
+    background-color:#e0e0e0;
+    width:16px;
+    height:16px;
+    cursor:pointer;
+}
+
+.module-window-terminal:hover {
+    background-color:#f0f0f0;
+}
+
+.module-window-terminal.terminal-active {
+    background-color:#ffffff;
 }
