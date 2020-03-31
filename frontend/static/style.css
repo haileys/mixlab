@@ -40,7 +40,9 @@ body {
 
 .module-window-content {
     background-color:#ffffff;
+    display:flex;
     flex-flow:row nowrap;
+    justify-content:space-between;
 }
 
 .module-window-inputs {
