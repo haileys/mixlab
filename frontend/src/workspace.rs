@@ -1,14 +1,42 @@
+use std::cell::RefCell;
+use std::cmp;
 use std::collections::BTreeMap;
 use std::convert::{TryInto, TryFrom};
+use std::fmt::Write;
 
-use web_sys::{HtmlElement, MouseEvent, Element};
+use wasm_bindgen::JsCast;
+use web_sys::{CanvasRenderingContext2d, Element, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
+
+pub struct Counter(usize);
+
+impl Counter {
+    pub fn new() -> Self {
+        Counter(0)
+    }
+
+    pub fn next(&mut self) -> usize {
+        let num = self.0;
+        self.0 += 1;
+        num
+    }
+}
+
+type WindowSet = BTreeMap<WindowId, (NodeRef, WindowProps)>;
 
 pub struct Workspace {
     link: ComponentLink<Self>,
-    next_id: usize,
-    windows: BTreeMap<WindowId, (NodeRef, WindowProps)>,
-    drag: Option<Drag>
+    gen_id: Counter,
+    gen_z_index: Counter,
+    windows: WindowSet,
+    mouse: MouseMode,
+    connections: Vec<(WindowId, NodeRef, WindowId, NodeRef)>,
+}
+
+pub enum MouseMode {
+    Normal,
+    Drag(Drag),
+    Connect(WindowId, NodeRef, Option<Coords>),
 }
 
 pub struct Drag {
@@ -44,8 +72,9 @@ impl Coords {
 
 pub enum WorkspaceMsg {
     DragStart(WindowId, MouseEvent),
-    DragEnd(MouseEvent),
-    Drag(MouseEvent),
+    MouseUp(MouseEvent),
+    MouseMove(MouseEvent),
+    SelectTerminal(WindowId, NodeRef),
 }
 
 impl Component for Workspace {
@@ -55,9 +84,11 @@ impl Component for Workspace {
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
         let mut workspace = Workspace {
             link,
-            next_id: 0,
+            gen_id: Counter::new(),
+            gen_z_index: Counter::new(),
             windows: BTreeMap::new(),
-            drag: None,
+            mouse: MouseMode::Normal,
+            connections: Vec::new(),
         };
 
         workspace.create_window();
@@ -69,84 +100,143 @@ impl Component for Workspace {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             WorkspaceMsg::DragStart(window, ev) => {
-                self.drag = Some(Drag {
-                    window,
-                    origin: Coords { x: ev.page_x(), y: ev.page_y() },
-                });
+                if let Some((_node, props)) = self.windows.get_mut(&window) {
+                    self.mouse = MouseMode::Drag(Drag {
+                        window,
+                        origin: Coords { x: ev.page_x(), y: ev.page_y() },
+                    });
+
+                    props.z_index = self.gen_z_index.next();
+
+                    return true;
+                }
             }
-            WorkspaceMsg::DragEnd(ev) => {
-                if let Some(drag) = self.drag.take() {
-                    let mouse_pos = Coords { x: ev.page_x(), y: ev.page_y() };
-
-                    let delta = mouse_pos.sub(drag.origin);
-
-                    crate::log(&format!("would have moved {:?}", delta));
-
-                    if let Some((node, props)) = self.windows.get_mut(&drag.window) {
-                        props.position = props.position.add(delta);
-                        if let Some(el) = node.cast::<HtmlElement>() {
-                            el.style().set_property("left", &format!("{}px", props.position.x));
-                            el.style().set_property("top", &format!("{}px", props.position.y));
-                        }
+            WorkspaceMsg::MouseUp(ev) => {
+                match self.mouse {
+                    MouseMode::Normal => {}
+                    MouseMode::Drag(ref mut drag) => {
+                        let should_render = drag_event(&mut self.windows, drag, ev);
+                        self.mouse = MouseMode::Normal;
+                        return should_render;
+                    }
+                    MouseMode::Connect(_, _, _) => {}
+                }
+            }
+            WorkspaceMsg::MouseMove(ev) => {
+                match &mut self.mouse {
+                    MouseMode::Normal => {}
+                    MouseMode::Drag(ref mut drag) => {
+                        return drag_event(&mut self.windows, drag, ev);
+                    }
+                    MouseMode::Connect(_window, _node, ref mut coords) => {
+                        *coords = Some(Coords { x: ev.page_x(), y: ev.page_y() });
                         return true;
                     }
                 }
             }
-            WorkspaceMsg::Drag(ev) => {
-                if let Some(drag) = self.drag.as_mut() {
-                    let mouse_pos = Coords { x: ev.page_x(), y: ev.page_y() };
-
-                    let delta = mouse_pos.sub(drag.origin);
-                    drag.origin = mouse_pos;
-
-                    if let Some((node, props)) = self.windows.get_mut(&drag.window) {
-                        props.position = props.position.add(delta);
-                        if let Some(el) = node.cast::<HtmlElement>() {
-                            el.style().set_property("left", &format!("{}px", props.position.x));
-                            el.style().set_property("top", &format!("{}px", props.position.y));
-                        }
-                        return true;
+            WorkspaceMsg::SelectTerminal(window, node) => {
+                match &self.mouse {
+                    MouseMode::Normal => {
+                        self.mouse = MouseMode::Connect(window, node, None);
                     }
+                    MouseMode::Connect(other_window, other_node, _) => {
+                        // don't let user connect a node to itself
+                        if other_node != &node {
+                            self.connections.push((window, node, *other_window, other_node.clone()));
+                            self.mouse = MouseMode::Normal;
+                        }
+                    }
+                    MouseMode::Drag(_) => {}
                 }
             }
         }
-        false
+
+        return false;
+
+        fn drag_event(windows: &mut WindowSet, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
+            let mouse_pos = Coords { x: ev.page_x(), y: ev.page_y() };
+
+            let delta = mouse_pos.sub(drag.origin);
+            drag.origin = mouse_pos;
+
+            crate::log(&format!("would have moved {:?}", delta));
+
+            if let Some((node, props)) = windows.get_mut(&drag.window) {
+                props.position = props.position.add(delta);
+
+                if let Some(el) = node.cast::<HtmlElement>() {
+                    el.style().set_property("left", &format!("{}px", props.position.x));
+                    el.style().set_property("top", &format!("{}px", props.position.y));
+                }
+
+                true
+            } else {
+                false
+            }
+        }
     }
 
     fn view(&self) -> Html {
+        let mut connections: Vec<(Coords, Coords)> = vec![];
+
+        for (from_window, from_node, to_window, to_node) in &self.connections {
+            if let Some(from_coords) = self.screen_coords_for_terminal(*from_window, from_node) {
+                if let Some(to_coords) = self.screen_coords_for_terminal(*to_window, to_node) {
+                    connections.push((from_coords, to_coords));
+                }
+            }
+        }
+
+        if let MouseMode::Connect(window, start_node, Some(to_coords)) = &self.mouse {
+            if let Some(start_coords) = self.screen_coords_for_terminal(*window, start_node) {
+                connections.push((start_coords, *to_coords));
+            }
+        }
+
         html! {
             <div class="workspace"
-                onmouseup={self.link.callback(|ev: MouseEvent| WorkspaceMsg::DragEnd(ev))}
-                onmousemove={self.link.callback(|ev: MouseEvent| WorkspaceMsg::Drag(ev))}
+                onmouseup={self.link.callback(|ev: MouseEvent| WorkspaceMsg::MouseUp(ev))}
+                onmousemove={self.link.callback(|ev: MouseEvent| WorkspaceMsg::MouseMove(ev))}
             >
                 { for self.windows.values().cloned().map(|(ref_, props)|
                     html! { <Window with props ref={ref_} /> }) }
+
+                <Connections connections={connections} width={1000} height={1000} />
             </div>
         }
     }
 }
 
 impl Workspace {
-    fn new_window_id(&mut self) -> WindowId {
-        let id = self.next_id;
-        self.next_id += 1;
-        WindowId(id)
-    }
-
     pub fn create_window(&mut self) {
-        let id = self.new_window_id();
+        let id = WindowId(self.gen_id.next());
+
+        let kind = match id.0 {
+            0 => WindowKind::SineGenerator,
+            1 => WindowKind::OutputDevice,
+            _ => unreachable!(),
+        };
 
         let window = WindowProps {
             id: id,
-            name: format!("Window #{}", id.0),
+            kind: kind,
+            name: format!("{:?}", kind),
             workspace: self.link.clone(),
             position: Coords {
                 x: (id.0 as i32 + 1) * 100,
                 y: (id.0 as i32 + 1) * 100,
             },
+            z_index: self.gen_z_index.next(),
         };
 
         self.windows.insert(id, (NodeRef::default(), window));
+    }
+
+    fn screen_coords_for_terminal(&self, window: WindowId, terminal_node: &NodeRef) -> Option<Coords> {
+        let (_, window_props) = self.windows.get(&window)?;
+        let terminal_node = terminal_node.cast::<HtmlElement>()?;
+        let terminal_coords = Coords { x: terminal_node.offset_left() + 9, y: terminal_node.offset_top() + 9 };
+        Some(window_props.position.add(terminal_coords))
     }
 }
 
@@ -156,19 +246,29 @@ pub struct WindowId(usize);
 pub struct Window {
     link: ComponentLink<Self>,
     props: WindowProps,
+    terminal_noderef: NodeRef,
 }
 
 #[derive(Debug)]
 pub enum WindowMsg {
     DragStart(MouseEvent),
+    SelectTerminal,
 }
 
 #[derive(Properties, Clone)]
 pub struct WindowProps {
     pub id: WindowId,
+    pub kind: WindowKind,
     pub name: String,
     pub workspace: ComponentLink<Workspace>,
     pub position: Coords,
+    pub z_index: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum WindowKind {
+    SineGenerator,
+    OutputDevice,
 }
 
 impl Component for Window {
@@ -179,6 +279,7 @@ impl Component for Window {
         Window {
             link,
             props,
+            terminal_noderef: NodeRef::default(),
         }
     }
 
@@ -186,23 +287,149 @@ impl Component for Window {
         crate::log(&format!("{:?}", msg));
         match msg {
             WindowMsg::DragStart(ev) => {
-                self.props.workspace.send_message(WorkspaceMsg::DragStart(self.props.id, ev));
+                self.props.workspace.send_message(
+                    WorkspaceMsg::DragStart(self.props.id, ev));
+            }
+            WindowMsg::SelectTerminal => {
+                self.props.workspace.send_message(
+                    WorkspaceMsg::SelectTerminal(self.props.id, self.terminal_noderef.clone()));
             }
         }
         false
     }
 
     fn view(&self) -> Html {
+        let mut window_style = self.props.position.to_css();
+        let _ = write!(&mut window_style, "z-index:{};", self.props.z_index);
+
         html! {
-            <div class="module-window" style={self.props.position.to_css()}>
+            <div class="module-window" style={window_style}>
                 <div class="module-window-title"
                     onmousedown={self.link.callback(|ev: MouseEvent| WindowMsg::DragStart(ev))}
                 >
                     {&self.props.name}
                 </div>
                 <div class="module-window-content">
+                    {self.view_inputs()}
+                    {self.view_outputs()}
                 </div>
             </div>
         }
     }
+}
+
+impl Window {
+    fn view_inputs(&self) -> Html {
+        match self.props.kind {
+            WindowKind::SineGenerator => html! {},
+            WindowKind::OutputDevice => {
+                html! {
+                    <div class="module-window-inputs">
+                        <div class="module-window-terminal"
+                            ref={self.terminal_noderef.clone()}
+                            onclick={self.link.callback(|_| WindowMsg::SelectTerminal)}
+                        >
+                        </div>
+                    </div>
+                }
+            }
+        }
+    }
+
+    fn view_outputs(&self) -> Html {
+        match self.props.kind {
+            WindowKind::SineGenerator => {
+                html! {
+                    <div class="module-window-outputs">
+                        <div class="module-window-terminal"
+                            ref={self.terminal_noderef.clone()}
+                            onclick={self.link.callback(|_| WindowMsg::SelectTerminal)}
+                        >
+                        </div>
+                    </div>
+                }
+            }
+            WindowKind::OutputDevice => html! {},
+        }
+    }
+}
+
+pub struct Connections {
+    canvas: NodeRef,
+    ctx: Option<RefCell<CanvasRenderingContext2d>>,
+    props: ConnectionsProps,
+}
+
+#[derive(Properties, Clone)]
+pub struct ConnectionsProps {
+    width: usize,
+    height: usize,
+    connections: Vec<(Coords, Coords)>,
+}
+
+impl Component for Connections {
+    type Message = ();
+    type Properties = ConnectionsProps;
+
+    fn create(props: Self::Properties, _link: ComponentLink<Self>) -> Self {
+        Connections {
+            canvas: NodeRef::default(),
+            ctx: None,
+            props,
+        }
+    }
+
+    fn view(&self) -> Html {
+        crate::log("Connections::view");
+
+        if let Some(ref ctx) = self.ctx {
+            let ctx = ctx.borrow_mut();
+
+            ctx.clear_rect(0f64, 0f64, self.props.width as f64, self.props.height as f64);
+
+            for conn in &self.props.connections {
+                crate::log(&format!("drawing line {:?}", conn));
+
+                ctx.begin_path();
+                ctx.move_to(conn.0.x as f64, conn.0.y as f64);
+                ctx.line_to(conn.1.x as f64, conn.1.y as f64);
+                ctx.stroke();
+            }
+        }
+
+        html! {
+            <canvas class="workspace-connections" width={self.props.width} height={self.props.width} ref={self.canvas.clone()} />
+        }
+    }
+
+    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        false
+    }
+
+    fn change(&mut self, props: Self::Properties) -> ShouldRender {
+        self.props = props;
+        true
+    }
+
+    fn mounted(&mut self) -> ShouldRender {
+        crate::log("Connections::mounted");
+
+        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
+            crate::log("Connections::mounted in if");
+
+            let ctx = canvas.get_context("2d")
+                .expect("canvas.get_context")
+                .expect("canvas.get_context");
+
+            let ctx = ctx
+                .dyn_into::<CanvasRenderingContext2d>()
+                .expect("dyn_ref::<CanvasRenderingContext2d>");
+
+            self.ctx = Some(RefCell::new(ctx));
+        }
+
+        true
+    }
+
+    // fn draw_connections(&self, )
 }
