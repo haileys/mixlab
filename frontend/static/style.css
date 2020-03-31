@@ -31,11 +31,39 @@ body {
 
 .module-window-title {
     background-color:#8d8bb0;
-    color:#f0f0f5;
     padding:8px;
+    user-select:none;
+    display:flex;
+    flex-flow:row nowrap;
+    align-items:center;
+    height:20px;
+}
+
+.module-window-title-label {
+    color:#f0f0f5;
     font-size:14px;
     font-weight:bold;
-    user-select:none;
+    margin-right:auto;
+    height:20px;
+    line-height:20px;
+}
+
+.module-window-title-delete {
+    font-size:14px;
+    font-weight:bold;
+    margin-left:16px;
+    border:1px solid #c9c8d9;
+    color:#c9c8d9;
+    width:16px;
+    height:16px;
+    line-height:16px;
+    text-align:center;
+    cursor:pointer;
+}
+
+.module-window-title-delete:hover {
+    color:#dcdce7;
+    border-color:#dcdce7;
 }
 
 .module-window-content {

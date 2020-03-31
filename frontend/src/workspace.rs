@@ -30,13 +30,13 @@ pub struct Workspace {
     gen_z_index: Counter,
     windows: WindowSet,
     mouse: MouseMode,
-    connections: Vec<(WindowId, NodeRef, WindowId, NodeRef)>,
+    connections: Vec<(OutputId, InputId)>,
 }
 
 pub enum MouseMode {
     Normal,
     Drag(Drag),
-    Connect(WindowId, NodeRef, Option<Coords>),
+    Connect(TerminalId, Option<Coords>),
 }
 
 pub struct Drag {
@@ -76,7 +76,8 @@ pub enum WorkspaceMsg {
     MouseDown(MouseEvent),
     MouseUp(MouseEvent),
     MouseMove(MouseEvent),
-    SelectTerminal(WindowId, NodeRef),
+    SelectTerminal(TerminalId),
+    DeleteWindow(WindowId),
 }
 
 impl Component for Workspace {
@@ -156,30 +157,44 @@ impl Component for Workspace {
                     MouseMode::Drag(ref mut drag) => {
                         drag_event(&mut self.windows, drag, ev)
                     }
-                    MouseMode::Connect(_window, _node, ref mut coords) => {
+                    MouseMode::Connect(_terminal, ref mut coords) => {
                         *coords = Some(Coords { x: ev.page_x(), y: ev.page_y() });
                         true
                     }
                 }
             }
-            WorkspaceMsg::SelectTerminal(window, node) => {
+            WorkspaceMsg::SelectTerminal(terminal) => {
                 match &self.mouse {
                     MouseMode::Normal => {
-                        self.mouse = MouseMode::Connect(window, node, None);
+                        self.mouse = MouseMode::Connect(terminal, None);
                         false
                     }
-                    MouseMode::Connect(start_window, start_node, _) => {
-                        // don't let user connect a node to itself
-                        if *start_node != node {
-                            self.connections.push((*start_window, start_node.clone(), window, node));
-                            self.mouse = MouseMode::Normal;
-                            true
-                        } else {
-                            false
+                    MouseMode::Connect(other_terminal, _) => {
+                        match (terminal, *other_terminal) {
+                            (TerminalId::Input(input), TerminalId::Output(output)) |
+                            (TerminalId::Output(output), TerminalId::Input(input)) => {
+                                self.connections.push((output, input));
+                                self.mouse = MouseMode::Normal;
+                                true
+                            }
+                            _ => {
+                                // invalid connection, don't let the user do it
+                                false
+                            }
                         }
                     }
                     MouseMode::Drag(_) => false,
                 }
+            }
+            WorkspaceMsg::DeleteWindow(window) => {
+                crate::log!("deleting window {:?}", window);
+                crate::log!("windows.keys: {:?}", self.windows.keys());
+                self.windows.remove(&window);
+                crate::log!("windows.keys: {:?}", self.windows.keys());
+                self.connections.retain(|(output, input)| {
+                    output.window_id() != window && input.window_id() != window
+                });
+                true
             }
         };
 
@@ -207,32 +222,38 @@ impl Component for Workspace {
     fn view(&self) -> Html {
         let mut connections: Vec<(Coords, Coords)> = vec![];
 
-        for (from_window, from_node, to_window, to_node) in &self.connections {
-            if let Some(from_coords) = self.screen_coords_for_terminal(*from_window, from_node) {
-                if let Some(to_coords) = self.screen_coords_for_terminal(*to_window, to_node) {
-                    connections.push((from_coords, to_coords));
+        for (output, input) in &self.connections {
+            if let Some(output_coords) = self.screen_coords_for_terminal(TerminalId::Output(*output)) {
+                if let Some(input_coords) = self.screen_coords_for_terminal(TerminalId::Input(*input)) {
+                    connections.push((output_coords, input_coords));
                 }
             }
         }
 
-        if let MouseMode::Connect(window, start_node, Some(to_coords)) = &self.mouse {
-            if let Some(start_coords) = self.screen_coords_for_terminal(*window, start_node) {
-                connections.push((start_coords, *to_coords));
+        if let MouseMode::Connect(terminal, Some(to_coords)) = &self.mouse {
+            if let Some(start_coords) = self.screen_coords_for_terminal(*terminal) {
+                let pair = match terminal {
+                    TerminalId::Input(_) => (*to_coords, start_coords),
+                    TerminalId::Output(_) => (start_coords, *to_coords),
+                };
+
+                connections.push(pair);
             }
         }
 
         html! {
-            <div class="workspace"
-                onmouseup={self.link.callback(WorkspaceMsg::MouseUp)}
-                onmousemove={self.link.callback(WorkspaceMsg::MouseMove)}
-                onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
-                oncontextmenu={self.link.callback(WorkspaceMsg::ContextMenu)}
-            >
-                { for self.windows.values().cloned().map(|props|
-                    html! { <Window with props /> }) }
-
+            <>
+                <div class="workspace"
+                    onmouseup={self.link.callback(WorkspaceMsg::MouseUp)}
+                    onmousemove={self.link.callback(WorkspaceMsg::MouseMove)}
+                    onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
+                    oncontextmenu={self.link.callback(WorkspaceMsg::ContextMenu)}
+                >
+                    { for self.windows.values().cloned().map(|props|
+                        html! { <div data-window-id={props.id.0}><Window with props /></div> }) }
+                </div>
                 <Connections connections={connections} width={1000} height={1000} />
-            </div>
+            </>
         }
     }
 }
@@ -279,17 +300,56 @@ impl Workspace {
         self.windows.insert(id, props);
     }
 
-    fn screen_coords_for_terminal(&self, window: WindowId, terminal_node: &NodeRef) -> Option<Coords> {
-        let window_props = self.windows.get(&window)?;
+    fn screen_coords_for_terminal(&self, terminal: TerminalId) -> Option<Coords> {
+        let window_props = self.windows.get(&terminal.window_id())?;
+
+        let terminal_node = match terminal {
+            TerminalId::Input(InputId(_, index)) => window_props.refs.inputs.get(index)?,
+            TerminalId::Output(OutputId(_, index)) => window_props.refs.outputs.get(index)?,
+        };
+
         let terminal_node = terminal_node.cast::<HtmlElement>()?;
+
         let terminal_coords = Coords { x: terminal_node.offset_left() + 9, y: terminal_node.offset_top() + 9 };
         Some(window_props.position.add(terminal_coords))
     }
 }
 
-#[derive(Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
 pub struct WindowId(usize);
 
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
+pub enum TerminalId {
+    Input(InputId),
+    Output(OutputId),
+}
+
+impl TerminalId {
+    pub fn window_id(&self) -> WindowId {
+        match self {
+            TerminalId::Input(input) => input.window_id(),
+            TerminalId::Output(output) => output.window_id(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
+pub struct InputId(WindowId, usize);
+
+impl InputId {
+    pub fn window_id(&self) -> WindowId {
+        self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
+pub struct OutputId(WindowId, usize);
+
+impl OutputId {
+    pub fn window_id(&self) -> WindowId {
+        self.0
+    }
+}
 pub struct Window {
     link: ComponentLink<Self>,
     props: WindowProps,
@@ -298,10 +358,11 @@ pub struct Window {
 #[derive(Debug)]
 pub enum WindowMsg {
     DragStart(MouseEvent),
-    SelectTerminal(MouseEvent, NodeRef),
+    SelectTerminal(MouseEvent, TerminalId),
+    Delete,
 }
 
-#[derive(Properties, Clone)]
+#[derive(Properties, Clone, Debug)]
 pub struct WindowProps {
     pub id: WindowId,
     pub kind: WindowKind,
@@ -312,7 +373,7 @@ pub struct WindowProps {
     pub refs: WindowRef,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct WindowRef {
     window: NodeRef,
     inputs: Vec<NodeRef>,
@@ -343,14 +404,23 @@ impl Component for Window {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DragStart(self.props.id, ev));
             }
-            WindowMsg::SelectTerminal(ev, terminal_ref) => {
+            WindowMsg::SelectTerminal(ev, terminal_id) => {
                 self.props.workspace.send_message(
-                    WorkspaceMsg::SelectTerminal(self.props.id, terminal_ref));
+                    WorkspaceMsg::SelectTerminal(terminal_id));
 
                 ev.stop_immediate_propagation();
             }
+            WindowMsg::Delete => {
+                self.props.workspace.send_message(
+                    WorkspaceMsg::DeleteWindow(self.props.id));
+            }
         }
         false
+    }
+
+    fn change(&mut self, props: Self::Properties) -> ShouldRender {
+        self.props = props;
+        true
     }
 
     fn view(&self) -> Html {
@@ -362,7 +432,12 @@ impl Component for Window {
                 <div class="module-window-title"
                     onmousedown={self.link.callback(|ev: MouseEvent| WindowMsg::DragStart(ev))}
                 >
-                    {&self.props.name}
+                    <div class="module-window-title-label">
+                        {&self.props.name}
+                    </div>
+                    <div class="module-window-title-delete" onclick={self.link.callback(|_| WindowMsg::Delete)}>
+                        {"×"}
+                    </div>
                 </div>
                 <div class="module-window-content">
                     {self.view_inputs()}
@@ -377,11 +452,13 @@ impl Window {
     fn view_inputs(&self) -> Html {
         html! {
             <div class="module-window-inputs">
-                { for self.props.refs.inputs.iter().cloned().map(|terminal_ref| {
+                { for self.props.refs.inputs.iter().cloned().enumerate().map(|(index, terminal_ref)| {
+                    let terminal_id = TerminalId::Input(InputId(self.props.id, index));
+
                     html! {
                         <div class="module-window-terminal"
-                            ref={terminal_ref.clone()}
-                            onclick={self.link.callback(move |ev| WindowMsg::SelectTerminal(ev, terminal_ref.clone()))}
+                            ref={terminal_ref}
+                            onclick={self.link.callback(move |ev| WindowMsg::SelectTerminal(ev, terminal_id))}
                         >
                         </div>
                     }
@@ -393,11 +470,13 @@ impl Window {
     fn view_outputs(&self) -> Html {
         html! {
             <div class="module-window-outputs">
-                { for self.props.refs.outputs.iter().cloned().map(|terminal_ref| {
+                { for self.props.refs.outputs.iter().cloned().enumerate().map(|(index, terminal_ref)| {
+                    let terminal_id = TerminalId::Output(OutputId(self.props.id, index));
+
                     html! {
                         <div class="module-window-terminal"
-                            ref={terminal_ref.clone()}
-                            onclick={self.link.callback(move |ev| WindowMsg::SelectTerminal(ev, terminal_ref.clone()))}
+                            ref={terminal_ref}
+                            onclick={self.link.callback(move |ev| WindowMsg::SelectTerminal(ev, terminal_id))}
                         >
                         </div>
                     }
