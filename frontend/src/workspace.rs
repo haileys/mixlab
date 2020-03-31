@@ -165,10 +165,10 @@ impl Component for Workspace {
                     MouseMode::Normal => {
                         self.mouse = MouseMode::Connect(window, node, None);
                     }
-                    MouseMode::Connect(other_window, other_node, _) => {
+                    MouseMode::Connect(start_window, start_node, _) => {
                         // don't let user connect a node to itself
-                        if other_node != &node {
-                            self.connections.push((window, node, *other_window, other_node.clone()));
+                        if *start_node != node {
+                            self.connections.push((*start_window, start_node.clone(), window, node));
                             self.mouse = MouseMode::Normal;
                         }
                     }
@@ -421,8 +421,15 @@ impl Component for Connections {
 
             for conn in &self.props.connections {
                 ctx.begin_path();
-                ctx.move_to(conn.0.x as f64, conn.0.y as f64);
-                ctx.line_to(conn.1.x as f64, conn.1.y as f64);
+
+                let points = plan_line_points(conn.0, conn.1);
+
+                ctx.move_to(points[0].x as f64, points[0].y as f64);
+
+                for point in &points[1..] {
+                    ctx.line_to(point.x as f64, point.y as f64);
+                }
+
                 ctx.stroke();
             }
         }
@@ -470,4 +477,39 @@ impl Component for Connections {
     }
 
     // fn draw_connections(&self, )
+}
+
+fn plan_line_points(start: Coords, end: Coords) -> Vec<Coords> {
+    let mut segments = vec![];
+
+    const END_SEGMENT_SIZE: Coords = Coords { x: 16, y: 0 };
+    let effective_start = start.add(END_SEGMENT_SIZE);
+    let effective_end = end.sub(END_SEGMENT_SIZE);
+
+    segments.push(start);
+    segments.push(effective_start);
+
+    let abs_delta_x = (effective_start.x - effective_end.x).abs();
+    let abs_delta_y = (effective_start.y - effective_end.y).abs();
+
+    if effective_start.x <= effective_end.x {
+        // line is mostly horizontal:
+        let x_midpoint = (effective_start.x + effective_end.x) / 2;
+        let y_delta = effective_end.y - effective_start.y;
+
+        segments.push(Coords { x: x_midpoint, y: effective_start.y });
+        segments.push(Coords { x: x_midpoint, y: effective_end.y });
+    } else {
+        // line is mostly vertical:
+        let y_midpoint = (effective_start.y + effective_end.y) / 2;
+        let x_delta = effective_end.x - effective_start.x;
+
+        segments.push(Coords { x: effective_start.x, y: y_midpoint });
+        segments.push(Coords { x: effective_end.x, y: y_midpoint });
+    }
+
+    segments.push(effective_end);
+    segments.push(end);
+
+    segments
 }
