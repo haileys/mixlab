@@ -72,6 +72,8 @@ impl Coords {
 
 pub enum WorkspaceMsg {
     DragStart(WindowId, MouseEvent),
+    ContextMenu(MouseEvent),
+    MouseDown(MouseEvent),
     MouseUp(MouseEvent),
     MouseMove(MouseEvent),
     SelectTerminal(WindowId, NodeRef),
@@ -98,7 +100,7 @@ impl Component for Workspace {
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
-        match msg {
+        return match msg {
             WorkspaceMsg::DragStart(window, ev) => {
                 if let Some((_node, props)) = self.windows.get_mut(&window) {
                     self.mouse = MouseMode::Drag(Drag {
@@ -108,29 +110,53 @@ impl Component for Workspace {
 
                     props.z_index = self.gen_z_index.next();
 
-                    return true;
+                    true
+                } else {
+                    false
+                }
+            }
+            WorkspaceMsg::ContextMenu(ev) => {
+                ev.prevent_default();
+                false
+            }
+            WorkspaceMsg::MouseDown(ev) => {
+                const RIGHT_MOUSE_BUTTON: u16 = 2;
+
+                crate::log!("buttons: {}", ev.buttons());
+
+                if (ev.buttons() & RIGHT_MOUSE_BUTTON) != 0 {
+                    if let MouseMode::Connect(..) = self.mouse {
+                        self.mouse = MouseMode::Normal;
+                    }
+
+                    ev.prevent_default();
+                    ev.stop_immediate_propagation();
+
+                    true
+                } else {
+                    false
                 }
             }
             WorkspaceMsg::MouseUp(ev) => {
                 match self.mouse {
-                    MouseMode::Normal => {}
+                    MouseMode::Normal => false,
                     MouseMode::Drag(ref mut drag) => {
                         let should_render = drag_event(&mut self.windows, drag, ev);
                         self.mouse = MouseMode::Normal;
-                        return should_render;
+                        should_render
                     }
-                    MouseMode::Connect(_, _, _) => {}
+                    MouseMode::Connect(..) => false,
                 }
             }
             WorkspaceMsg::MouseMove(ev) => {
                 match &mut self.mouse {
-                    MouseMode::Normal => {}
+                    MouseMode::Normal => false,
                     MouseMode::Drag(ref mut drag) => {
-                        return drag_event(&mut self.windows, drag, ev);
+                        drag_event(&mut self.windows, drag, ev)
                     }
                     MouseMode::Connect(_window, _node, ref mut coords) => {
                         *coords = Some(Coords { x: ev.page_x(), y: ev.page_y() });
-                        return true;
+                        true
                     }
                 }
             }
@@ -148,18 +174,16 @@ impl Component for Workspace {
                     }
                     MouseMode::Drag(_) => {}
                 }
-            }
-        }
 
-        return false;
+                false
+            }
+        };
 
         fn drag_event(windows: &mut WindowSet, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
             let mouse_pos = Coords { x: ev.page_x(), y: ev.page_y() };
 
             let delta = mouse_pos.sub(drag.origin);
             drag.origin = mouse_pos;
-
-            crate::log(&format!("would have moved {:?}", delta));
 
             if let Some((node, props)) = windows.get_mut(&drag.window) {
                 props.position = props.position.add(delta);
@@ -195,8 +219,10 @@ impl Component for Workspace {
 
         html! {
             <div class="workspace"
-                onmouseup={self.link.callback(|ev: MouseEvent| WorkspaceMsg::MouseUp(ev))}
-                onmousemove={self.link.callback(|ev: MouseEvent| WorkspaceMsg::MouseMove(ev))}
+                onmouseup={self.link.callback(WorkspaceMsg::MouseUp)}
+                onmousemove={self.link.callback(WorkspaceMsg::MouseMove)}
+                onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
+                oncontextmenu={self.link.callback(WorkspaceMsg::ContextMenu)}
             >
                 { for self.windows.values().cloned().map(|(ref_, props)|
                     html! { <Window with props ref={ref_} /> }) }
@@ -252,7 +278,7 @@ pub struct Window {
 #[derive(Debug)]
 pub enum WindowMsg {
     DragStart(MouseEvent),
-    SelectTerminal,
+    SelectTerminal(MouseEvent),
 }
 
 #[derive(Properties, Clone)]
@@ -284,15 +310,16 @@ impl Component for Window {
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
-        crate::log(&format!("{:?}", msg));
         match msg {
             WindowMsg::DragStart(ev) => {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DragStart(self.props.id, ev));
             }
-            WindowMsg::SelectTerminal => {
+            WindowMsg::SelectTerminal(ev) => {
                 self.props.workspace.send_message(
                     WorkspaceMsg::SelectTerminal(self.props.id, self.terminal_noderef.clone()));
+
+                ev.stop_immediate_propagation();
             }
         }
         false
@@ -327,7 +354,7 @@ impl Window {
                     <div class="module-window-inputs">
                         <div class="module-window-terminal"
                             ref={self.terminal_noderef.clone()}
-                            onclick={self.link.callback(|_| WindowMsg::SelectTerminal)}
+                            onclick={self.link.callback(WindowMsg::SelectTerminal)}
                         >
                         </div>
                     </div>
@@ -343,7 +370,7 @@ impl Window {
                     <div class="module-window-outputs">
                         <div class="module-window-terminal"
                             ref={self.terminal_noderef.clone()}
-                            onclick={self.link.callback(|_| WindowMsg::SelectTerminal)}
+                            onclick={self.link.callback(WindowMsg::SelectTerminal)}
                         >
                         </div>
                     </div>
@@ -355,6 +382,7 @@ impl Window {
 }
 
 pub struct Connections {
+    link: ComponentLink<Self>,
     canvas: NodeRef,
     ctx: Option<RefCell<CanvasRenderingContext2d>>,
     props: ConnectionsProps,
@@ -367,12 +395,18 @@ pub struct ConnectionsProps {
     connections: Vec<(Coords, Coords)>,
 }
 
+#[derive(Debug)]
+pub enum ConnectionsMsg {
+    MouseDown(MouseEvent),
+}
+
 impl Component for Connections {
-    type Message = ();
+    type Message = ConnectionsMsg;
     type Properties = ConnectionsProps;
 
-    fn create(props: Self::Properties, _link: ComponentLink<Self>) -> Self {
+    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
         Connections {
+            link,
             canvas: NodeRef::default(),
             ctx: None,
             props,
@@ -380,16 +414,12 @@ impl Component for Connections {
     }
 
     fn view(&self) -> Html {
-        crate::log("Connections::view");
-
         if let Some(ref ctx) = self.ctx {
             let ctx = ctx.borrow_mut();
 
             ctx.clear_rect(0f64, 0f64, self.props.width as f64, self.props.height as f64);
 
             for conn in &self.props.connections {
-                crate::log(&format!("drawing line {:?}", conn));
-
                 ctx.begin_path();
                 ctx.move_to(conn.0.x as f64, conn.0.y as f64);
                 ctx.line_to(conn.1.x as f64, conn.1.y as f64);
@@ -398,11 +428,23 @@ impl Component for Connections {
         }
 
         html! {
-            <canvas class="workspace-connections" width={self.props.width} height={self.props.width} ref={self.canvas.clone()} />
+            <canvas
+                /*onmousedown={self.link.callback(|ev| ConnectionsMsg::MouseDown(ev))}*/
+                class="workspace-connections"
+                width={self.props.width}
+                height={self.props.height}
+                ref={self.canvas.clone()}
+            />
         }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        crate::log!("{:?}", msg);
+
+        match msg {
+            ConnectionsMsg::MouseDown(ev) => { ev.prevent_default(); }
+        }
+
         false
     }
 
@@ -412,11 +454,7 @@ impl Component for Connections {
     }
 
     fn mounted(&mut self) -> ShouldRender {
-        crate::log("Connections::mounted");
-
         if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
-            crate::log("Connections::mounted in if");
-
             let ctx = canvas.get_context("2d")
                 .expect("canvas.get_context")
                 .expect("canvas.get_context");

@@ -1,21 +1,12 @@
 #![recursion_limit="256"]
 
+mod util;
 mod workspace;
-mod utils;
 
-use wasm_bindgen::prelude::*;
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
+use wasm_bindgen::prelude::*;
 
 use workspace::Workspace;
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-
-    #[wasm_bindgen]
-    fn alert(s: &str);
-}
 
 struct App {
     link: ComponentLink<Self>,
@@ -49,4 +40,15 @@ impl Component for App {
 #[wasm_bindgen]
 pub fn start() {
     yew::start_app::<App>();
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    fn log_str(s: &str);
+}
+
+#[macro_export]
+macro_rules! log {
+    ($($t:tt)*) => (crate::log_str(&format_args!($($t)*).to_string()))
 }
