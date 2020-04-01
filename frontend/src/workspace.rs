@@ -5,12 +5,13 @@ use std::mem;
 
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
+use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};
 use yew::events::ChangeData;
 
 use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, WorkspaceState, ClientMessage};
 
 use crate::{App, AppMsg};
+use crate::util::{callback_ex, stop_propagation, prevent_default};
 
 pub struct Counter(usize);
 
@@ -54,6 +55,7 @@ pub enum MouseMode {
     Normal,
     Drag(Drag),
     Connect(TerminalId, Option<Coords>),
+    ContextMenu(Coords),
 }
 
 pub struct Drag {
@@ -90,7 +92,6 @@ impl Coords {
 #[derive(Debug)]
 pub enum WorkspaceMsg {
     DragStart(ModuleId, MouseEvent),
-    ContextMenu(MouseEvent),
     MouseDown(MouseEvent),
     MouseUp(MouseEvent),
     MouseMove(MouseEvent),
@@ -98,6 +99,7 @@ pub enum WorkspaceMsg {
     ClearTerminal(TerminalId),
     DeleteWindow(ModuleId),
     UpdateModuleParams(ModuleId, ModuleParams),
+    CreateModule(Coords, ModuleParams),
 }
 
 impl Component for Workspace {
@@ -138,26 +140,36 @@ impl Component for Workspace {
                     false
                 }
             }
-            WorkspaceMsg::ContextMenu(ev) => {
-                ev.prevent_default();
-                false
-            }
             WorkspaceMsg::MouseDown(ev) => {
                 const RIGHT_MOUSE_BUTTON: u16 = 2;
 
                 crate::log!("WorkspaceMsg::MouseDown: buttons: {}", ev.buttons());
 
                 if (ev.buttons() & RIGHT_MOUSE_BUTTON) != 0 {
-                    if let MouseMode::Connect(..) = self.mouse {
-                        self.mouse = MouseMode::Normal;
+                    match self.mouse {
+                        MouseMode::Connect(..) => {
+                            self.mouse = MouseMode::Normal;
+                        }
+                        MouseMode::Normal | MouseMode::ContextMenu(_) => {
+                            self.mouse = MouseMode::ContextMenu(Coords { x: ev.page_x(), y: ev.page_y() });
+                        }
+                        MouseMode::Drag(_) => {}
                     }
 
                     ev.prevent_default();
-                    ev.stop_immediate_propagation();
+                    ev.stop_propagation();
 
                     true
                 } else {
-                    false
+                    match self.mouse {
+                        MouseMode::Normal | MouseMode::Drag(_) | MouseMode::Connect(..) => {
+                            false
+                        }
+                        MouseMode::ContextMenu(_) => {
+                            self.mouse = MouseMode::Normal;
+                            true
+                        }
+                    }
                 }
             }
             WorkspaceMsg::MouseUp(ev) => {
@@ -169,11 +181,12 @@ impl Component for Workspace {
                         should_render
                     }
                     MouseMode::Connect(..) => false,
+                    MouseMode::ContextMenu(..) => false,
                 }
             }
             WorkspaceMsg::MouseMove(ev) => {
                 match &mut self.mouse {
-                    MouseMode::Normal => false,
+                    MouseMode::Normal | MouseMode::ContextMenu(_) => false,
                     MouseMode::Drag(ref mut drag) => {
                         drag_event(&mut self.modules, drag, ev)
                     }
@@ -185,7 +198,7 @@ impl Component for Workspace {
             }
             WorkspaceMsg::SelectTerminal(terminal) => {
                 match &self.mouse {
-                    MouseMode::Normal => {
+                    MouseMode::Normal | MouseMode::ContextMenu(_) => {
                         self.mouse = MouseMode::Connect(terminal, None);
                         false
                     }
@@ -265,6 +278,10 @@ impl Component for Workspace {
                     false
                 }
             }
+            WorkspaceMsg::CreateModule(coords, module) => {
+                // TODO
+                false
+            }
         };
 
         fn drag_event(modules: &mut ModuleSet, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
@@ -317,12 +334,13 @@ impl Component for Workspace {
                     onmouseup={self.link.callback(WorkspaceMsg::MouseUp)}
                     onmousemove={self.link.callback(WorkspaceMsg::MouseMove)}
                     onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
-                    oncontextmenu={self.link.callback(WorkspaceMsg::ContextMenu)}
+                    oncontextmenu={prevent_default()}
                 >
                     { for self.modules.values().cloned().map(|props|
                         html! { <div data-module-id={props.id.0}><Window with props /></div> }) }
+                    <Connections connections={connections} width={1000} height={1000} />
+                    {self.view_context_menu()}
                 </div>
-                <Connections connections={connections} width={1000} height={1000} />
             </>
         }
     }
@@ -377,6 +395,39 @@ impl Workspace {
         let terminal_coords = Coords { x: terminal_node.offset_left() + 9, y: terminal_node.offset_top() + 9 };
         Some(window_props.position.add(terminal_coords))
     }
+
+    fn view_context_menu(&self) -> Html {
+        let coords = match self.mouse {
+            MouseMode::ContextMenu(coords) => coords,
+            _ => return html! {},
+        };
+
+        let items = &[
+            ("Sine Generator", ModuleParams::SineGenerator(SineGeneratorParams { freq: 440.0 })),
+            ("Mixer (2 channel)", ModuleParams::Mixer2ch),
+            ("Output Device", ModuleParams::OutputDevice),
+        ];
+
+        html! {
+            <div class="context-menu"
+                style={format!("left:{}px; top:{}px;", coords.x, coords.y)}
+                onmousedown={stop_propagation()}
+            >
+                <div class="context-menu-heading">{"Add module"}</div>
+                { for items.iter().map(|(label, params)| {
+                    let params = params.clone();
+
+                    html! {
+                        <div class="context-menu-item"
+                            onmousedown={self.link.callback(move |_| WorkspaceMsg::CreateModule(coords, params.clone()))}
+                        >
+                            {label}
+                        </div>
+                    }
+                }) }
+            </div>
+        }
+    }
 }
 
 pub struct Window {
@@ -388,7 +439,6 @@ pub struct Window {
 pub enum WindowMsg {
     DragStart(MouseEvent),
     TerminalMouseDown(MouseEvent, TerminalId),
-    TerminalContextMenu(MouseEvent),
     Delete,
     UpdateParams(ModuleParams),
 }
@@ -425,6 +475,8 @@ impl Component for Window {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             WindowMsg::DragStart(ev) => {
+                ev.stop_propagation();
+
                 self.props.workspace.send_message(
                     WorkspaceMsg::DragStart(self.props.id, ev));
             }
@@ -439,9 +491,6 @@ impl Component for Window {
 
                 self.props.workspace.send_message(msg);
 
-                ev.stop_propagation();
-            }
-            WindowMsg::TerminalContextMenu(ev) => {
                 ev.stop_propagation();
             }
             WindowMsg::Delete => {
@@ -466,10 +515,14 @@ impl Component for Window {
         let _ = write!(&mut window_style, "z-index:{};", self.props.z_index);
 
         html! {
-            <div class="module-window" style={window_style} ref={self.props.refs.module.clone()}>
+            <div class="module-window"
+                style={window_style}
+                ref={self.props.refs.module.clone()}
+                onmousedown={stop_propagation()}
+                oncontextmenu={prevent_default()}
+            >
                 <div class="module-window-title"
-                    onmousedown={self.link.callback(|ev: MouseEvent| WindowMsg::DragStart(ev))}
-                    oncontextmenu={self.link.callback(WindowMsg::TerminalContextMenu)}
+                    onmousedown={callback_ex(&self.link, WindowMsg::DragStart)}
                 >
                     <div class="module-window-title-label">
                         {&self.props.name}
