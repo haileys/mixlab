@@ -1,11 +1,9 @@
 use std::cell::RefCell;
-use std::cmp;
-use std::collections::BTreeMap;
-use std::convert::{TryInto, TryFrom};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, Element, HtmlElement, HtmlCanvasElement, MouseEvent};
+use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
 pub struct Counter(usize);
@@ -30,7 +28,7 @@ pub struct Workspace {
     gen_z_index: Counter,
     windows: WindowSet,
     mouse: MouseMode,
-    connections: Vec<(OutputId, InputId)>,
+    connections: HashMap<InputId, OutputId>,
 }
 
 pub enum MouseMode {
@@ -77,6 +75,7 @@ pub enum WorkspaceMsg {
     MouseUp(MouseEvent),
     MouseMove(MouseEvent),
     SelectTerminal(TerminalId),
+    ClearTerminal(TerminalId),
     DeleteWindow(WindowId),
 }
 
@@ -84,14 +83,14 @@ impl Component for Workspace {
     type Message = WorkspaceMsg;
     type Properties = ();
 
-    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
+    fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
         let mut workspace = Workspace {
             link,
             gen_id: Counter::new(),
             gen_z_index: Counter::new(),
             windows: BTreeMap::new(),
             mouse: MouseMode::Normal,
-            connections: Vec::new(),
+            connections: HashMap::new(),
         };
 
         workspace.create_window();
@@ -173,7 +172,7 @@ impl Component for Workspace {
                         match (terminal, *other_terminal) {
                             (TerminalId::Input(input), TerminalId::Output(output)) |
                             (TerminalId::Output(output), TerminalId::Input(input)) => {
-                                self.connections.push((output, input));
+                                self.connections.insert(input, output);
                                 self.mouse = MouseMode::Normal;
                                 true
                             }
@@ -186,12 +185,20 @@ impl Component for Workspace {
                     MouseMode::Drag(_) => false,
                 }
             }
+            WorkspaceMsg::ClearTerminal(terminal) => {
+                match terminal {
+                    TerminalId::Input(input) => {
+                        self.connections.remove(&input);
+                    }
+                    TerminalId::Output(output) => {
+                        self.connections.retain(|_, out| output != *out);
+                    }
+                }
+                true
+            }
             WorkspaceMsg::DeleteWindow(window) => {
-                crate::log!("deleting window {:?}", window);
-                crate::log!("windows.keys: {:?}", self.windows.keys());
                 self.windows.remove(&window);
-                crate::log!("windows.keys: {:?}", self.windows.keys());
-                self.connections.retain(|(output, input)| {
+                self.connections.retain(|input, output| {
                     output.window_id() != window && input.window_id() != window
                 });
                 true
@@ -208,8 +215,9 @@ impl Component for Workspace {
                 props.position = props.position.add(delta);
 
                 if let Some(el) = props.refs.window.cast::<HtmlElement>() {
-                    el.style().set_property("left", &format!("{}px", props.position.x));
-                    el.style().set_property("top", &format!("{}px", props.position.y));
+                    let style = el.style();
+                    let _ = style.set_property("left", &format!("{}px", props.position.x));
+                    let _ = style.set_property("top", &format!("{}px", props.position.y));
                 }
 
                 true
@@ -222,9 +230,9 @@ impl Component for Workspace {
     fn view(&self) -> Html {
         let mut connections: Vec<(Coords, Coords)> = vec![];
 
-        for (output, input) in &self.connections {
-            if let Some(output_coords) = self.screen_coords_for_terminal(TerminalId::Output(*output)) {
-                if let Some(input_coords) = self.screen_coords_for_terminal(TerminalId::Input(*input)) {
+        for (input, output) in &self.connections {
+            if let Some(input_coords) = self.screen_coords_for_terminal(TerminalId::Input(*input)) {
+                if let Some(output_coords) = self.screen_coords_for_terminal(TerminalId::Output(*output)) {
                     connections.push((output_coords, input_coords));
                 }
             }
@@ -315,10 +323,10 @@ impl Workspace {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct WindowId(usize);
 
-#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum TerminalId {
     Input(InputId),
     Output(OutputId),
@@ -333,7 +341,7 @@ impl TerminalId {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct InputId(WindowId, usize);
 
 impl InputId {
@@ -342,7 +350,7 @@ impl InputId {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct OutputId(WindowId, usize);
 
 impl OutputId {
@@ -358,7 +366,8 @@ pub struct Window {
 #[derive(Debug)]
 pub enum WindowMsg {
     DragStart(MouseEvent),
-    SelectTerminal(MouseEvent, TerminalId),
+    TerminalMouseDown(MouseEvent, TerminalId),
+    TerminalContextMenu(MouseEvent),
     Delete,
 }
 
@@ -404,11 +413,21 @@ impl Component for Window {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DragStart(self.props.id, ev));
             }
-            WindowMsg::SelectTerminal(ev, terminal_id) => {
-                self.props.workspace.send_message(
-                    WorkspaceMsg::SelectTerminal(terminal_id));
+            WindowMsg::TerminalMouseDown(ev, terminal_id) => {
+                let msg =
+                    if (ev.buttons() & 2) != 0 {
+                        // right click
+                        WorkspaceMsg::ClearTerminal(terminal_id)
+                    } else {
+                        WorkspaceMsg::SelectTerminal(terminal_id)
+                    };
 
-                ev.stop_immediate_propagation();
+                self.props.workspace.send_message(msg);
+
+                ev.stop_propagation();
+            }
+            WindowMsg::TerminalContextMenu(ev) => {
+                ev.stop_propagation();
             }
             WindowMsg::Delete => {
                 self.props.workspace.send_message(
@@ -431,11 +450,12 @@ impl Component for Window {
             <div class="module-window" style={window_style} ref={self.props.refs.window.clone()}>
                 <div class="module-window-title"
                     onmousedown={self.link.callback(|ev: MouseEvent| WindowMsg::DragStart(ev))}
+                    oncontextmenu={self.link.callback(WindowMsg::TerminalContextMenu)}
                 >
                     <div class="module-window-title-label">
                         {&self.props.name}
                     </div>
-                    <div class="module-window-title-delete" onclick={self.link.callback(|_| WindowMsg::Delete)}>
+                    <div class="module-window-title-delete" onmousedown={self.link.callback(|_| WindowMsg::Delete)}>
                         {"×"}
                     </div>
                 </div>
@@ -458,7 +478,7 @@ impl Window {
                     html! {
                         <div class="module-window-terminal"
                             ref={terminal_ref}
-                            onclick={self.link.callback(move |ev| WindowMsg::SelectTerminal(ev, terminal_id))}
+                            onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
                         >
                         </div>
                     }
@@ -476,7 +496,7 @@ impl Window {
                     html! {
                         <div class="module-window-terminal"
                             ref={terminal_ref}
-                            onclick={self.link.callback(move |ev| WindowMsg::SelectTerminal(ev, terminal_id))}
+                            onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
                         >
                         </div>
                     }
@@ -487,7 +507,6 @@ impl Window {
 }
 
 pub struct Connections {
-    link: ComponentLink<Self>,
     canvas: NodeRef,
     ctx: Option<RefCell<CanvasRenderingContext2d>>,
     props: ConnectionsProps,
@@ -500,18 +519,12 @@ pub struct ConnectionsProps {
     connections: Vec<(Coords, Coords)>,
 }
 
-#[derive(Debug)]
-pub enum ConnectionsMsg {
-    MouseDown(MouseEvent),
-}
-
 impl Component for Connections {
-    type Message = ConnectionsMsg;
+    type Message = ();
     type Properties = ConnectionsProps;
 
-    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
+    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
         Connections {
-            link,
             canvas: NodeRef::default(),
             ctx: None,
             props,
@@ -550,13 +563,7 @@ impl Component for Connections {
         }
     }
 
-    fn update(&mut self, msg: Self::Message) -> ShouldRender {
-        crate::log!("{:?}", msg);
-
-        match msg {
-            ConnectionsMsg::MouseDown(ev) => { ev.prevent_default(); }
-        }
-
+    fn update(&mut self, _: Self::Message) -> ShouldRender {
         false
     }
 
@@ -594,20 +601,15 @@ fn plan_line_points(start: Coords, end: Coords) -> Vec<Coords> {
     segments.push(start);
     segments.push(effective_start);
 
-    let abs_delta_x = (effective_start.x - effective_end.x).abs();
-    let abs_delta_y = (effective_start.y - effective_end.y).abs();
-
     if effective_start.x <= effective_end.x {
         // line is mostly horizontal:
         let x_midpoint = (effective_start.x + effective_end.x) / 2;
-        let y_delta = effective_end.y - effective_start.y;
 
         segments.push(Coords { x: x_midpoint, y: effective_start.y });
         segments.push(Coords { x: x_midpoint, y: effective_end.y });
     } else {
         // line is mostly vertical:
         let y_midpoint = (effective_start.y + effective_end.y) / 2;
-        let x_delta = effective_end.x - effective_start.x;
 
         segments.push(Coords { x: effective_start.x, y: y_midpoint });
         segments.push(Coords { x: effective_end.x, y: y_midpoint });

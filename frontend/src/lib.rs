@@ -8,25 +8,17 @@ use wasm_bindgen::prelude::*;
 
 use workspace::Workspace;
 
-struct App {
-    link: ComponentLink<Self>,
-}
-
-enum Msg {
-    // Click,
-}
+struct App;
 
 impl Component for App {
-    type Message = Msg;
+    type Message = ();
     type Properties = ();
 
-    fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
-        App {
-            link,
-        }
+    fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
+        App
     }
 
-    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
         false
     }
 
@@ -39,6 +31,8 @@ impl Component for App {
 
 #[wasm_bindgen]
 pub fn start() {
+    console_error_panic_hook::set_once();
+
     yew::start_app::<App>();
 }
 
