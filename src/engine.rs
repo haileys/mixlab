@@ -1,34 +1,92 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::f64;
+use std::f32;
+use std::fmt::{self, Debug};
 use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError};
 use std::thread;
 use std::time::{Instant, Duration};
 
+use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
+use ringbuf::{RingBuffer, Producer, Consumer};
 use tokio::sync::oneshot;
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, TerminalId, WorkspaceState};
 
 use crate::util::Sequence;
 
-pub type Sample = f64;
+pub type Sample = f32;
 
+pub const CHANNELS: usize = 2;
 pub const SAMPLE_RATE: usize = 44100;
 pub const TICKS_PER_SECOND: usize = 10;
 pub const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
+pub struct OutputDeviceState {
+    stream: cpal::Stream,
+    tx: Producer<f32>,
+    file: std::fs::File,
+}
+
+impl Debug for OutputDeviceState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "OutputDeviceState")
+    }
+}
+
 #[derive(Debug)]
 pub enum Module {
     SineGenerator((), SineGeneratorParams),
-    OutputDevice((), ()),
+    OutputDevice(OutputDeviceState, ()),
     Mixer2ch((), ()),
 }
 
 impl Module {
     fn create(params: ModuleParams) -> Self {
         match params {
-            ModuleParams::SineGenerator(params) => Module::SineGenerator((), params),
-            ModuleParams::OutputDevice => Module::OutputDevice((), ()),
-            ModuleParams::Mixer2ch => Module::OutputDevice((), ()),
+            ModuleParams::SineGenerator(params) => {
+                Module::SineGenerator((), params)
+            }
+            ModuleParams::OutputDevice => {
+                let host = cpal::default_host();
+
+                let device = host.default_output_device()
+                    .expect("default_output_device");
+
+                let config = device.default_output_config()
+                    .expect("default_output_format");
+
+                let (mut tx, mut rx) = RingBuffer::<f32>::new(SAMPLES_PER_TICK * 8).split();
+
+                let stream = device.build_output_stream(
+                        &config.config(),
+                        move |data: &mut [f32]| {
+                            let bytes = rx.pop_slice(data);
+
+                            // zero-fill rest of buffer
+                            for i in bytes..data.len() {
+                                data[i] = 0.0;
+                            }
+                        },
+                        |err| {
+                            eprintln!("output stream error! {:?}", err);
+                        })
+                    .expect("build_output_stream");
+
+                stream.play();
+
+                println!("device: {:?}", device.name());
+                println!("config: {:?}", config);
+
+                let state = OutputDeviceState {
+                    stream,
+                    tx,
+                    file: std::fs::File::create("/Users/charlie/Downloads/2ch.pcm").expect("File::create"),
+                };
+
+                Module::OutputDevice(state, ())
+            }
+            ModuleParams::Mixer2ch => {
+                Module::Mixer2ch((), ())
+            }
         }
     }
 
@@ -56,20 +114,30 @@ impl Module {
     fn run_tick(&mut self, t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) {
         match self {
             Module::SineGenerator(state, params) => {
-                let t = params.freq * t as f64 * SAMPLES_PER_TICK as f64;
+                let t = t as Sample * SAMPLES_PER_TICK as Sample;
 
                 for i in 0..SAMPLES_PER_TICK {
-                    let t = (t + i as f64) / SAMPLE_RATE as f64;
-                    let x = f64::sin(t * 2.0 * f64::consts::PI);
-                    outputs[0][i] = x;
+                    let t = (t + i as Sample) / SAMPLE_RATE as Sample;
+                    let x = Sample::sin(params.freq as f32 * t * 2.0 * f32::consts::PI);
+
+                    for chan in 0..CHANNELS {
+                        outputs[0][i * CHANNELS + chan] = x;
+                    }
                 }
             }
             Module::OutputDevice(state, params) => {
-                // pipe into clap!
+                state.tx.push_slice(inputs[0]);
+                // use std::io::Write;
+                // for sample in inputs[0] {
+                //     state.file.write(&sample.to_le_bytes());
+                // }
             }
             Module::Mixer2ch(state, params) => {
                 for i in 0..SAMPLES_PER_TICK {
-                    outputs[0][i] = inputs[0][i] + inputs[1][i];
+                    for chan in 0..CHANNELS {
+                        let j = i * CHANNELS + chan;
+                        outputs[0][j] = inputs[0][j] + inputs[1][j];
+                    }
                 }
             }
         }
@@ -104,13 +172,13 @@ pub struct EngineHandle {
 pub fn start() -> EngineHandle {
     let (tx, rx) = mpsc::sync_channel(8);
 
-    let mut modules = HashMap::new();
-    modules.insert(ModuleId(0), Module::SineGenerator((), SineGeneratorParams { freq: 220.0 }));
-    modules.insert(ModuleId(1), Module::SineGenerator((), SineGeneratorParams { freq: 295.0 }));
-    modules.insert(ModuleId(2), Module::OutputDevice((), ()));
-    modules.insert(ModuleId(3), Module::Mixer2ch((), ()));
-
     thread::spawn(move || {
+        let mut modules = HashMap::new();
+        modules.insert(ModuleId(0), Module::create(ModuleParams::SineGenerator(SineGeneratorParams { freq: 220.0 })));
+        modules.insert(ModuleId(1), Module::create(ModuleParams::SineGenerator(SineGeneratorParams { freq: 295.0 })));
+        modules.insert(ModuleId(2), Module::create(ModuleParams::OutputDevice));
+        modules.insert(ModuleId(3), Module::create(ModuleParams::Mixer2ch));
+
         let mut engine = Engine {
             commands: rx,
             modules: modules,
@@ -259,9 +327,6 @@ impl Engine {
     }
 
     fn run_tick(&mut self, t: u64) {
-        println!("modules:     {:?}", self.modules);
-        println!("connections: {:?}", self.connections);
-
         // find terminal modules - modules which do not send their output to
         // the input of any other module
 
@@ -310,9 +375,7 @@ impl Engine {
 
         // run modules in dependency order according to BFS above
 
-        println!("module order: {:?}", reverse_module_order);
-
-        let mut buffers = HashMap::<OutputId, Vec<f64>>::new();
+        let mut buffers = HashMap::<OutputId, Vec<Sample>>::new();
 
         for module_id in reverse_module_order.iter().rev() {
             let mut module = self.modules.get_mut(&module_id)
@@ -320,21 +383,21 @@ impl Engine {
 
             let connections = &self.connections;
 
-            let mut output_buffers = Vec::<Vec<f64>>::new();
+            let mut output_buffers = Vec::<Vec<Sample>>::new();
 
             for _ in 0..module.output_count() {
-                output_buffers.push(vec![0.0; SAMPLES_PER_TICK]);
+                output_buffers.push(vec![0.0; SAMPLES_PER_TICK * CHANNELS]);
             }
 
             {
-                static ZERO_BUFFER: [f64; SAMPLES_PER_TICK] = [0f64; SAMPLES_PER_TICK];
+                static ZERO_BUFFER: [Sample; SAMPLES_PER_TICK * CHANNELS] = [0.0; SAMPLES_PER_TICK * CHANNELS];
 
                 let input_refs = (0..module.input_count())
                     .map(|i| InputId(*module_id, i))
                     .map(|input| connections.get(&input)
                         .map(|output| buffers[output].as_slice())
                         .unwrap_or(&ZERO_BUFFER))
-                    .collect::<Vec<&[f64]>>();
+                    .collect::<Vec<&[Sample]>>();
 
                 let mut output_refs = output_buffers.iter_mut()
                     .map(|vec| vec.as_mut_slice())

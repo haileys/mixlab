@@ -1,6 +1,6 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
-mod audio;
+mod engine;
 mod util;
 
 static INDEX_HTML: &str = include_str!("../frontend/static/index.html");
@@ -15,7 +15,7 @@ use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
-use audio::EngineHandle;
+use engine::EngineHandle;
 use mixlab_protocol::{ClientMessage, ServerMessage};
 
 fn content(content_type: &str, reply: impl Reply) -> impl Reply {
@@ -42,11 +42,11 @@ fn wasm() -> impl Reply {
     content("application/wasm", APP_WASM)
 }
 
-async fn session(websocket: WebSocket, audio: Arc<EngineHandle>) {
+async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
     let (mut tx, mut rx) = websocket.split();
 
-    let state = audio.dump_state().await
-        .expect("audio.dump_state");
+    let state = engine.dump_state().await
+        .expect("engine.dump_state");
 
     let state_msg = bincode::serialize(&ServerMessage::WorkspaceState(state))
         .expect("bincode::serialize");
@@ -64,13 +64,13 @@ async fn session(websocket: WebSocket, audio: Arc<EngineHandle>) {
             .expect("bincode::deserialize");
 
         println!("{:?}", msg);
-        println!(" => {:?}", audio.update(msg));
+        println!(" => {:?}", engine.update(msg));
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let audio = Arc::new(audio::start());
+    let engine = Arc::new(engine::start());
 
     env_logger::init();
 
@@ -96,10 +96,10 @@ async fn main() {
         .and(warp::path("session"))
         .and(warp::ws())
         .map(move |ws: Ws| {
-            let audio = audio.clone();
+            let engine = engine.clone();
             ws.on_upgrade(move |websocket| {
-                let audio = audio.clone();
-                session(websocket, audio)
+                let engine = engine.clone();
+                session(websocket, engine)
             })
         });
 
