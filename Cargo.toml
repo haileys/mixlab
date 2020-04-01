@@ -5,4 +5,9 @@ authors = ["Charlie Somerville <charlie@charlie.bz>"]
 edition = "2018"
 
 [dependencies]
-rocket = "0.4"
+bincode = "1.2"
+env_logger = "0.7"
+futures = "0.3"
+mixlab-protocol = { path = "protocol" }
+tokio = { version = "0.2", features = ["macros"] }
+warp = "0.2"

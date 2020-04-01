@@ -1,10 +1,16 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
+use std::mem;
 
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
+use yew::events::ChangeData;
+
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, WorkspaceState, ClientMessage};
+
+use crate::{App, AppMsg};
 
 pub struct Counter(usize);
 
@@ -14,21 +20,34 @@ impl Counter {
     }
 
     pub fn next(&mut self) -> usize {
-        let num = self.0;
+        let seq = self.0;
         self.0 += 1;
-        num
+        seq
+    }
+
+    pub fn seen(&mut self, seq: usize) {
+        if seq >= self.0 {
+            self.0 = seq + 1;
+        }
     }
 }
 
-type WindowSet = BTreeMap<WindowId, WindowProps>;
+type ModuleSet = BTreeMap<ModuleId, WindowProps>;
 
 pub struct Workspace {
     link: ComponentLink<Self>,
+    props: WorkspaceProps,
     gen_id: Counter,
     gen_z_index: Counter,
-    windows: WindowSet,
+    modules: ModuleSet,
     mouse: MouseMode,
     connections: HashMap<InputId, OutputId>,
+}
+
+#[derive(Properties, Clone)]
+pub struct WorkspaceProps {
+    pub app: ComponentLink<App>,
+    pub state: WorkspaceState,
 }
 
 pub enum MouseMode {
@@ -38,7 +57,7 @@ pub enum MouseMode {
 }
 
 pub struct Drag {
-    window: WindowId,
+    module: ModuleId,
     origin: Coords,
 }
 
@@ -68,45 +87,47 @@ impl Coords {
     }
 }
 
+#[derive(Debug)]
 pub enum WorkspaceMsg {
-    DragStart(WindowId, MouseEvent),
+    DragStart(ModuleId, MouseEvent),
     ContextMenu(MouseEvent),
     MouseDown(MouseEvent),
     MouseUp(MouseEvent),
     MouseMove(MouseEvent),
     SelectTerminal(TerminalId),
     ClearTerminal(TerminalId),
-    DeleteWindow(WindowId),
+    DeleteWindow(ModuleId),
+    UpdateModuleParams(ModuleId, ModuleParams),
 }
 
 impl Component for Workspace {
     type Message = WorkspaceMsg;
-    type Properties = ();
+    type Properties = WorkspaceProps;
 
-    fn create(_props: Self::Properties, link: ComponentLink<Self>) -> Self {
+    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
         let mut workspace = Workspace {
             link,
+            props,
             gen_id: Counter::new(),
             gen_z_index: Counter::new(),
-            windows: BTreeMap::new(),
+            modules: BTreeMap::new(),
             mouse: MouseMode::Normal,
             connections: HashMap::new(),
         };
 
-        workspace.create_window();
-        workspace.create_window();
-        workspace.create_window();
-        workspace.create_window();
+        for (id, params) in workspace.props.state.modules.clone() {
+            workspace.create_module(id, params);
+        }
 
         workspace
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         return match msg {
-            WorkspaceMsg::DragStart(window, ev) => {
-                if let Some(props) = self.windows.get_mut(&window) {
+            WorkspaceMsg::DragStart(module, ev) => {
+                if let Some(props) = self.modules.get_mut(&module) {
                     self.mouse = MouseMode::Drag(Drag {
-                        window,
+                        module,
                         origin: Coords { x: ev.page_x(), y: ev.page_y() },
                     });
 
@@ -143,7 +164,7 @@ impl Component for Workspace {
                 match self.mouse {
                     MouseMode::Normal => false,
                     MouseMode::Drag(ref mut drag) => {
-                        let should_render = drag_event(&mut self.windows, drag, ev);
+                        let should_render = drag_event(&mut self.modules, drag, ev);
                         self.mouse = MouseMode::Normal;
                         should_render
                     }
@@ -154,7 +175,7 @@ impl Component for Workspace {
                 match &mut self.mouse {
                     MouseMode::Normal => false,
                     MouseMode::Drag(ref mut drag) => {
-                        drag_event(&mut self.windows, drag, ev)
+                        drag_event(&mut self.modules, drag, ev)
                     }
                     MouseMode::Connect(_terminal, ref mut coords) => {
                         *coords = Some(Coords { x: ev.page_x(), y: ev.page_y() });
@@ -196,25 +217,41 @@ impl Component for Workspace {
                 }
                 true
             }
-            WorkspaceMsg::DeleteWindow(window) => {
-                self.windows.remove(&window);
+            WorkspaceMsg::DeleteWindow(module) => {
+                self.modules.remove(&module);
                 self.connections.retain(|input, output| {
-                    output.window_id() != window && input.window_id() != window
+                    output.module_id() != module && input.module_id() != module
                 });
                 true
             }
+            WorkspaceMsg::UpdateModuleParams(module, params) => {
+                if let Some(module_props) = self.modules.get_mut(&module) {
+                    // verify that we're updating the module params with the
+                    // same kind of module params:
+                    if mem::discriminant(&module_props.module) == mem::discriminant(&params) {
+                        module_props.module = params.clone();
+                        self.props.app.send_message(
+                            AppMsg::ClientUpdate(ClientMessage::UpdateModuleParams(module, params)));
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
         };
 
-        fn drag_event(windows: &mut WindowSet, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
+        fn drag_event(modules: &mut ModuleSet, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
             let mouse_pos = Coords { x: ev.page_x(), y: ev.page_y() };
 
             let delta = mouse_pos.sub(drag.origin);
             drag.origin = mouse_pos;
 
-            if let Some(props) = windows.get_mut(&drag.window) {
+            if let Some(props) = modules.get_mut(&drag.module) {
                 props.position = props.position.add(delta);
 
-                if let Some(el) = props.refs.window.cast::<HtmlElement>() {
+                if let Some(el) = props.refs.module.cast::<HtmlElement>() {
                     let style = el.style();
                     let _ = style.set_property("left", &format!("{}px", props.position.x));
                     let _ = style.set_property("top", &format!("{}px", props.position.y));
@@ -257,8 +294,8 @@ impl Component for Workspace {
                     onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
                     oncontextmenu={self.link.callback(WorkspaceMsg::ContextMenu)}
                 >
-                    { for self.windows.values().cloned().map(|props|
-                        html! { <div data-window-id={props.id.0}><Window with props /></div> }) }
+                    { for self.modules.values().cloned().map(|props|
+                        html! { <div data-module-id={props.id.0}><Window with props /></div> }) }
                 </div>
                 <Connections connections={connections} width={1000} height={1000} />
             </>
@@ -267,36 +304,30 @@ impl Component for Workspace {
 }
 
 impl Workspace {
-    pub fn create_window(&mut self) {
-        let id = WindowId(self.gen_id.next());
-
-        let kind = match id.0 {
-            0 => WindowKind::SineGenerator,
-            1 => WindowKind::SineGenerator,
-            2 => WindowKind::OutputDevice,
-            3 => WindowKind::Mixer2ch,
-            _ => unreachable!(),
-        };
+    pub fn create_module(&mut self, id: ModuleId, module: ModuleParams) {
+        self.gen_id.seen(id.0);
 
         let refs = WindowRef {
-            window: NodeRef::default(),
-            inputs: match kind {
-                WindowKind::SineGenerator => vec![],
-                WindowKind::OutputDevice => vec![NodeRef::default()],
-                WindowKind::Mixer2ch => vec![NodeRef::default(), NodeRef::default()],
+            module: NodeRef::default(),
+            inputs: match module {
+                ModuleParams::SineGenerator(_) => vec![],
+                ModuleParams::OutputDevice => vec![NodeRef::default()],
+                ModuleParams::Mixer2ch => vec![NodeRef::default(), NodeRef::default()],
             },
-            outputs: match kind {
-                WindowKind::SineGenerator => vec![NodeRef::default()],
-                WindowKind::OutputDevice => vec![],
-                WindowKind::Mixer2ch => vec![NodeRef::default()],
+            outputs: match module {
+                ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
+                ModuleParams::OutputDevice => vec![],
+                ModuleParams::Mixer2ch => vec![NodeRef::default()],
             },
         };
+
+        let name = format!("{:?}", module).split_whitespace().nth(0).unwrap().to_owned();
 
         let props = WindowProps {
             id: id,
-            kind,
+            module,
             refs,
-            name: format!("{:?}", kind),
+            name,
             workspace: self.link.clone(),
             position: Coords {
                 x: (id.0 as i32 + 1) * 100,
@@ -305,11 +336,11 @@ impl Workspace {
             z_index: self.gen_z_index.next(),
         };
 
-        self.windows.insert(id, props);
+        self.modules.insert(id, props);
     }
 
     fn screen_coords_for_terminal(&self, terminal: TerminalId) -> Option<Coords> {
-        let window_props = self.windows.get(&terminal.window_id())?;
+        let window_props = self.modules.get(&terminal.module_id())?;
 
         let terminal_node = match terminal {
             TerminalId::Input(InputId(_, index)) => window_props.refs.inputs.get(index)?,
@@ -323,41 +354,6 @@ impl Workspace {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct WindowId(usize);
-
-#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub enum TerminalId {
-    Input(InputId),
-    Output(OutputId),
-}
-
-impl TerminalId {
-    pub fn window_id(&self) -> WindowId {
-        match self {
-            TerminalId::Input(input) => input.window_id(),
-            TerminalId::Output(output) => output.window_id(),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct InputId(WindowId, usize);
-
-impl InputId {
-    pub fn window_id(&self) -> WindowId {
-        self.0
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct OutputId(WindowId, usize);
-
-impl OutputId {
-    pub fn window_id(&self) -> WindowId {
-        self.0
-    }
-}
 pub struct Window {
     link: ComponentLink<Self>,
     props: WindowProps,
@@ -369,12 +365,13 @@ pub enum WindowMsg {
     TerminalMouseDown(MouseEvent, TerminalId),
     TerminalContextMenu(MouseEvent),
     Delete,
+    UpdateParams(ModuleParams),
 }
 
 #[derive(Properties, Clone, Debug)]
 pub struct WindowProps {
-    pub id: WindowId,
-    pub kind: WindowKind,
+    pub id: ModuleId,
+    pub module: ModuleParams,
     pub name: String,
     pub workspace: ComponentLink<Workspace>,
     pub position: Coords,
@@ -384,16 +381,9 @@ pub struct WindowProps {
 
 #[derive(Clone, Debug)]
 pub struct WindowRef {
-    window: NodeRef,
+    module: NodeRef,
     inputs: Vec<NodeRef>,
     outputs: Vec<NodeRef>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum WindowKind {
-    SineGenerator,
-    OutputDevice,
-    Mixer2ch,
 }
 
 impl Component for Window {
@@ -433,6 +423,10 @@ impl Component for Window {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DeleteWindow(self.props.id));
             }
+            WindowMsg::UpdateParams(params) => {
+                self.props.workspace.send_message(
+                    WorkspaceMsg::UpdateModuleParams(self.props.id, params));
+            }
         }
         false
     }
@@ -447,7 +441,7 @@ impl Component for Window {
         let _ = write!(&mut window_style, "z-index:{};", self.props.z_index);
 
         html! {
-            <div class="module-window" style={window_style} ref={self.props.refs.window.clone()}>
+            <div class="module-window" style={window_style} ref={self.props.refs.module.clone()}>
                 <div class="module-window-title"
                     onmousedown={self.link.callback(|ev: MouseEvent| WindowMsg::DragStart(ev))}
                     oncontextmenu={self.link.callback(WindowMsg::TerminalContextMenu)}
@@ -460,8 +454,15 @@ impl Component for Window {
                     </div>
                 </div>
                 <div class="module-window-content">
-                    {self.view_inputs()}
-                    {self.view_outputs()}
+                    <div class="module-window-inputs">
+                        {self.view_inputs()}
+                    </div>
+                    <div class="module-window-params">
+                        {self.view_params()}
+                    </div>
+                    <div class="module-window-outputs">
+                        {self.view_outputs()}
+                    </div>
                 </div>
             </div>
         }
@@ -471,37 +472,112 @@ impl Component for Window {
 impl Window {
     fn view_inputs(&self) -> Html {
         html! {
-            <div class="module-window-inputs">
-                { for self.props.refs.inputs.iter().cloned().enumerate().map(|(index, terminal_ref)| {
-                    let terminal_id = TerminalId::Input(InputId(self.props.id, index));
+            { for self.props.refs.inputs.iter().cloned().enumerate().map(|(index, terminal_ref)| {
+                let terminal_id = TerminalId::Input(InputId(self.props.id, index));
 
-                    html! {
-                        <div class="module-window-terminal"
-                            ref={terminal_ref}
-                            onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
-                        >
-                        </div>
-                    }
-                }) }
-            </div>
+                html! {
+                    <div class="module-window-terminal"
+                        ref={terminal_ref}
+                        onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
+                    >
+                    </div>
+                }
+            }) }
         }
     }
 
     fn view_outputs(&self) -> Html {
         html! {
-            <div class="module-window-outputs">
-                { for self.props.refs.outputs.iter().cloned().enumerate().map(|(index, terminal_ref)| {
-                    let terminal_id = TerminalId::Output(OutputId(self.props.id, index));
+            { for self.props.refs.outputs.iter().cloned().enumerate().map(|(index, terminal_ref)| {
+                let terminal_id = TerminalId::Output(OutputId(self.props.id, index));
 
-                    html! {
-                        <div class="module-window-terminal"
-                            ref={terminal_ref}
-                            onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
-                        >
-                        </div>
-                    }
-                }) }
-            </div>
+                html! {
+                    <div class="module-window-terminal"
+                        ref={terminal_ref}
+                        onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
+                    >
+                    </div>
+                }
+            }) }
+        }
+    }
+
+    fn view_params(&self) -> Html {
+        match &self.props.module {
+            ModuleParams::SineGenerator(params) => {
+                html! { <SineGenerator id={self.props.id} module={self.link.clone()} params={params} /> }
+            }
+            _ => {
+                html! {}
+            }
+        }
+    }
+}
+
+#[derive(Properties, Clone, Debug)]
+pub struct SineGeneratorProps {
+    id: ModuleId,
+    module: ComponentLink<Window>,
+    params: SineGeneratorParams,
+}
+
+pub enum SineGeneratorMsg {
+    FreqChange(ChangeData),
+}
+
+pub struct SineGenerator {
+    link: ComponentLink<Self>,
+    props: SineGeneratorProps,
+}
+
+impl Component for SineGenerator {
+    type Properties = SineGeneratorProps;
+    type Message = SineGeneratorMsg;
+
+    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
+        SineGenerator {
+            link,
+            props,
+        }
+    }
+
+    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        match msg {
+            SineGeneratorMsg::FreqChange(data) => {
+                let freq = if let ChangeData::Value(freq_str) = data {
+                    freq_str.parse().unwrap_or(0f64)
+                } else {
+                    panic!("SineGeneratorMsg::FreqChange should contain ChangeData::Value!");
+                };
+
+                let params = SineGeneratorParams { freq, ..self.props.params.clone() };
+
+                self.props.module.send_message(
+                    WindowMsg::UpdateParams(
+                        ModuleParams::SineGenerator(params)));
+
+                false
+            }
+        }
+    }
+
+    fn change(&mut self, props: Self::Properties) -> ShouldRender {
+        self.props = props;
+        true
+    }
+
+    fn view(&self) -> Html {
+        let freq_id = format!("w{}-sine-freq", self.props.id.0);
+
+        html! {
+            <>
+                <label for={&freq_id}>{"Frequency"}</label>
+                <input type="number"
+                    id={&freq_id}
+                    onchange={self.link.callback(SineGeneratorMsg::FreqChange)}
+                    value={self.props.params.freq}
+                />
+            </>
         }
     }
 }
