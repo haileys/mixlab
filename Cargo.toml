@@ -6,8 +6,10 @@ edition = "2018"
 
 [dependencies]
 bincode = "1.2"
+cpal = { git = "https://github.com/rustaudio/cpal", rev = "f3e7c462055004d0841cbb78d3f43585af3e8567" }
 env_logger = "0.7"
 futures = "0.3"
 mixlab-protocol = { path = "protocol" }
+ringbuf = "0.2"
 tokio = { version = "0.2", features = ["macros"] }
 warp = "0.2"
