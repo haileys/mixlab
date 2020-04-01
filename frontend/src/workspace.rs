@@ -145,7 +145,7 @@ impl Component for Workspace {
             WorkspaceMsg::MouseDown(ev) => {
                 const RIGHT_MOUSE_BUTTON: u16 = 2;
 
-                crate::log!("buttons: {}", ev.buttons());
+                crate::log!("WorkspaceMsg::MouseDown: buttons: {}", ev.buttons());
 
                 if (ev.buttons() & RIGHT_MOUSE_BUTTON) != 0 {
                     if let MouseMode::Connect(..) = self.mouse {
@@ -195,6 +195,11 @@ impl Component for Workspace {
                             (TerminalId::Output(output), TerminalId::Input(input)) => {
                                 self.connections.insert(input, output);
                                 self.mouse = MouseMode::Normal;
+
+                                self.props.app.send_message(
+                                    AppMsg::ClientUpdate(
+                                        ClientMessage::CreateConnection(input, output)));
+
                                 true
                             }
                             _ => {
@@ -210,9 +215,26 @@ impl Component for Workspace {
                 match terminal {
                     TerminalId::Input(input) => {
                         self.connections.remove(&input);
+
+                        self.props.app.send_message(
+                            AppMsg::ClientUpdate(
+                                ClientMessage::DeleteConnection(input)));
                     }
                     TerminalId::Output(output) => {
+                        let mut msgs = Vec::new();
+
+                        for (in_, out_) in &self.connections {
+                            if *out_ == output {
+                                msgs.push(AppMsg::ClientUpdate(
+                                    ClientMessage::DeleteConnection(*in_)));
+                            }
+                        }
+
+                        // yeah, this is just doing the same loop as the loop above
+                        // but it's good enough for now
                         self.connections.retain(|_, out| output != *out);
+
+                        self.props.app.send_message_batch(msgs);
                     }
                 }
                 true
@@ -230,8 +252,11 @@ impl Component for Workspace {
                     // same kind of module params:
                     if mem::discriminant(&module_props.module) == mem::discriminant(&params) {
                         module_props.module = params.clone();
+
                         self.props.app.send_message(
-                            AppMsg::ClientUpdate(ClientMessage::UpdateModuleParams(module, params)));
+                            AppMsg::ClientUpdate(
+                                ClientMessage::UpdateModuleParams(module, params)));
+
                         true
                     } else {
                         false

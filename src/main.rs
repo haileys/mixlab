@@ -1,16 +1,22 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
+mod audio;
+mod util;
+
 static INDEX_HTML: &str = include_str!("../frontend/static/index.html");
 static STYLE_CSS: &str = include_str!("../frontend/static/style.css");
 static APP_JS: &str = include_str!("../frontend/pkg/frontend.js");
 static APP_WASM: &[u8] = include_bytes!("../frontend/pkg/frontend_bg.wasm");
+
+use std::sync::Arc;
 
 use futures::{FutureExt, StreamExt, SinkExt};
 use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
-use mixlab_protocol::ClientMessage;
+use audio::EngineHandle;
+use mixlab_protocol::{ClientMessage, ServerMessage};
 
 fn content(content_type: &str, reply: impl Reply) -> impl Reply {
     reply::with_header(reply, "content-type", content_type)
@@ -36,10 +42,16 @@ fn wasm() -> impl Reply {
     content("application/wasm", APP_WASM)
 }
 
-async fn session(websocket: WebSocket) {
+async fn session(websocket: WebSocket, audio: Arc<EngineHandle>) {
     let (mut tx, mut rx) = websocket.split();
 
-    tx.send(ws::Message::binary(b"hello world".to_owned()))
+    let state = audio.dump_state().await
+        .expect("audio.dump_state");
+
+    let state_msg = bincode::serialize(&ServerMessage::WorkspaceState(state))
+        .expect("bincode::serialize");
+
+    tx.send(ws::Message::binary(state_msg))
         .await
         .expect("tx.send");
 
@@ -52,11 +64,14 @@ async fn session(websocket: WebSocket) {
             .expect("bincode::deserialize");
 
         println!("{:?}", msg);
+        println!(" => {:?}", audio.update(msg));
     }
 }
 
 #[tokio::main]
 async fn main() {
+    let audio = Arc::new(audio::start());
+
     env_logger::init();
 
     let index = warp::path::end()
@@ -80,7 +95,13 @@ async fn main() {
     let websocket = warp::get()
         .and(warp::path("session"))
         .and(warp::ws())
-        .map(|ws: Ws| ws.on_upgrade(session));
+        .map(move |ws: Ws| {
+            let audio = audio.clone();
+            ws.on_upgrade(move |websocket| {
+                let audio = audio.clone();
+                session(websocket, audio)
+            })
+        });
 
     let routes = static_content
         .or(websocket)
