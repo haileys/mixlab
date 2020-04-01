@@ -43,6 +43,10 @@ impl InputId {
     pub fn module_id(&self) -> ModuleId {
         self.0
     }
+
+    pub fn index(&self) -> usize {
+        self.1
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -51,6 +55,10 @@ pub struct OutputId(pub ModuleId, pub usize);
 impl OutputId {
     pub fn module_id(&self) -> ModuleId {
         self.0
+    }
+
+    pub fn index(&self) -> usize {
+        self.1
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
