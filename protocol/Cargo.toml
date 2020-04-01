@@ -1,0 +1,9 @@
+[package]
+name = "mixlab-protocol"
+version = "0.0.0"
+authors = ["Charlie Somerville <charlie@charlie.bz>"]
+edition = "2018"
+
+[dependencies]
+serde = "1.0"
+serde_derive = "1.0"

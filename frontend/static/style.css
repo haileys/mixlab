@@ -105,3 +105,10 @@ body {
 .module-window-terminal.terminal-active {
     background-color:#ffffff;
 }
+
+.module-window-params {
+    display:flex;
+    flex-flow:column nowrap;
+    padding:12px;
+    gap:4px;
+}

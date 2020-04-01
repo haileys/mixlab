@@ -5,26 +5,71 @@ mod workspace;
 
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
 use wasm_bindgen::prelude::*;
+use web_sys::WebSocket;
+
+use mixlab_protocol::{ClientMessage, WorkspaceState, ModuleId, ModuleParams, SineGeneratorParams};
 
 use workspace::Workspace;
 
-struct App;
+pub struct App {
+    link: ComponentLink<Self>,
+    websocket: WebSocket,
+}
+
+pub enum AppMsg {
+    ClientUpdate(ClientMessage),
+}
 
 impl Component for App {
-    type Message = ();
+    type Message = AppMsg;
     type Properties = ();
 
-    fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
-        App
+    fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
+        let websocket = WebSocket::new("ws://localhost:8000/session")
+            .expect("WebSocket::new");
+
+        App { link, websocket }
     }
 
-    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
+    fn destroy(&mut self) {
+        self.websocket.close()
+            .expect("WebSocket::close");
+    }
+
+    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        match msg {
+            AppMsg::ClientUpdate(msg) => {
+                crate::log!("sending client update");
+
+                let packet = bincode::serialize(&msg)
+                    .expect("bincode::serialize");
+
+                crate::log!("serialized: {:?}", &packet);
+
+                let resp = self.websocket.send_with_u8_array(&packet);
+
+                crate::log!("sent! {:?}", resp);
+            }
+        }
+
         false
     }
 
     fn view(&self) -> Html {
+        let modules = vec![
+            (ModuleId(0), ModuleParams::SineGenerator(SineGeneratorParams { freq: 220.0 })),
+            (ModuleId(1), ModuleParams::SineGenerator(SineGeneratorParams { freq: 295.0 })),
+            (ModuleId(2), ModuleParams::OutputDevice),
+            (ModuleId(3), ModuleParams::Mixer2ch),
+        ];
+
+        let state = WorkspaceState {
+            modules,
+            connections: vec![],
+        };
+
         html! {
-            <Workspace />
+            <Workspace app={self.link.clone()} state={state} />
         }
     }
 }
