@@ -6,12 +6,14 @@ use std::time::{Instant, Duration};
 
 use tokio::sync::{oneshot, broadcast};
 
-use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication};
+use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication};
 
 use crate::module::{Module as ModuleT};
 use crate::util::Sequence;
 
+use crate::module::mixer_2ch::Mixer2ch;
 use crate::module::output_device::OutputDevice;
+use crate::module::sine_generator::SineGenerator;
 
 pub type Sample = f32;
 
@@ -22,44 +24,45 @@ pub const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
 #[derive(Debug)]
 enum Module {
-    SineGenerator((), SineGeneratorParams),
+    SineGenerator(SineGenerator),
     OutputDevice(OutputDevice),
-    Mixer2ch((), ()),
+    Mixer2ch(Mixer2ch),
 }
 
 impl Module {
     fn create(params: ModuleParams) -> (Self, Indication) {
         match params {
             ModuleParams::SineGenerator(params) => {
-                (Module::SineGenerator((), params), Indication::SineGenerator)
+                let (module, indication) = SineGenerator::create(params);
+                (Module::SineGenerator(module), Indication::SineGenerator(indication))
             }
             ModuleParams::OutputDevice(params) => {
                 let (module, indication) = OutputDevice::create(params);
                 (Module::OutputDevice(module), Indication::OutputDevice(indication))
             }
-            ModuleParams::Mixer2ch => {
-                (Module::Mixer2ch((), ()), Indication::Mixer2ch)
+            ModuleParams::Mixer2ch(params) => {
+                let (module, indication) = Mixer2ch::create(params);
+                (Module::Mixer2ch(module), Indication::Mixer2ch(indication))
             }
         }
     }
 
     fn params(&self) -> ModuleParams {
         match self {
-            Module::SineGenerator(_, params) => ModuleParams::SineGenerator(params.clone()),
-            Module::OutputDevice(device) => ModuleParams::OutputDevice(device.params()),
-            Module::Mixer2ch(_, ()) => ModuleParams::Mixer2ch,
+            Module::SineGenerator(m) => ModuleParams::SineGenerator(m.params()),
+            Module::OutputDevice(m) => ModuleParams::OutputDevice(m.params()),
+            Module::Mixer2ch(m) => ModuleParams::Mixer2ch(m.params()),
         }
     }
 
     fn update(&mut self, new_params: ModuleParams) -> Option<Indication> {
         match (self, new_params) {
-            (Module::SineGenerator(_, ref mut params), ModuleParams::SineGenerator(ref new_params)) => {
-                *params = new_params.clone();
-                None
-            }
-            (Module::OutputDevice(device), ModuleParams::OutputDevice(ref new_params)) => {
-                device.update(new_params.clone()).map(Indication::OutputDevice)
-            }
+            (Module::SineGenerator(m), ModuleParams::SineGenerator(ref new_params)) =>
+                m.update(new_params.clone()).map(Indication::SineGenerator),
+            (Module::OutputDevice(m), ModuleParams::OutputDevice(ref new_params)) =>
+                m.update(new_params.clone()).map(Indication::OutputDevice),
+            (Module::Mixer2ch(m), ModuleParams::Mixer2ch(ref new_params)) =>
+                m.update(new_params.clone()).map(Indication::Mixer2ch),
             (module, new_params) => {
                 let (m, indic) = Self::create(new_params.clone());
                 *module = m;
@@ -70,48 +73,27 @@ impl Module {
 
     fn run_tick(&mut self, t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> Option<Indication> {
         match self {
-            Module::SineGenerator(_, params) => {
-                let t = t as Sample * SAMPLES_PER_TICK as Sample;
-
-                for i in 0..SAMPLES_PER_TICK {
-                    let t = (t + i as Sample) / SAMPLE_RATE as Sample;
-                    let x = Sample::sin(params.freq as f32 * t * 2.0 * f32::consts::PI);
-
-                    for chan in 0..CHANNELS {
-                        outputs[0][i * CHANNELS + chan] = x;
-                    }
-                }
-
-                None
-            }
-            Module::OutputDevice(device) => {
-                device.run_tick(t, inputs, outputs).map(Indication::OutputDevice)
-            }
-            Module::Mixer2ch(_, _) => {
-                for i in 0..SAMPLES_PER_TICK {
-                    for chan in 0..CHANNELS {
-                        let j = i * CHANNELS + chan;
-                        outputs[0][j] = inputs[0][j] + inputs[1][j];
-                    }
-                }
-
-                None
-            }
+            Module::SineGenerator(m) =>
+                m.run_tick(t, inputs, outputs).map(Indication::SineGenerator),
+            Module::OutputDevice(m) =>
+                m.run_tick(t, inputs, outputs).map(Indication::OutputDevice),
+            Module::Mixer2ch(m) =>
+                m.run_tick(t, inputs, outputs).map(Indication::Mixer2ch),
         }
     }
 
     fn input_count(&self) -> usize {
         match self {
-            Module::SineGenerator(..) => 0,
-            Module::OutputDevice(..) => 1,
+            Module::SineGenerator(m) => m.input_count(),
+            Module::OutputDevice(m) => m.input_count(),
             Module::Mixer2ch(..) => 2,
         }
     }
 
     fn output_count(&self) -> usize {
         match self {
-            Module::SineGenerator(..) => 1,
-            Module::OutputDevice(..) => 0,
+            Module::SineGenerator(m) => m.output_count(),
+            Module::OutputDevice(m) => m.output_count(),
             Module::Mixer2ch(..) => 1,
         }
     }

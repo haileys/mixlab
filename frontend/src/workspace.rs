@@ -419,12 +419,12 @@ impl Workspace {
             inputs: match module {
                 ModuleParams::SineGenerator(_) => vec![],
                 ModuleParams::OutputDevice(_) => vec![NodeRef::default()],
-                ModuleParams::Mixer2ch => vec![NodeRef::default(), NodeRef::default()],
+                ModuleParams::Mixer2ch(()) => vec![NodeRef::default(), NodeRef::default()],
             },
             outputs: match module {
                 ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
                 ModuleParams::OutputDevice(_) => vec![],
-                ModuleParams::Mixer2ch => vec![NodeRef::default()],
+                ModuleParams::Mixer2ch(()) => vec![NodeRef::default()],
             },
         };
 
@@ -455,7 +455,7 @@ impl Workspace {
 
         let items = &[
             ("Sine Generator", ModuleParams::SineGenerator(SineGeneratorParams { freq: 100.0 })),
-            ("Mixer (2 channel)", ModuleParams::Mixer2ch),
+            ("Mixer (2 channel)", ModuleParams::Mixer2ch(())),
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None })),
         ];
 
@@ -661,7 +661,6 @@ pub struct SineGeneratorProps {
 }
 
 pub struct SineGenerator {
-    link: ComponentLink<Self>,
     props: SineGeneratorProps,
 }
 
@@ -669,11 +668,8 @@ impl Component for SineGenerator {
     type Properties = SineGeneratorProps;
     type Message = ();
 
-    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        Self {
-            link,
-            props,
-        }
+    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
+        Self { props }
     }
 
     fn update(&mut self, _msg: Self::Message) -> ShouldRender {
@@ -720,7 +716,6 @@ pub struct OutputDeviceProps {
 }
 
 pub struct OutputDevice {
-    link: ComponentLink<Self>,
     props: OutputDeviceProps,
 }
 
@@ -728,14 +723,11 @@ impl Component for OutputDevice {
     type Properties = OutputDeviceProps;
     type Message = ();
 
-    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        Self {
-            link,
-            props,
-        }
+    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
+        Self { props }
     }
 
-    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
         false
     }
 
