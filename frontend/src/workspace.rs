@@ -380,7 +380,7 @@ impl Component for Workspace {
                         let workspace = self.link.clone();
 
                         if let (Some(module), Some(geometry)) = (module, geometry) {
-                            let name = format!("{:?}", module);
+                            let name = format!("{:?}", module).chars().take_while(|c| c.is_alphanumeric()).collect::<String>();
                             html! { <Window id={id} module={module} refs={refs} name={name} workspace={workspace} geometry={geometry} /> }
                         } else {
                             html! {}
