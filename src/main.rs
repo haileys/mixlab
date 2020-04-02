@@ -10,13 +10,14 @@ static APP_WASM: &[u8] = include_bytes!("../frontend/pkg/frontend_bg.wasm");
 
 use std::sync::Arc;
 
-use futures::{FutureExt, StreamExt, SinkExt};
+use futures::{StreamExt, SinkExt, stream};
+use tokio::sync::broadcast;
 use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
-use engine::EngineHandle;
-use mixlab_protocol::{ClientMessage, ServerMessage};
+use engine::{EngineHandle, LogPosition};
+use mixlab_protocol::{ClientMessage, ServerMessage, ModelOp};
 
 fn content(content_type: &str, reply: impl Reply) -> impl Reply {
     reply::with_header(reply, "content-type", content_type)
@@ -43,28 +44,62 @@ fn wasm() -> impl Reply {
 }
 
 async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
-    let (mut tx, mut rx) = websocket.split();
+    let (mut tx, rx) = websocket.split();
 
-    let state = engine.dump_state().await
-        .expect("engine.dump_state");
+    let (state, model_ops, engine) = engine.connect().await
+        .expect("engine.connect");
 
     let state_msg = bincode::serialize(&ServerMessage::WorkspaceState(state))
         .expect("bincode::serialize");
 
     tx.send(ws::Message::binary(state_msg))
         .await
-        .expect("tx.send");
+        .expect("tx.send WorkspaceState");
 
-    while let Some(msg) = rx.next().await.transpose().expect("rx.next") {
-        if !msg.is_binary() {
-            continue;
+    enum Event {
+        ClientMessage(Result<ws::Message, warp::Error>),
+        ModelOp(Result<(LogPosition, ModelOp), broadcast::RecvError>),
+    }
+
+    let mut events = stream::select(
+        rx.map(Event::ClientMessage),
+        model_ops.map(Event::ModelOp),
+    );
+
+    while let Some(event) = events.next().await {
+        match event {
+            Event::ClientMessage(Err(e)) => {
+                println!("error reading from client: {:?}", e);
+                return;
+            }
+            Event::ClientMessage(Ok(msg)) => {
+                if !msg.is_binary() {
+                    continue;
+                }
+
+                let msg = bincode::deserialize::<ClientMessage>(msg.as_bytes())
+                    .expect("bincode::deserialize");
+
+                println!("{:?}", msg);
+                println!(" => {:?}", engine.update(msg));
+            }
+            Event::ModelOp(Err(broadcast::RecvError::Lagged(skipped))) => {
+                println!("disconnecting client: lagged {} messages behind", skipped);
+                return;
+            }
+            Event::ModelOp(Err(broadcast::RecvError::Closed)) => {
+                // TODO we should tell the user that the engine has stopped
+                unimplemented!()
+            }
+            Event::ModelOp(Ok((_pos, op))) => {
+                let msg = bincode::serialize(&ServerMessage::ModelOp(op))
+                    .expect("bincode::serialize");
+
+                tx.send(ws::Message::binary(msg))
+                    .await
+                    .expect("tx.send ModelOp")
+            }
         }
-
-        let msg = bincode::deserialize::<ClientMessage>(msg.as_bytes())
-            .expect("bincode::deserialize");
-
-        println!("{:?}", msg);
-        println!(" => {:?}", engine.update(msg));
     }
 }
 

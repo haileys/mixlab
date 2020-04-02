@@ -3,6 +3,7 @@ use serde_derive::{Serialize, Deserialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     WorkspaceState(WorkspaceState),
+    ModelOp(ModelOp),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -13,7 +14,20 @@ pub struct WorkspaceState {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {
+    CreateModule(ModuleParams, WindowGeometry),
     UpdateModuleParams(ModuleId, ModuleParams),
+    UpdateWindowGeometry(ModuleId, WindowGeometry),
+    DeleteModule(ModuleId),
+    CreateConnection(InputId, OutputId),
+    DeleteConnection(InputId),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ModelOp {
+    CreateModule(ModuleId, ModuleParams, WindowGeometry),
+    UpdateModuleParams(ModuleId, ModuleParams),
+    UpdateWindowGeometry(ModuleId, WindowGeometry),
+    DeleteModule(ModuleId),
     CreateConnection(InputId, OutputId),
     DeleteConnection(InputId),
 }
@@ -71,4 +85,32 @@ pub enum ModuleParams {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SineGeneratorParams {
     pub freq: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct Coords {
+    pub x: i32,
+    pub y: i32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WindowGeometry {
+    pub position: Coords,
+    pub z_index: usize,
+}
+
+impl Coords {
+    pub fn add(&self, other: Coords) -> Coords {
+        Coords {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+
+    pub fn sub(&self, other: Coords) -> Coords {
+        Coords {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
+    }
 }
