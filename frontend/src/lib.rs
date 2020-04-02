@@ -37,8 +37,8 @@ impl From<WorkspaceState> for State {
         State {
             modules: wstate.modules.into_iter().collect(),
             geometry: wstate.geometry.into_iter().collect(),
+            indications: wstate.indications.into_iter().collect(),
             connections: wstate.connections.into_iter().collect(),
-            indications: HashMap::new(),
         }
     }
 }

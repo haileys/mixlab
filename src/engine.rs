@@ -9,7 +9,7 @@ use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use ringbuf::{RingBuffer, Producer};
 use tokio::sync::{oneshot, broadcast};
 
-use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication};
+use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication, OutputDeviceParams, OutputDeviceIndication};
 
 use crate::util::Sequence;
 
@@ -21,11 +21,11 @@ pub const TICKS_PER_SECOND: usize = 10;
 pub const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
 pub struct OutputDeviceState {
-    tx: Producer<f32>,
+    tx: Option<Producer<f32>>,
     host: cpal::Host,
     // this field is never used directly but must not be dropped for the
     // stream to continue playing:
-    _stream: cpal::Stream,
+    stream: Option<cpal::Stream>,
 }
 
 impl Debug for OutputDeviceState {
@@ -37,7 +37,7 @@ impl Debug for OutputDeviceState {
 #[derive(Debug)]
 pub enum Module {
     SineGenerator((), SineGeneratorParams, ()),
-    OutputDevice(OutputDeviceState, (), Option<Vec<String>>),
+    OutputDevice(OutputDeviceState, OutputDeviceParams, OutputDeviceIndication),
     Mixer2ch((), (), ()),
 }
 
@@ -52,44 +52,16 @@ impl Module {
             ModuleParams::SineGenerator(params) => {
                 Module::SineGenerator((), params, ())
             }
-            ModuleParams::OutputDevice => {
+            ModuleParams::OutputDevice(params) => {
                 let host = cpal::default_host();
 
-                let device = host.default_output_device()
-                    .expect("default_output_device");
-
-                let config = device.default_output_config()
-                    .expect("default_output_format");
-
-                let (tx, mut rx) = RingBuffer::<f32>::new(SAMPLES_PER_TICK * 8).split();
-
-                let stream = device.build_output_stream(
-                        &config.config(),
-                        move |data: &mut [f32]| {
-                            let bytes = rx.pop_slice(data);
-
-                            // zero-fill rest of buffer
-                            for i in bytes..data.len() {
-                                data[i] = 0.0;
-                            }
-                        },
-                        |err| {
-                            eprintln!("output stream error! {:?}", err);
-                        })
-                    .expect("build_output_stream");
-
-                stream.play().expect("stream.play");
-
-                println!("device: {:?}", device.name());
-                println!("config: {:?}", config);
-
                 let state = OutputDeviceState {
-                    tx,
                     host,
-                    _stream: stream,
+                    tx: None,
+                    stream: None,
                 };
 
-                Module::OutputDevice(state, (), None)
+                Module::OutputDevice(state, params, OutputDeviceIndication { devices: None })
             }
             ModuleParams::Mixer2ch => {
                 Module::Mixer2ch((), (), ())
@@ -100,7 +72,7 @@ impl Module {
     fn params(&self) -> ModuleParams {
         match self {
             Module::SineGenerator(_, params, _) => ModuleParams::SineGenerator(params.clone()),
-            Module::OutputDevice(_, (), _) => ModuleParams::OutputDevice,
+            Module::OutputDevice(_, params, _) => ModuleParams::OutputDevice(params.clone()),
             Module::Mixer2ch(_, (), _) => ModuleParams::Mixer2ch,
         }
     }
@@ -109,6 +81,45 @@ impl Module {
         match (self, &new_params) {
             (Module::SineGenerator(_, ref mut params, _), ModuleParams::SineGenerator(new_params)) => {
                 *params = new_params.clone();
+            }
+            (Module::OutputDevice(ref mut state, ref mut params, _), ModuleParams::OutputDevice(new_params)) => {
+                let OutputDeviceParams { device } = new_params;
+
+                if params.device != *device {
+                    let output_device = state.host.output_devices()
+                        .ok()
+                        .and_then(|devices| {
+                            devices.into_iter().find(|dev| dev.name().map(|dev| Some(dev) == *device).unwrap_or(false))
+                        });
+
+                    if let Some(output_device) = output_device {
+                        let config = output_device.default_output_config()
+                            .expect("default_output_format");
+
+                        let (tx, mut rx) = RingBuffer::<f32>::new(SAMPLES_PER_TICK * 8).split();
+
+                        let stream = output_device.build_output_stream(
+                                &config.config(),
+                                move |data: &mut [f32]| {
+                                    let bytes = rx.pop_slice(data);
+
+                                    // zero-fill rest of buffer
+                                    for i in bytes..data.len() {
+                                        data[i] = 0.0;
+                                    }
+                                },
+                                |err| {
+                                    eprintln!("output stream error! {:?}", err);
+                                })
+                            .expect("build_output_stream");
+
+                        stream.play().expect("stream.play");
+
+                        params.device = device.clone();
+                        state.tx = Some(tx);
+                        state.stream = Some(stream);
+                    }
+                }
             }
             (module, new_params) => {
                 *module = Self::create(new_params.clone());
@@ -132,11 +143,13 @@ impl Module {
 
                 TickStatus::Ok
             }
-            Module::OutputDevice(state, _, ref mut device_names) => {
-                state.tx.push_slice(inputs[0]);
+            Module::OutputDevice(state, _, indic) => {
+                if let Some(tx) = &mut state.tx {
+                    tx.push_slice(inputs[0]);
+                }
 
-                if device_names.is_none() {
-                    *device_names = Some(state.host
+                if indic.devices.is_none() {
+                    indic.devices = Some(state.host
                         .output_devices()
                         .map(|devices| devices
                             .flat_map(|device| device.name().ok())
@@ -212,6 +225,7 @@ pub fn start() -> EngineHandle {
             geometry: HashMap::new(),
             module_seq: Sequence::new(),
             connections: HashMap::new(),
+            indications: HashMap::new(),
         };
 
         engine.run();
@@ -270,6 +284,7 @@ pub struct Engine {
     geometry: HashMap<ModuleId, WindowGeometry>,
     module_seq: Sequence,
     connections: HashMap<InputId, OutputId>,
+    indications: HashMap<ModuleId, Indication>,
 }
 
 impl Engine {
@@ -281,8 +296,9 @@ impl Engine {
             let indications = self.run_tick(t);
             t += 1;
 
-            for indication in indications {
-                let _ = self.indic_tx.send(indication);
+            for (module_id, indication) in indications {
+                self.indications.insert(module_id, indication.clone());
+                let _ = self.indic_tx.send((module_id, indication));
             }
 
             let sleep_until = start + Duration::from_millis(t * 1_000 / TICKS_PER_SECOND as u64);
@@ -315,6 +331,7 @@ impl Engine {
         let mut state = WorkspaceState {
             modules: Vec::new(),
             geometry: Vec::new(),
+            indications: Vec::new(),
             connections: Vec::new(),
         };
 
@@ -324,6 +341,10 @@ impl Engine {
 
         for (module_id, geometry) in &self.geometry {
             state.geometry.push((*module_id, geometry.clone()));
+        }
+
+        for (module_id, indication) in &self.indications {
+            state.indications.push((*module_id, indication.clone()));
         }
 
         for (input, output) in &self.connections {

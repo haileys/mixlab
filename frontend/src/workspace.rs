@@ -6,9 +6,10 @@ use std::rc::Rc;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
+use yew::components::Select;
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, OutputDeviceIndication};
 
 use crate::{App, AppMsg, State};
 use crate::util::{callback_ex, stop_propagation, prevent_default};
@@ -417,12 +418,12 @@ impl Workspace {
             module: NodeRef::default(),
             inputs: match module {
                 ModuleParams::SineGenerator(_) => vec![],
-                ModuleParams::OutputDevice => vec![NodeRef::default()],
+                ModuleParams::OutputDevice(_) => vec![NodeRef::default()],
                 ModuleParams::Mixer2ch => vec![NodeRef::default(), NodeRef::default()],
             },
             outputs: match module {
                 ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
-                ModuleParams::OutputDevice => vec![],
+                ModuleParams::OutputDevice(_) => vec![],
                 ModuleParams::Mixer2ch => vec![NodeRef::default()],
             },
         };
@@ -455,7 +456,7 @@ impl Workspace {
         let items = &[
             ("Sine Generator", ModuleParams::SineGenerator(SineGeneratorParams { freq: 100.0 })),
             ("Mixer (2 channel)", ModuleParams::Mixer2ch),
-            ("Output Device", ModuleParams::OutputDevice),
+            ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None })),
         ];
 
         html! {
@@ -638,15 +639,9 @@ impl Window {
             ModuleParams::SineGenerator(params) => {
                 html! { <SineGenerator id={self.props.id} module={self.link.clone()} params={params} /> }
             }
-            ModuleParams::OutputDevice => {
-                if let Some(Indication::OutputDevice(Some(ref devices))) = self.props.indication {
-                    html! {
-                        <select>
-                            { for devices.iter().map(|device| {
-                                html! { <option>{device}</option> }
-                            }) }
-                        </select>
-                    }
+            ModuleParams::OutputDevice(params) => {
+                if let Some(Indication::OutputDevice(indic)) = &self.props.indication {
+                    html! { <OutputDevice id={self.props.id} module={self.link.clone()} params={params} indication={indic} /> }
                 } else {
                     html! {}
                 }
@@ -665,10 +660,6 @@ pub struct SineGeneratorProps {
     params: SineGeneratorParams,
 }
 
-pub enum SineGeneratorMsg {
-    FreqChange(ChangeData),
-}
-
 pub struct SineGenerator {
     link: ComponentLink<Self>,
     props: SineGeneratorProps,
@@ -676,33 +667,17 @@ pub struct SineGenerator {
 
 impl Component for SineGenerator {
     type Properties = SineGeneratorProps;
-    type Message = SineGeneratorMsg;
+    type Message = ();
 
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        SineGenerator {
+        Self {
             link,
             props,
         }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
-        match msg {
-            SineGeneratorMsg::FreqChange(data) => {
-                let freq = if let ChangeData::Value(freq_str) = data {
-                    freq_str.parse().unwrap_or(0f64)
-                } else {
-                    panic!("SineGeneratorMsg::FreqChange should contain ChangeData::Value!");
-                };
-
-                let params = SineGeneratorParams { freq, ..self.props.params.clone() };
-
-                self.props.module.send_message(
-                    WindowMsg::UpdateParams(
-                        ModuleParams::SineGenerator(params)));
-
-                false
-            }
-        }
+        false
     }
 
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
@@ -712,16 +687,82 @@ impl Component for SineGenerator {
 
     fn view(&self) -> Html {
         let freq_id = format!("w{}-sine-freq", self.props.id.0);
+        let params = self.props.params.clone();
 
         html! {
             <>
                 <label for={&freq_id}>{"Frequency"}</label>
                 <input type="number"
                     id={&freq_id}
-                    onchange={self.link.callback(SineGeneratorMsg::FreqChange)}
+                    onchange={self.props.module.callback(move |ev| {
+                        if let ChangeData::Value(freq_str) = ev {
+                            let freq = freq_str.parse().unwrap_or(0f64);
+                            let params = SineGeneratorParams { freq, ..params };
+                            WindowMsg::UpdateParams(
+                                ModuleParams::SineGenerator(params))
+                        } else {
+                            unreachable!()
+                        }
+                    })}
                     value={self.props.params.freq}
                 />
             </>
+        }
+    }
+}
+
+#[derive(Properties, Clone, Debug)]
+pub struct OutputDeviceProps {
+    id: ModuleId,
+    module: ComponentLink<Window>,
+    params: OutputDeviceParams,
+    indication: Option<OutputDeviceIndication>,
+}
+
+pub struct OutputDevice {
+    link: ComponentLink<Self>,
+    props: OutputDeviceProps,
+}
+
+impl Component for OutputDevice {
+    type Properties = OutputDeviceProps;
+    type Message = ();
+
+    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
+        Self {
+            link,
+            props,
+        }
+    }
+
+    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        false
+    }
+
+    fn change(&mut self, props: Self::Properties) -> ShouldRender {
+        self.props = props;
+        true
+    }
+
+    fn view(&self) -> Html {
+        let devices = self.props.indication.as_ref()
+            .into_iter()
+            .flat_map(|indication| indication.devices.iter())
+            .flat_map(|dev| dev)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let params = self.props.params.clone();
+
+        html! {
+            <Select<String>
+                selected={&self.props.params.device}
+                options={devices}
+                onchange={self.props.module.callback(move |device: String| {
+                    let params = OutputDeviceParams { device: Some(device), ..params };
+                    WindowMsg::UpdateParams(ModuleParams::OutputDevice(params))
+                })}
+            />
         }
     }
 }
