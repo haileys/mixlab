@@ -11,6 +11,7 @@ pub enum ServerMessage {
 pub struct WorkspaceState {
     pub modules: Vec<(ModuleId, ModuleParams)>,
     pub geometry: Vec<(ModuleId, WindowGeometry)>,
+    pub indications: Vec<(ModuleId, Indication)>,
     pub connections: Vec<(InputId, OutputId)>,
 }
 
@@ -84,8 +85,15 @@ impl OutputId {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModuleParams {
     SineGenerator(SineGeneratorParams),
-    OutputDevice,
+    OutputDevice(OutputDeviceParams),
     Mixer2ch,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum Indication {
+    SineGenerator(()),
+    OutputDevice(OutputDeviceIndication),
+    Mixer2ch(())
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -94,10 +102,13 @@ pub struct SineGeneratorParams {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum Indication {
-    SineGenerator(()),
-    OutputDevice(Option<Vec<String>>),
-    Mixer2ch(())
+pub struct OutputDeviceParams {
+    pub device: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct OutputDeviceIndication {
+    pub devices: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
