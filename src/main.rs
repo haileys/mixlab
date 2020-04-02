@@ -16,8 +16,8 @@ use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
-use engine::{EngineHandle, LogPosition};
-use mixlab_protocol::{ClientMessage, ServerMessage, ModelOp};
+use engine::EngineHandle;
+use mixlab_protocol::{ClientMessage, ServerMessage, ModelOp, LogPosition};
 
 fn content(content_type: &str, reply: impl Reply) -> impl Reply {
     reply::with_header(reply, "content-type", content_type)
@@ -91,8 +91,8 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
                 // TODO we should tell the user that the engine has stopped
                 unimplemented!()
             }
-            Event::ModelOp(Ok((_pos, op))) => {
-                let msg = bincode::serialize(&ServerMessage::ModelOp(op))
+            Event::ModelOp(Ok((pos, op))) => {
+                let msg = bincode::serialize(&ServerMessage::ModelOp(pos, op))
                     .expect("bincode::serialize");
 
                 tx.send(ws::Message::binary(msg))

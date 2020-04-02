@@ -1,16 +1,16 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
-use std::fmt::Write;
+use std::collections::{BTreeMap, HashSet};
 use std::mem;
+use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};
+use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, WorkspaceState, ClientMessage};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, LogPosition};
 
-use crate::{App, AppMsg};
+use crate::{App, AppMsg, State};
 use crate::util::{callback_ex, stop_propagation, prevent_default};
 
 pub struct Counter(usize);
@@ -25,30 +25,21 @@ impl Counter {
         self.0 += 1;
         seq
     }
-
-    pub fn seen(&mut self, seq: usize) {
-        if seq >= self.0 {
-            self.0 = seq + 1;
-        }
-    }
 }
-
-type ModuleSet = BTreeMap<ModuleId, WindowProps>;
 
 pub struct Workspace {
     link: ComponentLink<Self>,
     props: WorkspaceProps,
-    gen_id: Counter,
     gen_z_index: Counter,
-    modules: ModuleSet,
     mouse: MouseMode,
-    connections: HashMap<InputId, OutputId>,
+    window_refs: BTreeMap<ModuleId, WindowRef>,
 }
 
 #[derive(Properties, Clone)]
 pub struct WorkspaceProps {
     pub app: ComponentLink<App>,
-    pub state: WorkspaceState,
+    pub state: Rc<RefCell<State>>,
+    pub log_pos: Option<LogPosition>,
 }
 
 pub enum MouseMode {
@@ -63,32 +54,6 @@ pub struct Drag {
     origin: Coords,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct Coords {
-    x: i32,
-    y: i32,
-}
-
-impl Coords {
-    pub fn add(&self, other: Coords) -> Coords {
-        Coords {
-            x: self.x + other.x,
-            y: self.y + other.y,
-        }
-    }
-
-    pub fn sub(&self, other: Coords) -> Coords {
-        Coords {
-            x: self.x - other.x,
-            y: self.y - other.y,
-        }
-    }
-
-    pub fn to_css(&self) -> String {
-        format!("left:{}px; top:{}px;", self.x, self.y)
-    }
-}
-
 #[derive(Debug)]
 pub enum WorkspaceMsg {
     DragStart(ModuleId, MouseEvent),
@@ -99,7 +64,7 @@ pub enum WorkspaceMsg {
     ClearTerminal(TerminalId),
     DeleteWindow(ModuleId),
     UpdateModuleParams(ModuleId, ModuleParams),
-    CreateModule(Coords, ModuleParams),
+    CreateModule(ModuleParams, Coords),
 }
 
 impl Component for Workspace {
@@ -107,33 +72,64 @@ impl Component for Workspace {
     type Properties = WorkspaceProps;
 
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
+        let state = props.state.clone();
+
         let mut workspace = Workspace {
             link,
             props,
-            gen_id: Counter::new(),
             gen_z_index: Counter::new(),
-            modules: BTreeMap::new(),
             mouse: MouseMode::Normal,
-            connections: HashMap::new(),
+            window_refs: BTreeMap::new(),
         };
 
-        for (id, params) in workspace.props.state.modules.clone() {
-            workspace.create_module(id, params);
+        for (id, params) in &state.borrow().modules {
+            workspace.create_window(*id, params);
         }
 
         workspace
     }
 
+    fn change(&mut self, new_props: Self::Properties) -> ShouldRender {
+        let mut should_render = false;
+
+        let mut deleted_windows = self.window_refs.keys().copied().collect::<HashSet<_>>();
+
+        for (id, module) in &new_props.state.borrow().modules {
+            if deleted_windows.remove(id) {
+                // cool, nothing changes with this module
+            } else {
+                // this module was not present before, create a window ref for it
+                self.create_window(*id, module);
+                should_render = true;
+            }
+        }
+
+        for deleted_window in deleted_windows {
+            self.window_refs.remove(&deleted_window);
+            should_render = true;
+        }
+
+        if self.props.log_pos != new_props.log_pos {
+            should_render = true;
+        }
+
+        self.props = new_props;
+
+        should_render
+    }
+
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         return match msg {
             WorkspaceMsg::DragStart(module, ev) => {
-                if let Some(props) = self.modules.get_mut(&module) {
+                let mut state = self.props.state.borrow_mut();
+
+                if let Some(geom) = state.geometry.get_mut(&module) {
                     self.mouse = MouseMode::Drag(Drag {
                         module,
                         origin: Coords { x: ev.page_x(), y: ev.page_y() },
                     });
 
-                    props.z_index = self.gen_z_index.next();
+                    geom.z_index = self.gen_z_index.next();
 
                     true
                 } else {
@@ -176,8 +172,18 @@ impl Component for Workspace {
                 match self.mouse {
                     MouseMode::Normal => false,
                     MouseMode::Drag(ref mut drag) => {
-                        let should_render = drag_event(&mut self.modules, drag, ev);
+                        let mut state = self.props.state.borrow_mut();
+
+                        let should_render = drag_event(&mut state, &self.window_refs, drag, ev);
+
+                        if let Some(geometry) = state.geometry.get(&drag.module) {
+                            self.props.app.send_message(
+                                AppMsg::ClientUpdate(
+                                    ClientMessage::UpdateWindowGeometry(drag.module, geometry.clone())));
+                        }
+
                         self.mouse = MouseMode::Normal;
+
                         should_render
                     }
                     MouseMode::Connect(..) => false,
@@ -188,7 +194,7 @@ impl Component for Workspace {
                 match &mut self.mouse {
                     MouseMode::Normal | MouseMode::ContextMenu(_) => false,
                     MouseMode::Drag(ref mut drag) => {
-                        drag_event(&mut self.modules, drag, ev)
+                        drag_event(&mut self.props.state.borrow_mut(), &self.window_refs, drag, ev)
                     }
                     MouseMode::Connect(_terminal, ref mut coords) => {
                         *coords = Some(Coords { x: ev.page_x(), y: ev.page_y() });
@@ -206,7 +212,10 @@ impl Component for Workspace {
                         match (terminal, *other_terminal) {
                             (TerminalId::Input(input), TerminalId::Output(output)) |
                             (TerminalId::Output(output), TerminalId::Input(input)) => {
-                                self.connections.insert(input, output);
+                                self.props.state.borrow_mut()
+                                    .connections
+                                    .insert(input, output);
+
                                 self.mouse = MouseMode::Normal;
 
                                 self.props.app.send_message(
@@ -227,7 +236,9 @@ impl Component for Workspace {
             WorkspaceMsg::ClearTerminal(terminal) => {
                 match terminal {
                     TerminalId::Input(input) => {
-                        self.connections.remove(&input);
+                        self.props.state.borrow_mut()
+                            .connections
+                            .remove(&input);
 
                         self.props.app.send_message(
                             AppMsg::ClientUpdate(
@@ -236,7 +247,9 @@ impl Component for Workspace {
                     TerminalId::Output(output) => {
                         let mut msgs = Vec::new();
 
-                        for (in_, out_) in &self.connections {
+                        let mut state = self.props.state.borrow_mut();
+
+                        for (in_, out_) in &state.connections {
                             if *out_ == output {
                                 msgs.push(AppMsg::ClientUpdate(
                                     ClientMessage::DeleteConnection(*in_)));
@@ -245,7 +258,7 @@ impl Component for Workspace {
 
                         // yeah, this is just doing the same loop as the loop above
                         // but it's good enough for now
-                        self.connections.retain(|_, out| output != *out);
+                        state.connections.retain(|_, out| output != *out);
 
                         self.props.app.send_message_batch(msgs);
                     }
@@ -253,18 +266,27 @@ impl Component for Workspace {
                 true
             }
             WorkspaceMsg::DeleteWindow(module) => {
-                self.modules.remove(&module);
-                self.connections.retain(|input, output| {
+                let mut state = self.props.state.borrow_mut();
+                state.modules.remove(&module);
+                state.geometry.remove(&module);
+                state.connections.retain(|input, output| {
                     output.module_id() != module && input.module_id() != module
                 });
+
+                self.props.app.send_message(
+                    AppMsg::ClientUpdate(
+                        ClientMessage::DeleteModule(module)));
+
                 true
             }
             WorkspaceMsg::UpdateModuleParams(module, params) => {
-                if let Some(module_props) = self.modules.get_mut(&module) {
+                let mut state = self.props.state.borrow_mut();
+
+                if let Some(module_params) = state.modules.get_mut(&module) {
                     // verify that we're updating the module params with the
                     // same kind of module params:
-                    if mem::discriminant(&module_props.module) == mem::discriminant(&params) {
-                        module_props.module = params.clone();
+                    if mem::discriminant(&*module_params) == mem::discriminant(&params) {
+                        *module_params = params.clone();
 
                         self.props.app.send_message(
                             AppMsg::ClientUpdate(
@@ -278,25 +300,38 @@ impl Component for Workspace {
                     false
                 }
             }
-            WorkspaceMsg::CreateModule(coords, module) => {
-                // TODO
+            WorkspaceMsg::CreateModule(module, coords) => {
+                self.mouse = MouseMode::Normal;
+
+                let geometry = WindowGeometry {
+                    position: coords,
+                    z_index: self.gen_z_index.next(),
+                };
+
+                self.props.app.send_message(
+                    AppMsg::ClientUpdate(
+                        ClientMessage::CreateModule(module, geometry)));
+
                 false
             }
         };
 
-        fn drag_event(modules: &mut ModuleSet, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
+        fn drag_event(state: &mut State, window_refs: &BTreeMap<ModuleId, WindowRef>, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
             let mouse_pos = Coords { x: ev.page_x(), y: ev.page_y() };
 
             let delta = mouse_pos.sub(drag.origin);
             drag.origin = mouse_pos;
 
-            if let Some(props) = modules.get_mut(&drag.module) {
-                props.position = props.position.add(delta);
+            if let Some(geom) = state.geometry.get_mut(&drag.module) {
+                geom.position = geom.position.add(delta);
 
-                if let Some(el) = props.refs.module.cast::<HtmlElement>() {
+                let el = window_refs.get(&drag.module)
+                    .and_then(|refs| refs.module.cast::<HtmlElement>());
+
+                if let Some(el) = el {
                     let style = el.style();
-                    let _ = style.set_property("left", &format!("{}px", props.position.x));
-                    let _ = style.set_property("top", &format!("{}px", props.position.y));
+                    let _ = style.set_property("left", &format!("{}px", geom.position.x));
+                    let _ = style.set_property("top", &format!("{}px", geom.position.y));
                 }
 
                 true
@@ -309,13 +344,15 @@ impl Component for Workspace {
     fn view(&self) -> Html {
         let mut connections: Vec<(Coords, Coords)> = vec![];
 
-        for (input, output) in &self.connections {
+        for (input, output) in &self.props.state.borrow().connections {
             if let Some(input_coords) = self.screen_coords_for_terminal(TerminalId::Input(*input)) {
                 if let Some(output_coords) = self.screen_coords_for_terminal(TerminalId::Output(*output)) {
                     connections.push((output_coords, input_coords));
                 }
             }
         }
+
+        crate::log!("view: connections: {:?}", connections);
 
         if let MouseMode::Connect(terminal, Some(to_coords)) = &self.mouse {
             if let Some(start_coords) = self.screen_coords_for_terminal(*terminal) {
@@ -336,20 +373,37 @@ impl Component for Workspace {
                     onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
                     oncontextmenu={prevent_default()}
                 >
-                    { for self.modules.values().cloned().map(|props|
-                        html! { <div data-module-id={props.id.0}><Window with props /></div> }) }
-                    <Connections connections={connections} width={1000} height={1000} />
+                    { for self.window_refs.iter().map(|(id, refs)| {
+                        let state = self.props.state.borrow();
+                        let module = state.modules.get(id);
+                        let geometry = state.geometry.get(id);
+                        let workspace = self.link.clone();
+
+                        if let (Some(module), Some(geometry)) = (module, geometry) {
+                            let name = format!("{:?}", module);
+                            html! { <Window id={id} module={module} refs={refs} name={name} workspace={workspace} geometry={geometry} /> }
+                        } else {
+                            html! {}
+                        }
+                    }) }
+
+                    <Connections connections={connections} width={2000} height={2000} />
+
                     {self.view_context_menu()}
                 </div>
             </>
         }
     }
+
+    fn mounted(&mut self) -> ShouldRender {
+        // always re-render after first mount because rendering correctly
+        // requires noderefs
+        true
+    }
 }
 
 impl Workspace {
-    pub fn create_module(&mut self, id: ModuleId, module: ModuleParams) {
-        self.gen_id.seen(id.0);
-
+    pub fn create_window(&mut self, id: ModuleId, module: &ModuleParams) {
         let refs = WindowRef {
             module: NodeRef::default(),
             inputs: match module {
@@ -364,36 +418,23 @@ impl Workspace {
             },
         };
 
-        let name = format!("{:?}", module).split_whitespace().nth(0).unwrap().to_owned();
-
-        let props = WindowProps {
-            id: id,
-            module,
-            refs,
-            name,
-            workspace: self.link.clone(),
-            position: Coords {
-                x: (id.0 as i32 + 1) * 100,
-                y: (id.0 as i32 + 1) * 100,
-            },
-            z_index: self.gen_z_index.next(),
-        };
-
-        self.modules.insert(id, props);
+        self.window_refs.insert(id, refs);
     }
 
     fn screen_coords_for_terminal(&self, terminal: TerminalId) -> Option<Coords> {
-        let window_props = self.modules.get(&terminal.module_id())?;
+        let state = self.props.state.borrow();
+        let geometry = state.geometry.get(&terminal.module_id())?;
+        let refs = self.window_refs.get(&terminal.module_id())?;
 
         let terminal_node = match terminal {
-            TerminalId::Input(InputId(_, index)) => window_props.refs.inputs.get(index)?,
-            TerminalId::Output(OutputId(_, index)) => window_props.refs.outputs.get(index)?,
+            TerminalId::Input(InputId(_, index)) => refs.inputs.get(index)?,
+            TerminalId::Output(OutputId(_, index)) => refs.outputs.get(index)?,
         };
 
         let terminal_node = terminal_node.cast::<HtmlElement>()?;
 
         let terminal_coords = Coords { x: terminal_node.offset_left() + 9, y: terminal_node.offset_top() + 9 };
-        Some(window_props.position.add(terminal_coords))
+        Some(geometry.position.add(terminal_coords))
     }
 
     fn view_context_menu(&self) -> Html {
@@ -403,7 +444,7 @@ impl Workspace {
         };
 
         let items = &[
-            ("Sine Generator", ModuleParams::SineGenerator(SineGeneratorParams { freq: 440.0 })),
+            ("Sine Generator", ModuleParams::SineGenerator(SineGeneratorParams { freq: 100.0 })),
             ("Mixer (2 channel)", ModuleParams::Mixer2ch),
             ("Output Device", ModuleParams::OutputDevice),
         ];
@@ -419,7 +460,8 @@ impl Workspace {
 
                     html! {
                         <div class="context-menu-item"
-                            onmousedown={self.link.callback(move |_| WorkspaceMsg::CreateModule(coords, params.clone()))}
+                            onmousedown={self.link.callback(move |_|
+                                WorkspaceMsg::CreateModule(params.clone(), coords))}
                         >
                             {label}
                         </div>
@@ -447,10 +489,9 @@ pub enum WindowMsg {
 pub struct WindowProps {
     pub id: ModuleId,
     pub module: ModuleParams,
+    pub geometry: WindowGeometry,
     pub name: String,
     pub workspace: ComponentLink<Workspace>,
-    pub position: Coords,
-    pub z_index: usize,
     pub refs: WindowRef,
 }
 
@@ -511,8 +552,10 @@ impl Component for Window {
     }
 
     fn view(&self) -> Html {
-        let mut window_style = self.props.position.to_css();
-        let _ = write!(&mut window_style, "z-index:{};", self.props.z_index);
+        let window_style = format!("left:{}px; top:{}px; z-index:{};",
+            self.props.geometry.position.x,
+            self.props.geometry.position.y,
+            self.props.geometry.z_index);
 
         html! {
             <div class="module-window"
