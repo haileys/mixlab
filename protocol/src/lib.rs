@@ -79,6 +79,7 @@ impl OutputId {
         self.1
     }
 }
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModuleParams {
     SineGenerator(SineGeneratorParams),

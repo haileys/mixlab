@@ -35,16 +35,16 @@ impl Debug for OutputDeviceState {
 
 #[derive(Debug)]
 pub enum Module {
-    SineGenerator((), SineGeneratorParams),
-    OutputDevice(OutputDeviceState, ()),
-    Mixer2ch((), ()),
+    SineGenerator((), SineGeneratorParams, ()),
+    OutputDevice(OutputDeviceState, (), Vec<String>),
+    Mixer2ch((), (), ()),
 }
 
 impl Module {
     fn create(params: ModuleParams) -> Self {
         match params {
             ModuleParams::SineGenerator(params) => {
-                Module::SineGenerator((), params)
+                Module::SineGenerator((), params, ())
             }
             ModuleParams::OutputDevice => {
                 let host = cpal::default_host();
@@ -82,27 +82,25 @@ impl Module {
                     _stream: stream,
                 };
 
-                Module::OutputDevice(state, ())
+                Module::OutputDevice(state, (), Vec::new())
             }
             ModuleParams::Mixer2ch => {
-                Module::Mixer2ch((), ())
+                Module::Mixer2ch((), (), ())
             }
         }
     }
 
-    fn destroy(&mut self) {}
-
     fn params(&self) -> ModuleParams {
         match self {
-            Module::SineGenerator(_, params) => ModuleParams::SineGenerator(params.clone()),
-            Module::OutputDevice(_, ()) => ModuleParams::OutputDevice,
-            Module::Mixer2ch(_, ()) => ModuleParams::Mixer2ch,
+            Module::SineGenerator(_, params, _) => ModuleParams::SineGenerator(params.clone()),
+            Module::OutputDevice(_, (), _) => ModuleParams::OutputDevice,
+            Module::Mixer2ch(_, (), _) => ModuleParams::Mixer2ch,
         }
     }
 
     fn update(&mut self, new_params: ModuleParams) {
         match (self, &new_params) {
-            (Module::SineGenerator(_, ref mut params), ModuleParams::SineGenerator(new_params)) => {
+            (Module::SineGenerator(_, ref mut params, _), ModuleParams::SineGenerator(new_params)) => {
                 *params = new_params.clone();
             }
             (module, new_params) => {
@@ -113,7 +111,7 @@ impl Module {
 
     fn run_tick(&mut self, t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) {
         match self {
-            Module::SineGenerator(_, params) => {
+            Module::SineGenerator(_, params, _) => {
                 let t = t as Sample * SAMPLES_PER_TICK as Sample;
 
                 for i in 0..SAMPLES_PER_TICK {
@@ -125,14 +123,10 @@ impl Module {
                     }
                 }
             }
-            Module::OutputDevice(state, _) => {
+            Module::OutputDevice(state, _, _) => {
                 state.tx.push_slice(inputs[0]);
-                // use std::io::Write;
-                // for sample in inputs[0] {
-                //     state.file.write(&sample.to_le_bytes());
-                // }
             }
-            Module::Mixer2ch(_, _) => {
+            Module::Mixer2ch(_, _, _) => {
                 for i in 0..SAMPLES_PER_TICK {
                     for chan in 0..CHANNELS {
                         let j = i * CHANNELS + chan;
