@@ -9,7 +9,7 @@ use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use ringbuf::{RingBuffer, Producer};
 use tokio::sync::{oneshot, broadcast};
 
-use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp};
+use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition};
 
 use crate::util::Sequence;
 
@@ -160,9 +160,6 @@ impl Module {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
-pub struct LogPosition(usize);
-
 pub enum EngineMessage {
     ConnectSession(oneshot::Sender<(WorkspaceState, EngineOps)>),
     ClientMessage(ClientMessage),
@@ -181,17 +178,17 @@ pub fn start() -> EngineHandle {
     let (log_tx, _) = broadcast::channel(64);
 
     thread::spawn(move || {
-        let mut modules = HashMap::new();
-        modules.insert(ModuleId(0), Module::create(ModuleParams::SineGenerator(SineGeneratorParams { freq: 220.0 })));
-        modules.insert(ModuleId(1), Module::create(ModuleParams::SineGenerator(SineGeneratorParams { freq: 295.0 })));
-        modules.insert(ModuleId(2), Module::create(ModuleParams::OutputDevice));
-        modules.insert(ModuleId(3), Module::create(ModuleParams::Mixer2ch));
+        // let mut modules = HashMap::new();
+        // modules.insert(ModuleId(0), Module::create(ModuleParams::SineGenerator(SineGeneratorParams { freq: 220.0 })));
+        // modules.insert(ModuleId(1), Module::create(ModuleParams::SineGenerator(SineGeneratorParams { freq: 295.0 })));
+        // modules.insert(ModuleId(2), Module::create(ModuleParams::OutputDevice));
+        // modules.insert(ModuleId(3), Module::create(ModuleParams::Mixer2ch));
 
         let mut engine = Engine {
             cmd_rx,
             log_tx,
             log_seq: Sequence::new(),
-            modules: modules,
+            modules: HashMap::new(),
             geometry: HashMap::new(),
             module_seq: Sequence::new(),
             connections: HashMap::new(),
@@ -290,11 +287,16 @@ impl Engine {
     fn dump_state(&self) -> WorkspaceState {
         let mut state = WorkspaceState {
             modules: Vec::new(),
+            geometry: Vec::new(),
             connections: Vec::new(),
         };
 
         for (module_id, module) in &self.modules {
             state.modules.push((*module_id, module.params()));
+        }
+
+        for (module_id, geometry) in &self.geometry {
+            state.geometry.push((*module_id, geometry.clone()));
         }
 
         for (input, output) in &self.connections {

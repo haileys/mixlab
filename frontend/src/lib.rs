@@ -3,19 +3,42 @@
 mod util;
 mod workspace;
 
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
+
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
 use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use wasm_bindgen::prelude::*;
 
-use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage};
+use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, LogPosition};
 
 use workspace::Workspace;
 
 pub struct App {
     link: ComponentLink<Self>,
     websocket: WebSocketTask,
-    state: Option<WorkspaceState>,
+    state: Option<Rc<RefCell<State>>>,
+    log_pos: Option<LogPosition>,
+}
+
+#[derive(Debug, Clone)]
+pub struct State {
+    // modules uses BTreeMap for consistent iteration order:
+    modules: BTreeMap<ModuleId, ModuleParams>,
+    geometry: HashMap<ModuleId, WindowGeometry>,
+    connections: HashMap<InputId, OutputId>,
+}
+
+impl From<WorkspaceState> for State {
+    fn from(wstate: WorkspaceState) -> State {
+        State {
+            modules: wstate.modules.into_iter().collect(),
+            geometry: wstate.geometry.into_iter().collect(),
+            connections: wstate.connections.into_iter().collect(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -53,7 +76,7 @@ impl Component for App {
             }))
         .expect("websocket.connect_binary");
 
-        App { link, websocket, state: None }
+        App { link, websocket, state: None, log_pos: None }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
@@ -62,7 +85,41 @@ impl Component for App {
             AppMsg::ServerMessage(msg) => {
                 match msg {
                     ServerMessage::WorkspaceState(state) => {
-                        self.state = Some(state);
+                        self.state = Some(Rc::new(RefCell::new(state.into())));
+                        true
+                    }
+                    ServerMessage::ModelOp(pos, op) => {
+                        let mut state = self.state.as_ref()
+                            .expect("server should always send a WorkspaceState before a ModelOp")
+                            .borrow_mut();
+
+                        match op {
+                            ModelOp::CreateModule(id, module, geometry) => {
+                                state.modules.insert(id, module);
+                                state.geometry.insert(id, geometry);
+                            }
+                            ModelOp::UpdateModuleParams(id, new_params) => {
+                                if let Some(params) = state.modules.get_mut(&id) {
+                                    *params = new_params;
+                                }
+                            }
+                            ModelOp::UpdateWindowGeometry(id, new_geometry) => {
+                                if let Some(geometry) = state.geometry.get_mut(&id) {
+                                    *geometry = new_geometry;
+                                }
+                            }
+                            ModelOp::DeleteModule(id) => {
+                                state.modules.remove(&id);
+                            }
+                            ModelOp::CreateConnection(input, output) => {
+                                state.connections.insert(input, output);
+                            }
+                            ModelOp::DeleteConnection(input) => {
+                                state.connections.remove(&input);
+                            }
+                        }
+
+                        self.log_pos = Some(pos);
                         true
                     }
                 }
@@ -82,7 +139,7 @@ impl Component for App {
     fn view(&self) -> Html {
         match &self.state {
             Some(state) => {
-                html! { <Workspace app={self.link.clone()} state={state} /> }
+                html! { <Workspace app={self.link.clone()} state={state} log_pos={self.log_pos} /> }
             }
             None => html! {}
         }

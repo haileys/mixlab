@@ -3,12 +3,13 @@ use serde_derive::{Serialize, Deserialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     WorkspaceState(WorkspaceState),
-    ModelOp(ModelOp),
+    ModelOp(LogPosition, ModelOp),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct WorkspaceState {
     pub modules: Vec<(ModuleId, ModuleParams)>,
+    pub geometry: Vec<(ModuleId, WindowGeometry)>,
     pub connections: Vec<(InputId, OutputId)>,
 }
 
@@ -21,6 +22,9 @@ pub enum ClientMessage {
     CreateConnection(InputId, OutputId),
     DeleteConnection(InputId),
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
+pub struct LogPosition(pub usize);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModelOp {
