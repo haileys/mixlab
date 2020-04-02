@@ -19,8 +19,8 @@ pub type Sample = f32;
 
 pub const CHANNELS: usize = 2;
 pub const SAMPLE_RATE: usize = 44100;
-pub const TICKS_PER_SECOND: usize = 10;
-pub const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
+const TICKS_PER_SECOND: usize = 100;
+const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
 #[derive(Debug)]
 enum Module {
@@ -198,18 +198,18 @@ pub struct Engine {
 impl Engine {
     fn run(&mut self) {
         let start = Instant::now();
-        let mut t = 0;
+        let mut tick = 0;
 
         loop {
-            let indications = self.run_tick(t);
-            t += 1;
+            let indications = self.run_tick(tick);
+            tick += 1;
 
             for (module_id, indication) in indications {
                 self.indications.insert(module_id, indication.clone());
                 let _ = self.indic_tx.send((module_id, indication));
             }
 
-            let sleep_until = start + Duration::from_millis(t * 1_000 / TICKS_PER_SECOND as u64);
+            let sleep_until = start + Duration::from_millis(tick * 1_000 / TICKS_PER_SECOND as u64);
 
             loop {
                 let now = Instant::now();
@@ -356,7 +356,7 @@ impl Engine {
         }
     }
 
-    fn run_tick(&mut self, t: u64) -> Vec<(ModuleId, Indication)> {
+    fn run_tick(&mut self, tick: u64) -> Vec<(ModuleId, Indication)> {
         // find terminal modules - modules which do not send their output to
         // the input of any other module
 
@@ -433,6 +433,8 @@ impl Engine {
                 let mut output_refs = output_buffers.iter_mut()
                     .map(|vec| vec.as_mut_slice())
                     .collect::<Vec<_>>();
+
+                let t = tick * SAMPLES_PER_TICK as u64;
 
                 match module.run_tick(t, &input_refs, &mut output_refs) {
                     None => {}

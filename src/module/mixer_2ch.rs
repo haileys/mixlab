@@ -1,4 +1,4 @@
-use crate::engine::{Sample, SAMPLES_PER_TICK, CHANNELS};
+use crate::engine::Sample;
 use crate::module::Module;
 
 #[derive(Debug)]
@@ -21,11 +21,10 @@ impl Module for Mixer2ch {
     }
 
     fn run_tick(&mut self, _t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        for i in 0..SAMPLES_PER_TICK {
-            for chan in 0..CHANNELS {
-                let j = i * CHANNELS + chan;
-                outputs[0][j] = inputs[0][j] + inputs[1][j];
-            }
+        let len = outputs[0].len();
+
+        for i in 0..len {
+            outputs[0][i] = inputs[0][i] + inputs[1][i];
         }
 
         None
