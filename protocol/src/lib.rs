@@ -30,7 +30,7 @@ pub struct LogPosition(pub usize);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModelOp {
-    CreateModule(ModuleId, ModuleParams, WindowGeometry),
+    CreateModule(ModuleId, ModuleParams, WindowGeometry, Indication),
     UpdateModuleParams(ModuleId, ModuleParams),
     UpdateWindowGeometry(ModuleId, WindowGeometry),
     DeleteModule(ModuleId),
@@ -91,9 +91,9 @@ pub enum ModuleParams {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Indication {
-    SineGenerator(()),
+    SineGenerator,
     OutputDevice(OutputDeviceIndication),
-    Mixer2ch(())
+    Mixer2ch,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
