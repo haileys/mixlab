@@ -96,9 +96,10 @@ impl Component for App {
                             .borrow_mut();
 
                         match op {
-                            ModelOp::CreateModule(id, module, geometry) => {
+                            ModelOp::CreateModule(id, module, geometry, indication) => {
                                 state.modules.insert(id, module);
                                 state.geometry.insert(id, geometry);
+                                state.indications.insert(id, indication);
                             }
                             ModelOp::UpdateModuleParams(id, new_params) => {
                                 if let Some(params) = state.modules.get_mut(&id) {
@@ -112,6 +113,8 @@ impl Component for App {
                             }
                             ModelOp::DeleteModule(id) => {
                                 state.modules.remove(&id);
+                                state.geometry.remove(&id);
+                                state.indications.remove(&id);
                             }
                             ModelOp::CreateConnection(input, output) => {
                                 state.connections.insert(input, output);

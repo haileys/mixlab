@@ -1,4 +1,6 @@
+pub mod mixer_2ch;
 pub mod output_device;
+pub mod sine_generator;
 
 use crate::engine::Sample;
 

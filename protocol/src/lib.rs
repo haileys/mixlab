@@ -86,14 +86,14 @@ impl OutputId {
 pub enum ModuleParams {
     SineGenerator(SineGeneratorParams),
     OutputDevice(OutputDeviceParams),
-    Mixer2ch,
+    Mixer2ch(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Indication {
-    SineGenerator,
+    SineGenerator(()),
     OutputDevice(OutputDeviceIndication),
-    Mixer2ch,
+    Mixer2ch(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
