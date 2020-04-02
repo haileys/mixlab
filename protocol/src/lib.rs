@@ -4,6 +4,7 @@ use serde_derive::{Serialize, Deserialize};
 pub enum ServerMessage {
     WorkspaceState(WorkspaceState),
     ModelOp(LogPosition, ModelOp),
+    Indication(ModuleId, Indication),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -90,6 +91,13 @@ pub enum ModuleParams {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SineGeneratorParams {
     pub freq: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum Indication {
+    SineGenerator(()),
+    OutputDevice(Option<Vec<String>>),
+    Mixer2ch(())
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]

@@ -9,7 +9,7 @@ use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use ringbuf::{RingBuffer, Producer};
 use tokio::sync::{oneshot, broadcast};
 
-use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition};
+use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication};
 
 use crate::util::Sequence;
 
@@ -22,6 +22,7 @@ pub const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
 pub struct OutputDeviceState {
     tx: Producer<f32>,
+    host: cpal::Host,
     // this field is never used directly but must not be dropped for the
     // stream to continue playing:
     _stream: cpal::Stream,
@@ -36,8 +37,13 @@ impl Debug for OutputDeviceState {
 #[derive(Debug)]
 pub enum Module {
     SineGenerator((), SineGeneratorParams, ()),
-    OutputDevice(OutputDeviceState, (), Vec<String>),
+    OutputDevice(OutputDeviceState, (), Option<Vec<String>>),
     Mixer2ch((), (), ()),
+}
+
+enum TickStatus {
+    Ok,
+    IndicationUpdated,
 }
 
 impl Module {
@@ -79,10 +85,11 @@ impl Module {
 
                 let state = OutputDeviceState {
                     tx,
+                    host,
                     _stream: stream,
                 };
 
-                Module::OutputDevice(state, (), Vec::new())
+                Module::OutputDevice(state, (), None)
             }
             ModuleParams::Mixer2ch => {
                 Module::Mixer2ch((), (), ())
@@ -109,7 +116,7 @@ impl Module {
         }
     }
 
-    fn run_tick(&mut self, t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) {
+    fn run_tick(&mut self, t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> TickStatus {
         match self {
             Module::SineGenerator(_, params, _) => {
                 let t = t as Sample * SAMPLES_PER_TICK as Sample;
@@ -122,9 +129,24 @@ impl Module {
                         outputs[0][i * CHANNELS + chan] = x;
                     }
                 }
+
+                TickStatus::Ok
             }
-            Module::OutputDevice(state, _, _) => {
+            Module::OutputDevice(state, _, ref mut device_names) => {
                 state.tx.push_slice(inputs[0]);
+
+                if device_names.is_none() {
+                    *device_names = Some(state.host
+                        .output_devices()
+                        .map(|devices| devices
+                            .flat_map(|device| device.name().ok())
+                            .collect())
+                        .unwrap_or(Vec::new()));
+
+                    TickStatus::IndicationUpdated
+                } else {
+                    TickStatus::Ok
+                }
             }
             Module::Mixer2ch(_, _, _) => {
                 for i in 0..SAMPLES_PER_TICK {
@@ -133,6 +155,8 @@ impl Module {
                         outputs[0][j] = inputs[0][j] + inputs[1][j];
                     }
                 }
+
+                TickStatus::Ok
             }
         }
     }
@@ -155,7 +179,7 @@ impl Module {
 }
 
 pub enum EngineMessage {
-    ConnectSession(oneshot::Sender<(WorkspaceState, EngineOps)>),
+    ConnectSession(oneshot::Sender<(WorkspaceState, EngineOps, Indications)>),
     ClientMessage(ClientMessage),
 }
 
@@ -170,6 +194,7 @@ pub struct EngineSession {
 pub fn start() -> EngineHandle {
     let (cmd_tx, cmd_rx) = mpsc::sync_channel(8);
     let (log_tx, _) = broadcast::channel(64);
+    let (indic_tx, _) = broadcast::channel(64);
 
     thread::spawn(move || {
         // let mut modules = HashMap::new();
@@ -181,6 +206,7 @@ pub fn start() -> EngineHandle {
         let mut engine = Engine {
             cmd_rx,
             log_tx,
+            indic_tx,
             log_seq: Sequence::new(),
             modules: HashMap::new(),
             geometry: HashMap::new(),
@@ -210,16 +236,17 @@ impl<T> From<TrySendError<T>> for EngineError {
 }
 
 pub type EngineOps = broadcast::Receiver<(LogPosition, ModelOp)>;
+pub type Indications = broadcast::Receiver<(ModuleId, Indication)>;
 
 impl EngineHandle {
-    pub async fn connect(&self) -> Result<(WorkspaceState, EngineOps, EngineSession), EngineError> {
+    pub async fn connect(&self) -> Result<(WorkspaceState, EngineOps, Indications, EngineSession), EngineError> {
         let cmd_tx = self.cmd_tx.clone();
 
         let (tx, rx) = oneshot::channel();
         cmd_tx.try_send(EngineMessage::ConnectSession(tx))?;
-        let (state, log_rx) = rx.await.map_err(|_| EngineError::Stopped)?;
+        let (state, log_rx, indic_rx) = rx.await.map_err(|_| EngineError::Stopped)?;
 
-        Ok((state, log_rx, EngineSession { cmd_tx }))
+        Ok((state, log_rx, indic_rx, EngineSession { cmd_tx }))
     }
 }
 
@@ -238,6 +265,7 @@ pub struct Engine {
     cmd_rx: Receiver<EngineMessage>,
     log_tx: broadcast::Sender<(LogPosition, ModelOp)>,
     log_seq: Sequence,
+    indic_tx: broadcast::Sender<(ModuleId, Indication)>,
     modules: HashMap<ModuleId, Module>,
     geometry: HashMap<ModuleId, WindowGeometry>,
     module_seq: Sequence,
@@ -250,8 +278,12 @@ impl Engine {
         let mut t = 0;
 
         loop {
-            self.run_tick(t);
+            let indications = self.run_tick(t);
             t += 1;
+
+            for indication in indications {
+                let _ = self.indic_tx.send(indication);
+            }
 
             let sleep_until = start + Duration::from_millis(t * 1_000 / TICKS_PER_SECOND as u64);
 
@@ -272,10 +304,11 @@ impl Engine {
         }
     }
 
-    fn connect_session(&mut self) -> (WorkspaceState, EngineOps) {
+    fn connect_session(&mut self) -> (WorkspaceState, EngineOps, Indications) {
         let log_rx = self.log_tx.subscribe();
+        let indic_rx = self.indic_tx.subscribe();
         let state = self.dump_state();
-        (state, log_rx)
+        (state, log_rx, indic_rx)
     }
 
     fn dump_state(&self) -> WorkspaceState {
@@ -392,7 +425,7 @@ impl Engine {
         }
     }
 
-    fn run_tick(&mut self, t: u64) {
+    fn run_tick(&mut self, t: u64) -> Vec<(ModuleId, Indication)> {
         // find terminal modules - modules which do not send their output to
         // the input of any other module
 
@@ -442,6 +475,7 @@ impl Engine {
         // run modules in dependency order according to BFS above
 
         let mut buffers = HashMap::<OutputId, Vec<Sample>>::new();
+        let mut indications = Vec::new();
 
         for module_id in reverse_module_order.iter().rev() {
             let module = self.modules.get_mut(&module_id)
@@ -469,12 +503,25 @@ impl Engine {
                     .map(|vec| vec.as_mut_slice())
                     .collect::<Vec<_>>();
 
-                module.run_tick(t, &input_refs, &mut output_refs)
+                match module.run_tick(t, &input_refs, &mut output_refs) {
+                    TickStatus::Ok => {}
+                    TickStatus::IndicationUpdated => {
+                        match module {
+                            Module::SineGenerator(_, _, ()) => {}
+                            Module::Mixer2ch(_, _, ()) => {}
+                            Module::OutputDevice(_, _, indic) => {
+                                indications.push((*module_id, Indication::OutputDevice(indic.clone())));
+                            }
+                        }
+                    }
+                }
             }
 
             for (i, buffer) in output_buffers.into_iter().enumerate(){
                 buffers.insert(OutputId(*module_id, i), buffer);
             }
         }
+
+        indications
     }
 }
