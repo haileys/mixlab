@@ -12,7 +12,7 @@ use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use wasm_bindgen::prelude::*;
 
-use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, LogPosition};
+use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, Indication};
 
 use workspace::Workspace;
 
@@ -20,7 +20,7 @@ pub struct App {
     link: ComponentLink<Self>,
     websocket: WebSocketTask,
     state: Option<Rc<RefCell<State>>>,
-    log_pos: Option<LogPosition>,
+    state_seq: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -29,6 +29,7 @@ pub struct State {
     modules: BTreeMap<ModuleId, ModuleParams>,
     geometry: HashMap<ModuleId, WindowGeometry>,
     connections: HashMap<InputId, OutputId>,
+    indications: HashMap<ModuleId, Indication>,
 }
 
 impl From<WorkspaceState> for State {
@@ -37,6 +38,7 @@ impl From<WorkspaceState> for State {
             modules: wstate.modules.into_iter().collect(),
             geometry: wstate.geometry.into_iter().collect(),
             connections: wstate.connections.into_iter().collect(),
+            indications: HashMap::new(),
         }
     }
 }
@@ -76,7 +78,7 @@ impl Component for App {
             }))
         .expect("websocket.connect_binary");
 
-        App { link, websocket, state: None, log_pos: None }
+        App { link, websocket, state: None, state_seq: 0 }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
@@ -88,7 +90,7 @@ impl Component for App {
                         self.state = Some(Rc::new(RefCell::new(state.into())));
                         true
                     }
-                    ServerMessage::ModelOp(pos, op) => {
+                    ServerMessage::ModelOp(_, op) => {
                         let mut state = self.state.as_ref()
                             .expect("server should always send a WorkspaceState before a ModelOp")
                             .borrow_mut();
@@ -119,7 +121,17 @@ impl Component for App {
                             }
                         }
 
-                        self.log_pos = Some(pos);
+                        self.state_seq += 1;
+                        true
+                    }
+                    ServerMessage::Indication(module_id, indication) => {
+                        let mut state = self.state.as_ref()
+                            .expect("server should always send a WorkspaceState before an Indication")
+                            .borrow_mut();
+
+                        state.indications.insert(module_id, indication);
+
+                        self.state_seq += 1;
                         true
                     }
                 }
@@ -139,7 +151,7 @@ impl Component for App {
     fn view(&self) -> Html {
         match &self.state {
             Some(state) => {
-                html! { <Workspace app={self.link.clone()} state={state} log_pos={self.log_pos} /> }
+                html! { <Workspace app={self.link.clone()} state={state} state_seq={self.state_seq} /> }
             }
             None => html! {}
         }

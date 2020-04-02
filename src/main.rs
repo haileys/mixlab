@@ -17,7 +17,7 @@ use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
 use engine::EngineHandle;
-use mixlab_protocol::{ClientMessage, ServerMessage, ModelOp, LogPosition};
+use mixlab_protocol::{ClientMessage, ServerMessage, ModelOp, LogPosition, ModuleId, Indication};
 
 fn content(content_type: &str, reply: impl Reply) -> impl Reply {
     reply::with_header(reply, "content-type", content_type)
@@ -46,7 +46,7 @@ fn wasm() -> impl Reply {
 async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
     let (mut tx, rx) = websocket.split();
 
-    let (state, model_ops, engine) = engine.connect().await
+    let (state, model_ops, indics, engine) = engine.connect().await
         .expect("engine.connect");
 
     let state_msg = bincode::serialize(&ServerMessage::WorkspaceState(state))
@@ -59,11 +59,15 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
     enum Event {
         ClientMessage(Result<ws::Message, warp::Error>),
         ModelOp(Result<(LogPosition, ModelOp), broadcast::RecvError>),
+        Indication(Result<(ModuleId, Indication), broadcast::RecvError>),
     }
 
     let mut events = stream::select(
         rx.map(Event::ClientMessage),
-        model_ops.map(Event::ModelOp),
+        stream::select(
+            model_ops.map(Event::ModelOp),
+            indics.map(Event::Indication),
+        ),
     );
 
     while let Some(event) = events.next().await {
@@ -83,16 +87,26 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
                 println!("{:?}", msg);
                 println!(" => {:?}", engine.update(msg));
             }
-            Event::ModelOp(Err(broadcast::RecvError::Lagged(skipped))) => {
+            Event::ModelOp(Err(broadcast::RecvError::Lagged(skipped))) |
+            Event::Indication(Err(broadcast::RecvError::Lagged(skipped))) => {
                 println!("disconnecting client: lagged {} messages behind", skipped);
                 return;
             }
-            Event::ModelOp(Err(broadcast::RecvError::Closed)) => {
+            Event::ModelOp(Err(broadcast::RecvError::Closed)) |
+            Event::Indication(Err(broadcast::RecvError::Closed)) => {
                 // TODO we should tell the user that the engine has stopped
                 unimplemented!()
             }
             Event::ModelOp(Ok((pos, op))) => {
                 let msg = bincode::serialize(&ServerMessage::ModelOp(pos, op))
+                    .expect("bincode::serialize");
+
+                tx.send(ws::Message::binary(msg))
+                    .await
+                    .expect("tx.send ModelOp")
+            }
+            Event::Indication(Ok((module_id, indic))) => {
+                let msg = bincode::serialize(&ServerMessage::Indication(module_id, indic))
                     .expect("bincode::serialize");
 
                 tx.send(ws::Message::binary(msg))

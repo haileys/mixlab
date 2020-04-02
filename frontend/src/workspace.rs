@@ -8,7 +8,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEve
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, LogPosition};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication};
 
 use crate::{App, AppMsg, State};
 use crate::util::{callback_ex, stop_propagation, prevent_default};
@@ -39,7 +39,7 @@ pub struct Workspace {
 pub struct WorkspaceProps {
     pub app: ComponentLink<App>,
     pub state: Rc<RefCell<State>>,
-    pub log_pos: Option<LogPosition>,
+    pub state_seq: usize,
 }
 
 pub enum MouseMode {
@@ -109,7 +109,7 @@ impl Component for Workspace {
             should_render = true;
         }
 
-        if self.props.log_pos != new_props.log_pos {
+        if self.props.state_seq != new_props.state_seq {
             should_render = true;
         }
 
@@ -378,10 +378,19 @@ impl Component for Workspace {
                         let module = state.modules.get(id);
                         let geometry = state.geometry.get(id);
                         let workspace = self.link.clone();
+                        let indication = state.indications.get(id);
 
                         if let (Some(module), Some(geometry)) = (module, geometry) {
                             let name = format!("{:?}", module).chars().take_while(|c| c.is_alphanumeric()).collect::<String>();
-                            html! { <Window id={id} module={module} refs={refs} name={name} workspace={workspace} geometry={geometry} /> }
+                            html! { <Window
+                                id={id}
+                                module={module}
+                                refs={refs}
+                                name={name}
+                                workspace={workspace}
+                                geometry={geometry}
+                                indication={indication.cloned()}
+                            /> }
                         } else {
                             html! {}
                         }
@@ -493,6 +502,7 @@ pub struct WindowProps {
     pub name: String,
     pub workspace: ComponentLink<Workspace>,
     pub refs: WindowRef,
+    pub indication: Option<Indication>,
 }
 
 #[derive(Clone, Debug)]
@@ -627,6 +637,19 @@ impl Window {
         match &self.props.module {
             ModuleParams::SineGenerator(params) => {
                 html! { <SineGenerator id={self.props.id} module={self.link.clone()} params={params} /> }
+            }
+            ModuleParams::OutputDevice => {
+                if let Some(Indication::OutputDevice(Some(ref devices))) = self.props.indication {
+                    html! {
+                        <select>
+                            { for devices.iter().map(|device| {
+                                html! { <option>{device}</option> }
+                            }) }
+                        </select>
+                    }
+                } else {
+                    html! {}
+                }
             }
             _ => {
                 html! {}
