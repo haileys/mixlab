@@ -1,17 +1,17 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::f32;
-use std::fmt::{self, Debug};
 use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError};
 use std::thread;
 use std::time::{Instant, Duration};
 
-use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
-use ringbuf::{RingBuffer, Producer};
 use tokio::sync::{oneshot, broadcast};
 
-use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication, OutputDeviceParams, OutputDeviceIndication};
+use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication};
 
+use crate::module::{Module as ModuleT};
 use crate::util::Sequence;
+
+use crate::module::output_device::OutputDevice;
 
 pub type Sample = f32;
 
@@ -20,116 +20,57 @@ pub const SAMPLE_RATE: usize = 44100;
 pub const TICKS_PER_SECOND: usize = 10;
 pub const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
-pub struct OutputDeviceState {
-    tx: Option<Producer<f32>>,
-    host: cpal::Host,
-    // this field is never used directly but must not be dropped for the
-    // stream to continue playing:
-    stream: Option<cpal::Stream>,
-}
-
-impl Debug for OutputDeviceState {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "OutputDeviceState")
-    }
-}
-
 #[derive(Debug)]
-pub enum Module {
-    SineGenerator((), SineGeneratorParams, ()),
-    OutputDevice(OutputDeviceState, OutputDeviceParams, OutputDeviceIndication),
-    Mixer2ch((), (), ()),
-}
-
-enum TickStatus {
-    Ok,
-    IndicationUpdated,
+enum Module {
+    SineGenerator((), SineGeneratorParams),
+    OutputDevice(OutputDevice),
+    Mixer2ch((), ()),
 }
 
 impl Module {
-    fn create(params: ModuleParams) -> Self {
+    fn create(params: ModuleParams) -> (Self, Indication) {
         match params {
             ModuleParams::SineGenerator(params) => {
-                Module::SineGenerator((), params, ())
+                (Module::SineGenerator((), params), Indication::SineGenerator)
             }
             ModuleParams::OutputDevice(params) => {
-                let host = cpal::default_host();
-
-                let state = OutputDeviceState {
-                    host,
-                    tx: None,
-                    stream: None,
-                };
-
-                Module::OutputDevice(state, params, OutputDeviceIndication { devices: None })
+                let (module, indication) = OutputDevice::create(params);
+                (Module::OutputDevice(module), Indication::OutputDevice(indication))
             }
             ModuleParams::Mixer2ch => {
-                Module::Mixer2ch((), (), ())
+                (Module::Mixer2ch((), ()), Indication::Mixer2ch)
             }
         }
     }
 
     fn params(&self) -> ModuleParams {
         match self {
-            Module::SineGenerator(_, params, _) => ModuleParams::SineGenerator(params.clone()),
-            Module::OutputDevice(_, params, _) => ModuleParams::OutputDevice(params.clone()),
-            Module::Mixer2ch(_, (), _) => ModuleParams::Mixer2ch,
+            Module::SineGenerator(_, params) => ModuleParams::SineGenerator(params.clone()),
+            Module::OutputDevice(device) => ModuleParams::OutputDevice(device.params()),
+            Module::Mixer2ch(_, ()) => ModuleParams::Mixer2ch,
         }
     }
 
-    fn update(&mut self, new_params: ModuleParams) {
-        match (self, &new_params) {
-            (Module::SineGenerator(_, ref mut params, _), ModuleParams::SineGenerator(new_params)) => {
+    fn update(&mut self, new_params: ModuleParams) -> Option<Indication> {
+        match (self, new_params) {
+            (Module::SineGenerator(_, ref mut params), ModuleParams::SineGenerator(ref new_params)) => {
                 *params = new_params.clone();
+                None
             }
-            (Module::OutputDevice(ref mut state, ref mut params, _), ModuleParams::OutputDevice(new_params)) => {
-                let OutputDeviceParams { device } = new_params;
-
-                if params.device != *device {
-                    let output_device = state.host.output_devices()
-                        .ok()
-                        .and_then(|devices| {
-                            devices.into_iter().find(|dev| dev.name().map(|dev| Some(dev) == *device).unwrap_or(false))
-                        });
-
-                    if let Some(output_device) = output_device {
-                        let config = output_device.default_output_config()
-                            .expect("default_output_format");
-
-                        let (tx, mut rx) = RingBuffer::<f32>::new(SAMPLES_PER_TICK * 8).split();
-
-                        let stream = output_device.build_output_stream(
-                                &config.config(),
-                                move |data: &mut [f32]| {
-                                    let bytes = rx.pop_slice(data);
-
-                                    // zero-fill rest of buffer
-                                    for i in bytes..data.len() {
-                                        data[i] = 0.0;
-                                    }
-                                },
-                                |err| {
-                                    eprintln!("output stream error! {:?}", err);
-                                })
-                            .expect("build_output_stream");
-
-                        stream.play().expect("stream.play");
-
-                        params.device = device.clone();
-                        state.tx = Some(tx);
-                        state.stream = Some(stream);
-                    }
-                }
+            (Module::OutputDevice(device), ModuleParams::OutputDevice(ref new_params)) => {
+                device.update(new_params.clone()).map(Indication::OutputDevice)
             }
             (module, new_params) => {
-                *module = Self::create(new_params.clone());
+                let (m, indic) = Self::create(new_params.clone());
+                *module = m;
+                Some(indic)
             }
         }
     }
 
-    fn run_tick(&mut self, t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> TickStatus {
+    fn run_tick(&mut self, t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> Option<Indication> {
         match self {
-            Module::SineGenerator(_, params, _) => {
+            Module::SineGenerator(_, params) => {
                 let t = t as Sample * SAMPLES_PER_TICK as Sample;
 
                 for i in 0..SAMPLES_PER_TICK {
@@ -141,27 +82,12 @@ impl Module {
                     }
                 }
 
-                TickStatus::Ok
+                None
             }
-            Module::OutputDevice(state, _, indic) => {
-                if let Some(tx) = &mut state.tx {
-                    tx.push_slice(inputs[0]);
-                }
-
-                if indic.devices.is_none() {
-                    indic.devices = Some(state.host
-                        .output_devices()
-                        .map(|devices| devices
-                            .flat_map(|device| device.name().ok())
-                            .collect())
-                        .unwrap_or(Vec::new()));
-
-                    TickStatus::IndicationUpdated
-                } else {
-                    TickStatus::Ok
-                }
+            Module::OutputDevice(device) => {
+                device.run_tick(t, inputs, outputs).map(Indication::OutputDevice)
             }
-            Module::Mixer2ch(_, _, _) => {
+            Module::Mixer2ch(_, _) => {
                 for i in 0..SAMPLES_PER_TICK {
                     for chan in 0..CHANNELS {
                         let j = i * CHANNELS + chan;
@@ -169,7 +95,7 @@ impl Module {
                     }
                 }
 
-                TickStatus::Ok
+                None
             }
         }
     }
@@ -366,9 +292,11 @@ impl Engine {
                 // window geometry and so should not own this data and force
                 // all accesses to it to go via the live audio thread
                 let id = ModuleId(self.module_seq.next());
-                self.modules.insert(id, Module::create(params.clone()));
+                let (module, indications) = Module::create(params.clone());
+                self.modules.insert(id, module);
                 self.geometry.insert(id, geometry.clone());
-                self.log_op(ModelOp::CreateModule(id, params, geometry));
+                self.indications.insert(id, indications.clone());
+                self.log_op(ModelOp::CreateModule(id, params, geometry, indications));
             }
             ClientMessage::UpdateModuleParams(module_id, params) => {
                 if let Some(module) = self.modules.get_mut(&module_id) {
@@ -525,15 +453,9 @@ impl Engine {
                     .collect::<Vec<_>>();
 
                 match module.run_tick(t, &input_refs, &mut output_refs) {
-                    TickStatus::Ok => {}
-                    TickStatus::IndicationUpdated => {
-                        match module {
-                            Module::SineGenerator(_, _, ()) => {}
-                            Module::Mixer2ch(_, _, ()) => {}
-                            Module::OutputDevice(_, _, indic) => {
-                                indications.push((*module_id, Indication::OutputDevice(indic.clone())));
-                            }
-                        }
+                    None => {}
+                    Some(indic) => {
+                        indications.push((*module_id, indic));
                     }
                 }
             }

@@ -1,6 +1,7 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
 mod engine;
+mod module;
 mod util;
 
 static INDEX_HTML: &str = include_str!("../frontend/static/index.html");
