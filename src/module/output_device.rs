@@ -6,7 +6,7 @@ use ringbuf::{RingBuffer, Producer};
 
 use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication};
 
-use crate::engine::{Sample, SAMPLES_PER_TICK};
+use crate::engine::Sample;
 use crate::module::Module;
 
 pub struct OutputDevice {
@@ -67,7 +67,7 @@ impl Module for OutputDevice {
                 let config = output_device.default_output_config()
                     .expect("default_output_format");
 
-                let (tx, mut rx) = RingBuffer::<f32>::new(SAMPLES_PER_TICK * 8).split();
+                let (tx, mut rx) = RingBuffer::<f32>::new(65536).split();
 
                 let stream = output_device.build_output_stream(
                         &config.config(),
