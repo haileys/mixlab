@@ -122,6 +122,10 @@ impl Component for App {
                         self.log_pos = Some(pos);
                         true
                     }
+                    ServerMessage::Indication(module_id, indication) => {
+                        crate::log!("indications: {:?} => {:?}", module_id, indication);
+                        false
+                    }
                 }
             }
             AppMsg::ClientUpdate(msg) => {
