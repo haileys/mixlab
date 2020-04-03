@@ -4,7 +4,6 @@ use serde_derive::{Serialize, Deserialize};
 pub enum ServerMessage {
     WorkspaceState(WorkspaceState),
     ModelOp(LogPosition, ModelOp),
-    Indication(ModuleId, Indication),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -40,6 +39,7 @@ pub enum ModelOp {
     },
     UpdateModuleParams(ModuleId, ModuleParams),
     UpdateWindowGeometry(ModuleId, WindowGeometry),
+    UpdateModuleIndication(ModuleId, Indication),
     DeleteModule(ModuleId),
     CreateConnection(InputId, OutputId),
     DeleteConnection(InputId),
