@@ -30,7 +30,14 @@ pub struct LogPosition(pub usize);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModelOp {
-    CreateModule(ModuleId, ModuleParams, WindowGeometry, Indication),
+    CreateModule {
+        id: ModuleId,
+        params: ModuleParams,
+        geometry: WindowGeometry,
+        indication: Indication,
+        inputs: Vec<LineType>,
+        outputs: Vec<LineType>,
+    },
     UpdateModuleParams(ModuleId, ModuleParams),
     UpdateWindowGeometry(ModuleId, WindowGeometry),
     DeleteModule(ModuleId),
@@ -82,7 +89,7 @@ impl OutputId {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineType {
     Stereo,
 }

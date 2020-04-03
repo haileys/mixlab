@@ -338,11 +338,21 @@ impl Engine {
                 // window geometry and so should not own this data and force
                 // all accesses to it to go via the live audio thread
                 let id = ModuleId(self.module_seq.next());
-                let (module, indications) = Module::create(params.clone());
+                let (module, indication) = Module::create(params.clone());
+                let inputs = module.inputs().to_vec();
+                let outputs = module.outputs().to_vec();
                 self.modules.insert(id, module);
                 self.geometry.insert(id, geometry.clone());
-                self.indications.insert(id, indications.clone());
-                self.log_op(ModelOp::CreateModule(id, params, geometry, indications));
+                self.indications.insert(id, indication.clone());
+
+                self.log_op(ModelOp::CreateModule {
+                    id,
+                    params,
+                    geometry,
+                    indication,
+                    inputs,
+                    outputs,
+                });
             }
             ClientMessage::UpdateModuleParams(module_id, params) => {
                 if let Some(module) = self.modules.get_mut(&module_id) {
