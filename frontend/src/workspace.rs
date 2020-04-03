@@ -7,8 +7,9 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState};
 
+use crate::module::trigger::Trigger;
 use crate::module::amplifier::Amplifier;
 use crate::module::fm_sine::FmSine;
 use crate::module::output_device::OutputDevice;
@@ -424,6 +425,7 @@ impl Workspace {
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default(), NodeRef::default()],
                 ModuleParams::FmSine(_) => vec![NodeRef::default()],
                 ModuleParams::Amplifier(_) => vec![NodeRef::default(), NodeRef::default()],
+                ModuleParams::Trigger(_) => vec![],
             },
             outputs: match module {
                 ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
@@ -431,6 +433,7 @@ impl Workspace {
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default()],
                 ModuleParams::FmSine(_) => vec![NodeRef::default()],
                 ModuleParams::Amplifier(_) => vec![NodeRef::default()],
+                ModuleParams::Trigger(_) => vec![NodeRef::default()],
             },
         };
 
@@ -465,6 +468,7 @@ impl Workspace {
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None, left: None, right: None })),
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
             ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
+            ("Trigger", ModuleParams::Trigger(GateState::Closed)),
         ];
 
         html! {
@@ -662,6 +666,9 @@ impl Window {
             }
             ModuleParams::Amplifier(params) => {
                 html! { <Amplifier id={self.props.id} module={self.link.clone()} params={params} /> }
+            }
+            ModuleParams::Trigger(params) => {
+                html! { <Trigger id={self.props.id} module={self.link.clone()} params={params} /> }
             }
         }
     }
