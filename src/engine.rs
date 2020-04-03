@@ -390,20 +390,25 @@ impl Engine {
                 }
             }
             ClientMessage::CreateConnection(input_id, output_id) => {
-                // validate
-                if !validate_terminal(self, TerminalId::Input(input_id)) {
-                    return;
-                }
+                let input_type = match terminal_line_type(self, TerminalId::Input(input_id)) {
+                    Some(ty) => ty,
+                    None => return,
+                };
 
-                if !validate_terminal(self, TerminalId::Output(output_id)) {
-                    return;
-                }
+                let output_type = match terminal_line_type(self, TerminalId::Output(output_id)) {
+                    Some(ty) => ty,
+                    None => return,
+                };
 
-                if let Some(_) = self.connections.insert(input_id, output_id) {
-                    self.log_op(ModelOp::DeleteConnection(input_id));
-                }
+                if input_type == output_type {
+                    if let Some(_) = self.connections.insert(input_id, output_id) {
+                        self.log_op(ModelOp::DeleteConnection(input_id));
+                    }
 
-                self.log_op(ModelOp::CreateConnection(input_id, output_id));
+                    self.log_op(ModelOp::CreateConnection(input_id, output_id));
+                } else {
+                    // type mismatch, don't connect
+                }
             }
             ClientMessage::DeleteConnection(input_id) => {
                 if let Some(_) = self.connections.remove(&input_id) {
@@ -412,20 +417,17 @@ impl Engine {
             }
         }
 
-        fn validate_terminal(engine: &Engine, terminal: TerminalId) -> bool{
-            if let Some(module) = engine.modules.get(&terminal.module_id()) {
+        fn terminal_line_type(engine: &Engine, terminal: TerminalId) -> Option<LineType> {
+            engine.modules.get(&terminal.module_id()).and_then(|module| {
                 match terminal {
                     TerminalId::Input(input) => {
-                        input.index() < module.inputs().len()
+                        module.inputs().get(input.index()).cloned()
                     }
                     TerminalId::Output(output) => {
-                        output.index() < module.outputs().len()
+                        module.outputs().get(output.index()).cloned()
                     }
                 }
-            } else {
-                // no such module
-                false
-            }
+            })
         }
     }
 
