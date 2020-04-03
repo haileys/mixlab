@@ -25,9 +25,10 @@ pub struct App {
     state: Option<Rc<RefCell<State>>>,
     state_seq: usize,
     root_element: Element,
-    resize_listener: EventListener,
     viewport_width: usize,
     viewport_height: usize,
+    // must be kept alive while app is running:
+    _resize_listener: EventListener,
 }
 
 #[derive(Debug, Clone)]
@@ -89,11 +90,6 @@ impl Component for App {
         let window = web_sys::window()
             .expect("window");
 
-        let resize_listener = EventListener::new(&window, "resize", {
-            let link = link.clone();
-            move |_| { link.send_message(AppMsg::WindowResize) }
-        });
-
         let root_element = window.document()
             .and_then(|doc| doc.document_element())
             .expect("root element");
@@ -101,15 +97,20 @@ impl Component for App {
         let viewport_width = root_element.client_width() as usize;
         let viewport_height = root_element.client_height() as usize;
 
+        let resize_listener = EventListener::new(&window, "resize", {
+            let link = link.clone();
+            move |_| { link.send_message(AppMsg::WindowResize) }
+        });
+
         App {
             link,
             websocket,
             state: None,
             state_seq: 0,
             root_element,
-            resize_listener,
             viewport_width,
             viewport_height,
+            _resize_listener: resize_listener,
         }
     }
 
