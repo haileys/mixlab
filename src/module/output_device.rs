@@ -6,16 +6,22 @@ use ringbuf::{RingBuffer, Producer};
 
 use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication};
 
-use crate::engine::{Sample, ZERO_BUFFER};
+use crate::engine::{Sample, CHANNELS};
 use crate::module::Module;
 
 pub struct OutputDevice {
     params: OutputDeviceParams,
     host: cpal::Host,
-    tx: Option<Producer<f32>>,
+    scratch: Vec<Sample>,
+    stream: Option<OutputStream>,
+}
+
+struct OutputStream {
+    tx: Producer<f32>,
+    config: cpal::StreamConfig,
     // this field is never used directly but must not be dropped for the
     // stream to continue playing:
-    stream: Option<cpal::Stream>,
+    _stream: cpal::Stream,
 }
 
 impl Debug for OutputDevice {
@@ -34,7 +40,7 @@ impl Module for OutputDevice {
         let device = OutputDevice {
             params,
             host,
-            tx: None,
+            scratch: Vec::new(),
             stream: None,
         };
 
@@ -42,7 +48,11 @@ impl Module for OutputDevice {
         let devices = Some(device.host
             .output_devices()
             .map(|devices| devices
-                .flat_map(|device| device.name().ok())
+                .flat_map(|device| -> Option<_> {
+                    let name = device.name().ok()?;
+                    let config = device.default_output_config().ok()?;
+                    Some((name, config.channels() as usize))
+                })
                 .collect())
             .unwrap_or(Vec::new()));
 
@@ -54,7 +64,7 @@ impl Module for OutputDevice {
     }
 
     fn update(&mut self, new_params: Self::Params) -> Option<Self::Indication> {
-        let OutputDeviceParams { device } = new_params;
+        let OutputDeviceParams { device, left, right } = new_params;
 
         if self.params.device != device {
             let output_device = self.host.output_devices()
@@ -86,18 +96,67 @@ impl Module for OutputDevice {
 
                 stream.play().expect("stream.play");
 
+                let stream = OutputStream {
+                    tx,
+                    config: config.config(),
+                    _stream: stream,
+                };
+
                 self.params.device = device.clone();
-                self.tx = Some(tx);
                 self.stream = Some(stream);
+            } else {
+                self.stream = None;
             }
+        }
+
+        if let Some(stream) = self.stream.as_ref() {
+            // zero scratch buffer if channel assignments change so that we don't
+            // keep playing left over data:
+
+            if self.params.left != left || self.params.right != right {
+                for sample in self.scratch.iter_mut() {
+                    *sample = 0.0;
+                }
+            }
+
+            // assign left and right channels, validating that they are within range:
+
+            self.params.left = left.filter(|left|
+                *left < stream.config.channels as usize);
+
+            self.params.right = right.filter(|right|
+                *right < stream.config.channels as usize);
         }
 
         None
     }
 
     fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], _outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        if let Some(tx) = &mut self.tx {
-            tx.push_slice(inputs[0].unwrap_or(&ZERO_BUFFER));
+        let input = match inputs[0] {
+            Some(input) => input,
+            None => return None,
+        };
+
+        if let Some(stream) = &mut self.stream {
+            let output_channels = stream.config.channels as usize;
+            let samples_per_channel = input.len() / CHANNELS;
+            let scratch_len = samples_per_channel * output_channels;
+
+            if self.scratch.len() < scratch_len {
+                self.scratch.resize(scratch_len, 0.0);
+            }
+
+            for i in 0..samples_per_channel {
+                if let Some(left) = self.params.left {
+                    self.scratch[output_channels * i + left] = input[CHANNELS * i + 0];
+                }
+
+                if let Some(right) = self.params.right {
+                    self.scratch[output_channels * i + right] = input[CHANNELS * i + 1];
+                }
+            }
+
+            stream.tx.push_slice(&self.scratch[0..(samples_per_channel * output_channels)]);
         }
 
         None
