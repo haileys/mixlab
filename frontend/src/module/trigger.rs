@@ -6,18 +6,18 @@ use mixlab_protocol::{ModuleId, ModuleParams, GateState};
 use crate::workspace::{Window, WindowMsg};
 
 #[derive(Properties, Clone, Debug)]
-pub struct GateProps {
+pub struct TriggerProps {
     pub id: ModuleId,
     pub module: ComponentLink<Window>,
     pub params: GateState,
 }
 
-pub struct Gate {
-    props: GateProps,
+pub struct Trigger {
+    props: TriggerProps,
 }
 
-impl Component for Gate {
-    type Properties = GateProps;
+impl Component for Trigger {
+    type Properties = TriggerProps;
     type Message = ();
 
     fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
@@ -38,10 +38,10 @@ impl Component for Gate {
             <>
                 <button
                     onmousedown={self.props.module.callback(move |ev| {
-                        WindowMsg::UpdateParams(ModuleParams::Gate(GateState::Open))
+                        WindowMsg::UpdateParams(ModuleParams::Trigger(GateState::Open))
                     })}
                     onmouseup={self.props.module.callback(move |ev| {
-                        WindowMsg::UpdateParams(ModuleParams::Gate(GateState::Closed))
+                        WindowMsg::UpdateParams(ModuleParams::Trigger(GateState::Closed))
                     })}
                 >{"Trigger"}</button>
             </>

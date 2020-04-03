@@ -1,19 +1,19 @@
 use mixlab_protocol::GateState;
 
-use crate::engine::{Sample, CHANNELS};
+use crate::engine::Sample;
 use crate::module::Module;
 
 #[derive(Debug)]
-pub struct Gate {
+pub struct Trigger {
     params: GateState,
 }
 
-impl Module for Gate {
+impl Module for Trigger {
     type Params = GateState;
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
-        (Gate { params }, ())
+        (Trigger { params }, ())
     }
 
     fn params(&self) -> Self::Params {

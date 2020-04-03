@@ -89,7 +89,7 @@ pub enum ModuleParams {
     Mixer2ch(()),
     FmSine(FmSineParams),
     Amplifier(AmplifierParams),
-    Gate(GateState),
+    Trigger(GateState),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -99,7 +99,7 @@ pub enum Indication {
     Mixer2ch(()),
     FmSine(()),
     Amplifier(()),
-    Gate(()),
+    Trigger(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
