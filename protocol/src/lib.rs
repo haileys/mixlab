@@ -124,6 +124,7 @@ pub struct FmSineParams {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AmplifierParams {
     pub amplitude: f32,
+    pub mod_depth: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
