@@ -24,7 +24,7 @@ impl Module for Mixer2ch {
         let len = outputs[0].len();
 
         let input0 = &inputs[0].unwrap_or(&ZERO_BUFFER);
-        let input1 = &inputs[0].unwrap_or(&ZERO_BUFFER);
+        let input1 = &inputs[1].unwrap_or(&ZERO_BUFFER);
 
         for i in 0..len {
             outputs[0][i] = input0[i] + input1[i];
