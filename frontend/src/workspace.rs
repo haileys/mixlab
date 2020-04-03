@@ -51,7 +51,7 @@ pub struct WorkspaceProps {
 pub enum MouseMode {
     Normal,
     Drag(Drag),
-    Connect(TerminalId, Option<Coords>),
+    Connect(TerminalId, TerminalRef, Option<Coords>),
     ContextMenu(Coords),
 }
 
@@ -66,7 +66,7 @@ pub enum WorkspaceMsg {
     MouseDown(MouseEvent),
     MouseUp(MouseEvent),
     MouseMove(MouseEvent),
-    SelectTerminal(TerminalId),
+    SelectTerminal(TerminalId, TerminalRef),
     ClearTerminal(TerminalId),
     DeleteWindow(ModuleId),
     UpdateModuleParams(ModuleId, ModuleParams),
@@ -226,33 +226,39 @@ impl Component for Workspace {
                     MouseMode::Drag(ref mut drag) => {
                         drag_event(&mut self.props.state.borrow_mut(), &self.window_refs, drag, ev)
                     }
-                    MouseMode::Connect(_terminal, ref mut coords) => {
+                    MouseMode::Connect(_, _, ref mut coords) => {
                         *coords = Some(Coords { x: ev.page_x(), y: ev.page_y() });
                         true
                     }
                 }
             }
-            WorkspaceMsg::SelectTerminal(terminal) => {
+            WorkspaceMsg::SelectTerminal(terminal_id, terminal_ref) => {
                 match &self.mouse {
                     MouseMode::Normal | MouseMode::ContextMenu(_) => {
-                        self.mouse = MouseMode::Connect(terminal, None);
+                        self.mouse = MouseMode::Connect(terminal_id, terminal_ref, None);
                         false
                     }
-                    MouseMode::Connect(other_terminal, _) => {
-                        match (terminal, *other_terminal) {
+                    MouseMode::Connect(other_terminal_id, other_terminal_ref, _) => {
+                        match (terminal_id, *other_terminal_id) {
                             (TerminalId::Input(input), TerminalId::Output(output)) |
                             (TerminalId::Output(output), TerminalId::Input(input)) => {
-                                self.props.state.borrow_mut()
-                                    .connections
-                                    .insert(input, output);
+                                let mut state = self.props.state.borrow_mut();
 
-                                self.mouse = MouseMode::Normal;
+                                if terminal_ref.line_type == other_terminal_ref.line_type {
+                                    state.connections.insert(input, output);
 
-                                self.props.app.send_message(
-                                    AppMsg::ClientUpdate(
-                                        ClientMessage::CreateConnection(input, output)));
+                                    self.mouse = MouseMode::Normal;
 
-                                true
+                                    self.props.app.send_message(
+                                        AppMsg::ClientUpdate(
+                                            ClientMessage::CreateConnection(input, output)));
+
+                                    true
+                                } else {
+                                    // type mismatch on connection, don't let the user connect it.
+                                    // TODO - should we show an error or an icon or something?
+                                    false
+                                }
                             }
                             _ => {
                                 // invalid connection, don't let the user do it
@@ -384,9 +390,9 @@ impl Component for Workspace {
 
         crate::log!("view: connections: {:?}", connections);
 
-        if let MouseMode::Connect(terminal, Some(to_coords)) = &self.mouse {
-            if let Some(start_coords) = self.screen_coords_for_terminal(*terminal) {
-                let pair = match terminal {
+        if let MouseMode::Connect(terminal_id, _, Some(to_coords)) = &self.mouse {
+            if let Some(start_coords) = self.screen_coords_for_terminal(*terminal_id) {
+                let pair = match terminal_id {
                     TerminalId::Input(_) => (*to_coords, start_coords),
                     TerminalId::Output(_) => (start_coords, *to_coords),
                 };
@@ -524,7 +530,7 @@ pub struct Window {
 #[derive(Debug)]
 pub enum WindowMsg {
     DragStart(MouseEvent),
-    TerminalMouseDown(MouseEvent, TerminalId),
+    TerminalMouseDown(MouseEvent, TerminalId, TerminalRef),
     Delete,
     UpdateParams(ModuleParams),
 }
@@ -572,13 +578,13 @@ impl Component for Window {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DragStart(self.props.id, ev));
             }
-            WindowMsg::TerminalMouseDown(ev, terminal_id) => {
+            WindowMsg::TerminalMouseDown(ev, terminal_id, terminal_ref) => {
                 let msg =
                     if (ev.buttons() & 2) != 0 {
                         // right click
                         WorkspaceMsg::ClearTerminal(terminal_id)
                     } else {
-                        WorkspaceMsg::SelectTerminal(terminal_id)
+                        WorkspaceMsg::SelectTerminal(terminal_id, terminal_ref)
                     };
 
                 self.props.workspace.send_message(msg);
@@ -649,8 +655,11 @@ impl Window {
 
                 html! {
                     <Terminal
-                        terminal={terminal_ref}
-                        onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
+                        terminal={terminal_ref.clone()}
+                        onmousedown={self.link.callback({
+                            let terminal_ref = terminal_ref.clone();
+                            move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id, terminal_ref.clone())
+                        })}
                     />
                 }
             }) }
@@ -664,8 +673,11 @@ impl Window {
 
                 html! {
                     <Terminal
-                        terminal={terminal_ref}
-                        onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
+                        terminal={terminal_ref.clone()}
+                        onmousedown={self.link.callback({
+                            let terminal_ref = terminal_ref.clone();
+                            move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id, terminal_ref.clone())
+                        })}
                     />
                 }
             }) }
