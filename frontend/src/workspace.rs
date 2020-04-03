@@ -1036,7 +1036,22 @@ impl Component for KeyboardGate {
                     disabled={true}
                     value="Q"
                 />
-                <button>{"Trigger"}</button>
+                <button
+                    onmousedown={self.props.module.callback(move |ev| {
+                        WindowMsg::UpdateParams(
+                                ModuleParams::KeyboardGate(KeyboardGateParams {
+                                    gate: Gate::Open
+                                })
+                        )
+                    })}
+                    onmouseup={self.props.module.callback(move |ev| {
+                        WindowMsg::UpdateParams(
+                                ModuleParams::KeyboardGate(KeyboardGateParams {
+                                    gate: Gate::Closed
+                                })
+                        )
+                    })}
+                >{"Trigger"}</button>
             </>
         }
     }
