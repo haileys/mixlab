@@ -170,7 +170,7 @@ impl Module {
 }
 
 pub enum EngineMessage {
-    ConnectSession(oneshot::Sender<(WorkspaceState, EngineOps, Indications)>),
+    ConnectSession(oneshot::Sender<(WorkspaceState, EngineOps)>),
     ClientMessage(ClientMessage),
 }
 
@@ -185,13 +185,11 @@ pub struct EngineSession {
 pub fn start() -> EngineHandle {
     let (cmd_tx, cmd_rx) = mpsc::sync_channel(8);
     let (log_tx, _) = broadcast::channel(64);
-    let (indic_tx, _) = broadcast::channel(64);
 
     thread::spawn(move || {
         let mut engine = Engine {
             cmd_rx,
             log_tx,
-            indic_tx,
             log_seq: Sequence::new(),
             modules: HashMap::new(),
             geometry: HashMap::new(),
@@ -222,17 +220,16 @@ impl<T> From<TrySendError<T>> for EngineError {
 }
 
 pub type EngineOps = broadcast::Receiver<(LogPosition, ModelOp)>;
-pub type Indications = broadcast::Receiver<(ModuleId, Indication)>;
 
 impl EngineHandle {
-    pub async fn connect(&self) -> Result<(WorkspaceState, EngineOps, Indications, EngineSession), EngineError> {
+    pub async fn connect(&self) -> Result<(WorkspaceState, EngineOps, EngineSession), EngineError> {
         let cmd_tx = self.cmd_tx.clone();
 
         let (tx, rx) = oneshot::channel();
         cmd_tx.try_send(EngineMessage::ConnectSession(tx))?;
-        let (state, log_rx, indic_rx) = rx.await.map_err(|_| EngineError::Stopped)?;
+        let (state, log_rx) = rx.await.map_err(|_| EngineError::Stopped)?;
 
-        Ok((state, log_rx, indic_rx, EngineSession { cmd_tx }))
+        Ok((state, log_rx, EngineSession { cmd_tx }))
     }
 }
 
@@ -251,7 +248,6 @@ pub struct Engine {
     cmd_rx: Receiver<EngineMessage>,
     log_tx: broadcast::Sender<(LogPosition, ModelOp)>,
     log_seq: Sequence,
-    indic_tx: broadcast::Sender<(ModuleId, Indication)>,
     modules: HashMap<ModuleId, Module>,
     geometry: HashMap<ModuleId, WindowGeometry>,
     module_seq: Sequence,
@@ -270,7 +266,7 @@ impl Engine {
 
             for (module_id, indication) in indications {
                 self.indications.insert(module_id, indication.clone());
-                let _ = self.indic_tx.send((module_id, indication));
+                self.log_op(ModelOp::UpdateModuleIndication(module_id, indication));
             }
 
             let sleep_until = start + Duration::from_millis(tick * 1_000 / TICKS_PER_SECOND as u64);
@@ -292,11 +288,10 @@ impl Engine {
         }
     }
 
-    fn connect_session(&mut self) -> (WorkspaceState, EngineOps, Indications) {
+    fn connect_session(&mut self) -> (WorkspaceState, EngineOps) {
         let log_rx = self.log_tx.subscribe();
-        let indic_rx = self.indic_tx.subscribe();
         let state = self.dump_state();
-        (state, log_rx, indic_rx)
+        (state, log_rx)
     }
 
     fn dump_state(&self) -> WorkspaceState {

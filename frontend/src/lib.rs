@@ -149,6 +149,11 @@ impl Component for App {
                                     *geometry = new_geometry;
                                 }
                             }
+                            ModelOp::UpdateModuleIndication(id, new_indication) => {
+                                if let Some(indication) = state.indications.get_mut(&id) {
+                                    *indication = new_indication;
+                                }
+                            }
                             ModelOp::DeleteModule(id) => {
                                 state.modules.remove(&id);
                                 state.geometry.remove(&id);
@@ -161,16 +166,6 @@ impl Component for App {
                                 state.connections.remove(&input);
                             }
                         }
-
-                        self.state_seq += 1;
-                        true
-                    }
-                    ServerMessage::Indication(module_id, indication) => {
-                        let mut state = self.state.as_ref()
-                            .expect("server should always send a WorkspaceState before an Indication")
-                            .borrow_mut();
-
-                        state.indications.insert(module_id, indication);
 
                         self.state_seq += 1;
                         true
