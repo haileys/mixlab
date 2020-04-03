@@ -14,6 +14,7 @@ use crate::util::Sequence;
 use crate::module::mixer_2ch::Mixer2ch;
 use crate::module::output_device::OutputDevice;
 use crate::module::sine_generator::SineGenerator;
+use crate::module::fm_sine::FmSine;
 
 pub type Sample = f32;
 
@@ -27,74 +28,124 @@ enum Module {
     SineGenerator(SineGenerator),
     OutputDevice(OutputDevice),
     Mixer2ch(Mixer2ch),
+    FmSine(FmSine),
 }
 
 impl Module {
     fn create(params: ModuleParams) -> (Self, Indication) {
-        match params {
-            ModuleParams::SineGenerator(params) => {
-                let (module, indication) = SineGenerator::create(params);
-                (Module::SineGenerator(module), Indication::SineGenerator(indication))
+        macro_rules! gen {
+            ($( $module:ident , )*) => {
+                match params {
+                    $(
+                        ModuleParams::$module(params) => {
+                            let (module, indication) = $module::create(params);
+                            (Module::$module(module), Indication::$module(indication))
+                        }
+                    )*
+                }
             }
-            ModuleParams::OutputDevice(params) => {
-                let (module, indication) = OutputDevice::create(params);
-                (Module::OutputDevice(module), Indication::OutputDevice(indication))
-            }
-            ModuleParams::Mixer2ch(params) => {
-                let (module, indication) = Mixer2ch::create(params);
-                (Module::Mixer2ch(module), Indication::Mixer2ch(indication))
-            }
+        }
+
+        gen! {
+            SineGenerator,
+            OutputDevice,
+            Mixer2ch,
+            FmSine,
         }
     }
 
     fn params(&self) -> ModuleParams {
-        match self {
-            Module::SineGenerator(m) => ModuleParams::SineGenerator(m.params()),
-            Module::OutputDevice(m) => ModuleParams::OutputDevice(m.params()),
-            Module::Mixer2ch(m) => ModuleParams::Mixer2ch(m.params()),
+        macro_rules! gen {
+            ($( $module:ident , )*) => {
+                match self {
+                    $(Module::$module(m) => ModuleParams::$module(m.params()),)*
+                }
+            }
+        }
+
+        gen! {
+            SineGenerator,
+            OutputDevice,
+            Mixer2ch,
+            FmSine,
         }
     }
 
     fn update(&mut self, new_params: ModuleParams) -> Option<Indication> {
-        match (self, new_params) {
-            (Module::SineGenerator(m), ModuleParams::SineGenerator(ref new_params)) =>
-                m.update(new_params.clone()).map(Indication::SineGenerator),
-            (Module::OutputDevice(m), ModuleParams::OutputDevice(ref new_params)) =>
-                m.update(new_params.clone()).map(Indication::OutputDevice),
-            (Module::Mixer2ch(m), ModuleParams::Mixer2ch(ref new_params)) =>
-                m.update(new_params.clone()).map(Indication::Mixer2ch),
-            (module, new_params) => {
-                let (m, indic) = Self::create(new_params.clone());
-                *module = m;
-                Some(indic)
+        macro_rules! gen {
+            ($( $module:ident , )*) => {
+                match (self, new_params) {
+                    $(
+                        (Module::$module(m), ModuleParams::$module(ref new_params)) =>
+                            m.update(new_params.clone()).map(Indication::$module),
+                    )*
+                    (module, new_params) => {
+                        let (m, indic) = Self::create(new_params.clone());
+                        *module = m;
+                        Some(indic)
+                    }
+                }
             }
+        }
+
+        gen! {
+            SineGenerator,
+            OutputDevice,
+            Mixer2ch,
+            FmSine,
         }
     }
 
     fn run_tick(&mut self, t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> Option<Indication> {
-        match self {
-            Module::SineGenerator(m) =>
-                m.run_tick(t, inputs, outputs).map(Indication::SineGenerator),
-            Module::OutputDevice(m) =>
-                m.run_tick(t, inputs, outputs).map(Indication::OutputDevice),
-            Module::Mixer2ch(m) =>
-                m.run_tick(t, inputs, outputs).map(Indication::Mixer2ch),
+        macro_rules! gen {
+            ($( $module:ident , )*) => {
+                match self {
+                    $(
+                        Module::$module(m) => m.run_tick(t, inputs, outputs).map(Indication::$module),
+                    )*
+                }
+            }
+        }
+
+        gen! {
+            SineGenerator,
+            OutputDevice,
+            Mixer2ch,
+            FmSine,
         }
     }
 
     fn input_count(&self) -> usize {
-        match self {
-            Module::SineGenerator(m) => m.input_count(),
-            Module::OutputDevice(m) => m.input_count(),
-            Module::Mixer2ch(..) => 2,
+        macro_rules! gen {
+            ($( $module:ident , )*) => {
+                match self {
+                    $(Module::$module(m) => m.input_count(),)*
+                }
+            }
+        }
+
+        gen! {
+            SineGenerator,
+            OutputDevice,
+            Mixer2ch,
+            FmSine,
         }
     }
 
     fn output_count(&self) -> usize {
-        match self {
-            Module::SineGenerator(m) => m.output_count(),
-            Module::OutputDevice(m) => m.output_count(),
-            Module::Mixer2ch(..) => 1,
+        macro_rules! gen {
+            ($( $module:ident , )*) => {
+                match self {
+                    $(Module::$module(m) => m.output_count(),)*
+                }
+            }
+        }
+
+        gen! {
+            SineGenerator,
+            OutputDevice,
+            Mixer2ch,
+            FmSine,
         }
     }
 }
@@ -118,12 +169,6 @@ pub fn start() -> EngineHandle {
     let (indic_tx, _) = broadcast::channel(64);
 
     thread::spawn(move || {
-        // let mut modules = HashMap::new();
-        // modules.insert(ModuleId(0), Module::create(ModuleParams::SineGenerator(SineGeneratorParams { freq: 220.0 })));
-        // modules.insert(ModuleId(1), Module::create(ModuleParams::SineGenerator(SineGeneratorParams { freq: 295.0 })));
-        // modules.insert(ModuleId(2), Module::create(ModuleParams::OutputDevice));
-        // modules.insert(ModuleId(3), Module::create(ModuleParams::Mixer2ch));
-
         let mut engine = Engine {
             cmd_rx,
             log_tx,

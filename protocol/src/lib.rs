@@ -87,6 +87,7 @@ pub enum ModuleParams {
     SineGenerator(SineGeneratorParams),
     OutputDevice(OutputDeviceParams),
     Mixer2ch(()),
+    FmSine(FmSineParams),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -94,11 +95,12 @@ pub enum Indication {
     SineGenerator(()),
     OutputDevice(OutputDeviceIndication),
     Mixer2ch(()),
+    FmSine(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SineGeneratorParams {
-    pub freq: f64,
+    pub freq: f32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -109,6 +111,12 @@ pub struct OutputDeviceParams {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OutputDeviceIndication {
     pub devices: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FmSineParams {
+    pub freq_lo: f32,
+    pub freq_hi: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]

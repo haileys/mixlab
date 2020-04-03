@@ -9,7 +9,7 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRe
 use yew::components::Select;
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, OutputDeviceIndication};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, OutputDeviceIndication, FmSineParams};
 
 use crate::{App, AppMsg, State};
 use crate::util::{callback_ex, stop_propagation, prevent_default};
@@ -420,11 +420,13 @@ impl Workspace {
                 ModuleParams::SineGenerator(_) => vec![],
                 ModuleParams::OutputDevice(_) => vec![NodeRef::default()],
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default(), NodeRef::default()],
+                ModuleParams::FmSine(_) => vec![NodeRef::default()],
             },
             outputs: match module {
                 ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
                 ModuleParams::OutputDevice(_) => vec![],
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default()],
+                ModuleParams::FmSine(_) => vec![NodeRef::default()],
             },
         };
 
@@ -457,6 +459,7 @@ impl Workspace {
             ("Sine Generator", ModuleParams::SineGenerator(SineGeneratorParams { freq: 100.0 })),
             ("Mixer (2 channel)", ModuleParams::Mixer2ch(())),
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None })),
+            ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
         ];
 
         html! {
@@ -639,6 +642,9 @@ impl Window {
             ModuleParams::SineGenerator(params) => {
                 html! { <SineGenerator id={self.props.id} module={self.link.clone()} params={params} /> }
             }
+            ModuleParams::Mixer2ch(_) => {
+                html! {}
+            }
             ModuleParams::OutputDevice(params) => {
                 if let Some(Indication::OutputDevice(indic)) = &self.props.indication {
                     html! { <OutputDevice id={self.props.id} module={self.link.clone()} params={params} indication={indic} /> }
@@ -646,8 +652,8 @@ impl Window {
                     html! {}
                 }
             }
-            _ => {
-                html! {}
+            ModuleParams::FmSine(params) => {
+                html! { <FmSine id={self.props.id} module={self.link.clone()} params={params} /> }
             }
         }
     }
@@ -692,7 +698,7 @@ impl Component for SineGenerator {
                     id={&freq_id}
                     onchange={self.props.module.callback(move |ev| {
                         if let ChangeData::Value(freq_str) = ev {
-                            let freq = freq_str.parse().unwrap_or(0f64);
+                            let freq = freq_str.parse().unwrap_or(0.0);
                             let params = SineGeneratorParams { freq, ..params };
                             WindowMsg::UpdateParams(
                                 ModuleParams::SineGenerator(params))
@@ -701,6 +707,83 @@ impl Component for SineGenerator {
                         }
                     })}
                     value={self.props.params.freq}
+                />
+            </>
+        }
+    }
+}
+
+#[derive(Properties, Clone, Debug)]
+pub struct FmSineProps {
+    id: ModuleId,
+    module: ComponentLink<Window>,
+    params: FmSineParams,
+}
+
+pub struct FmSine {
+    props: FmSineProps,
+}
+
+impl Component for FmSine {
+    type Properties = FmSineProps;
+    type Message = ();
+
+    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
+        Self { props }
+    }
+
+    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
+        false
+    }
+
+    fn change(&mut self, props: Self::Properties) -> ShouldRender {
+        self.props = props;
+        true
+    }
+
+    fn view(&self) -> Html {
+        let freq_lo_id = format!("w{}-fmsine-freqlo", self.props.id.0);
+        let freq_hi_id = format!("w{}-fmsine-freqhi", self.props.id.0);
+        let params = self.props.params.clone();
+
+        html! {
+            <>
+                <label for={&freq_lo_id}>{"Freq Lo"}</label>
+                <input type="number"
+                    id={&freq_lo_id}
+                    onchange={self.props.module.callback({
+                        let params = params.clone();
+                        move |ev| {
+                            if let ChangeData::Value(freq_str) = ev {
+                                let freq_lo = freq_str.parse().unwrap_or(0.0);
+                                let params = FmSineParams { freq_lo, ..params };
+                                WindowMsg::UpdateParams(
+                                    ModuleParams::FmSine(params))
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                    })}
+                    value={self.props.params.freq_lo}
+                />
+
+                <label for={&freq_hi_id}>{"Freq Hi"}</label>
+                <input type="number"
+                    id={&freq_hi_id}
+                    onchange={self.props.module.callback({
+                        let params = params.clone();
+                        move |ev| {
+                            if let ChangeData::Value(freq_str) = ev {
+                                let freq_hi = freq_str.parse().unwrap_or(0.0);
+                                let params = FmSineParams { freq_hi, ..params };
+                                WindowMsg::UpdateParams(
+                                    ModuleParams::FmSine(params))
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                    })}
+                    value={self.props.params.freq_hi}
                 />
             </>
         }
