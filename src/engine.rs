@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::f32;
 use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError};
 use std::thread;
@@ -445,18 +445,18 @@ impl Engine {
             terminal_modules.remove(&output.module_id());
         }
 
-        // breadth-first-search modules out via their inputs, starting from
+        // depth-first-search modules out via their inputs, starting from
         // terminal modules
 
         let mut reverse_module_order = Vec::new();
         let mut visited_modules = HashSet::new();
-        let mut module_queue = VecDeque::new();
+        let mut module_stack = Vec::new();
 
         for id in terminal_modules.into_iter() {
-            module_queue.push_back(id);
+            module_stack.push(id);
         }
 
-        while let Some(module_id) = module_queue.pop_front() {
+        while let Some(module_id) = module_stack.pop() {
             let module = &self.modules[&module_id];
 
             // skip module if visited already
@@ -473,7 +473,7 @@ impl Engine {
                 let terminal_id = InputId(module_id, i);
 
                 if let Some(output_id) = self.connections.get(&terminal_id) {
-                    module_queue.push_back(output_id.module_id());
+                    module_stack.push(output_id.module_id());
                 }
             }
         }
