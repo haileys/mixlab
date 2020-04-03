@@ -1,5 +1,4 @@
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
-use yew::events::ChangeData;
 
 use mixlab_protocol::{ModuleId, ModuleParams, GateState};
 
