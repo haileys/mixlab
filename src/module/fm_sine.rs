@@ -2,7 +2,7 @@ use std::f32;
 
 use mixlab_protocol::{FmSineParams, LineType};
 
-use crate::engine::{Sample, SAMPLE_RATE, CHANNELS, ZERO_BUFFER};
+use crate::engine::{Sample, SAMPLE_RATE, CHANNELS, ZERO_BUFFER_STEREO};
 use crate::module::Module;
 
 #[derive(Debug)]
@@ -30,7 +30,7 @@ impl Module for FmSine {
     fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         let len = outputs[0].len() / CHANNELS;
 
-        let input = inputs[0].unwrap_or(&ZERO_BUFFER);
+        let input = inputs[0].unwrap_or(&ZERO_BUFFER_STEREO);
 
         let freq_amp = (self.params.freq_hi - self.params.freq_lo) / 2.0;
         let freq_mid = self.params.freq_lo + freq_amp;

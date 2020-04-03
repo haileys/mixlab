@@ -497,6 +497,8 @@ impl Workspace {
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
             ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
             ("Trigger", ModuleParams::Trigger(GateState::Closed)),
+            ("Stereo Panner", ModuleParams::StereoPanner(())),
+            ("Stereo Splitter", ModuleParams::StereoSplitter(())),
         ];
 
         html! {
@@ -687,7 +689,9 @@ impl Window {
             ModuleParams::SineGenerator(params) => {
                 html! { <SineGenerator id={self.props.id} module={self.link.clone()} params={params} /> }
             }
-            ModuleParams::Mixer2ch(_) => {
+            ModuleParams::Mixer2ch(()) |
+            ModuleParams::StereoPanner(()) |
+            ModuleParams::StereoSplitter(()) => {
                 html! {}
             }
             ModuleParams::OutputDevice(params) => {

@@ -11,11 +11,13 @@ use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, ClientMessage, 
 use crate::module::{Module as ModuleT};
 use crate::util::Sequence;
 
+use crate::module::amplifier::Amplifier;
+use crate::module::fm_sine::FmSine;
 use crate::module::mixer_2ch::Mixer2ch;
 use crate::module::output_device::OutputDevice;
 use crate::module::sine_generator::SineGenerator;
-use crate::module::fm_sine::FmSine;
-use crate::module::amplifier::Amplifier;
+use crate::module::stereo_panner::StereoPanner;
+use crate::module::stereo_splitter::StereoSplitter;
 use crate::module::trigger::Trigger;
 
 pub type Sample = f32;
@@ -25,16 +27,20 @@ pub const SAMPLE_RATE: usize = 44100;
 const TICKS_PER_SECOND: usize = 100;
 const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
-pub static ZERO_BUFFER: [Sample; SAMPLES_PER_TICK * CHANNELS] = [0.0; SAMPLES_PER_TICK * CHANNELS];
-pub static ONE_BUFFER: [Sample; SAMPLES_PER_TICK * CHANNELS] = [1.0; SAMPLES_PER_TICK * CHANNELS];
+pub static ZERO_BUFFER_STEREO: [Sample; SAMPLES_PER_TICK * CHANNELS] = [0.0; SAMPLES_PER_TICK * CHANNELS];
+
+pub static ZERO_BUFFER_MONO: [Sample; SAMPLES_PER_TICK] = [0.0; SAMPLES_PER_TICK];
+pub static ONE_BUFFER_MONO: [Sample; SAMPLES_PER_TICK] = [1.0; SAMPLES_PER_TICK];
 
 #[derive(Debug)]
 enum Module {
-    SineGenerator(SineGenerator),
-    OutputDevice(OutputDevice),
-    Mixer2ch(Mixer2ch),
-    FmSine(FmSine),
     Amplifier(Amplifier),
+    FmSine(FmSine),
+    Mixer2ch(Mixer2ch),
+    OutputDevice(OutputDevice),
+    SineGenerator(SineGenerator),
+    StereoPanner(StereoPanner),
+    StereoSplitter(StereoSplitter),
     Trigger(Trigger),
 }
 
@@ -54,11 +60,13 @@ impl Module {
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
@@ -73,11 +81,13 @@ impl Module {
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
@@ -100,11 +110,13 @@ impl Module {
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
@@ -121,11 +133,13 @@ impl Module {
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
@@ -140,11 +154,13 @@ impl Module {
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
@@ -159,11 +175,13 @@ impl Module {
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
@@ -496,14 +514,17 @@ impl Engine {
             }
 
             {
-                let input_refs = (0..module.inputs().len())
-                    .map(|i| InputId(*module_id, i))
-                    .map(|input| connections.get(&input)
-                        .map(|output| buffers[output].as_slice()))
+                let input_refs = module.inputs().iter()
+                    .enumerate()
+                    .map(|(i, ty)| (InputId(*module_id, i), ty))
+                    .map(|(input, ty)|
+                        connections.get(&input).map(|output|
+                            &buffers[output][0..line_type_sample_count(ty)]))
                     .collect::<Vec<Option<&[Sample]>>>();
 
                 let mut output_refs = output_buffers.iter_mut()
-                    .map(|vec| vec.as_mut_slice())
+                    .zip(module.outputs())
+                    .map(|(vec, ty)| &mut vec[0..line_type_sample_count(ty)])
                     .collect::<Vec<_>>();
 
                 let t = tick * SAMPLES_PER_TICK as u64;
@@ -522,5 +543,12 @@ impl Engine {
         }
 
         indications
+    }
+}
+
+fn line_type_sample_count(line_type: &LineType) -> usize {
+    match line_type {
+        LineType::Mono => SAMPLES_PER_TICK,
+        LineType::Stereo => SAMPLES_PER_TICK * 2,
     }
 }
