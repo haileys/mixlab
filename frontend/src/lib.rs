@@ -1,5 +1,6 @@
 #![recursion_limit="512"]
 
+mod module;
 mod util;
 mod workspace;
 
