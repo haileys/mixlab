@@ -1,3 +1,5 @@
+.PHONY: build run check
+
 build:
 	./build-frontend.sh && cargo build
 
