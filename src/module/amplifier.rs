@@ -1,5 +1,5 @@
 use crate::engine::{Sample, ZERO_BUFFER, ONE_BUFFER};
-use crate::module::Module;
+use crate::module::{Module, LineType};
 
 use mixlab_protocol::AmplifierParams;
 
@@ -40,12 +40,12 @@ impl Module for Amplifier {
         None
     }
 
-    fn input_count(&self) -> usize {
-        2
+    fn inputs(&self) -> &[LineType] {
+        &[LineType::Stereo, LineType::Stereo]
     }
 
-    fn output_count(&self) -> usize {
-        1
+    fn outputs(&self) -> &[LineType] {
+        &[LineType::Stereo]
     }
 }
 

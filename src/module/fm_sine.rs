@@ -1,6 +1,6 @@
 use std::f32;
 
-use mixlab_protocol::FmSineParams;
+use mixlab_protocol::{FmSineParams, LineType};
 
 use crate::engine::{Sample, SAMPLE_RATE, CHANNELS, ZERO_BUFFER};
 use crate::module::Module;
@@ -48,11 +48,11 @@ impl Module for FmSine {
         None
     }
 
-    fn input_count(&self) -> usize {
-        1
+    fn inputs(&self) -> &[LineType] {
+        &[LineType::Stereo]
     }
 
-    fn output_count(&self) -> usize {
-        1
+    fn outputs(&self) -> &[LineType] {
+        &[LineType::Stereo]
     }
 }

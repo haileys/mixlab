@@ -82,6 +82,11 @@ impl OutputId {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum LineType {
+    Stereo,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModuleParams {
     SineGenerator(SineGeneratorParams),

@@ -1,6 +1,6 @@
 use std::f32;
 
-use mixlab_protocol::SineGeneratorParams;
+use mixlab_protocol::{SineGeneratorParams, LineType};
 
 use crate::engine::{Sample, SAMPLE_RATE, CHANNELS};
 use crate::module::Module;
@@ -43,11 +43,11 @@ impl Module for SineGenerator {
         None
     }
 
-    fn input_count(&self) -> usize {
-        0
+    fn inputs(&self) -> &[LineType] {
+        &[]
     }
 
-    fn output_count(&self) -> usize {
-        1
+    fn outputs(&self)-> &[LineType] {
+        &[LineType::Stereo]
     }
 }
