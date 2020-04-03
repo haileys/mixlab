@@ -88,6 +88,7 @@ pub enum ModuleParams {
     OutputDevice(OutputDeviceParams),
     Mixer2ch(()),
     FmSine(FmSineParams),
+    Amplifier(AmplifierParams),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -96,6 +97,7 @@ pub enum Indication {
     OutputDevice(OutputDeviceIndication),
     Mixer2ch(()),
     FmSine(()),
+    Amplifier(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -117,6 +119,11 @@ pub struct OutputDeviceIndication {
 pub struct FmSineParams {
     pub freq_lo: f32,
     pub freq_hi: f32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AmplifierParams {
+    pub amplitude: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
