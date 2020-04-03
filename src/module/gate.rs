@@ -26,7 +26,7 @@ impl Module for Gate {
     }
 
     fn run_tick(&mut self, _t: u64, _inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let len = outputs[0].len() / CHANNELS;
+        let len = outputs[0].len();
 
         let value = match self.params {
             GateState::Open => 1.0,
