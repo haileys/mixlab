@@ -15,6 +15,7 @@ use crate::module::mixer_2ch::Mixer2ch;
 use crate::module::output_device::OutputDevice;
 use crate::module::sine_generator::SineGenerator;
 use crate::module::fm_sine::FmSine;
+use crate::module::amplifier::Amplifier;
 
 pub type Sample = f32;
 
@@ -23,12 +24,16 @@ pub const SAMPLE_RATE: usize = 44100;
 const TICKS_PER_SECOND: usize = 100;
 const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
+pub static ZERO_BUFFER: [Sample; SAMPLES_PER_TICK * CHANNELS] = [0.0; SAMPLES_PER_TICK * CHANNELS];
+pub static ONE_BUFFER: [Sample; SAMPLES_PER_TICK * CHANNELS] = [1.0; SAMPLES_PER_TICK * CHANNELS];
+
 #[derive(Debug)]
 enum Module {
     SineGenerator(SineGenerator),
     OutputDevice(OutputDevice),
     Mixer2ch(Mixer2ch),
     FmSine(FmSine),
+    Amplifier(Amplifier),
 }
 
 impl Module {
@@ -51,6 +56,7 @@ impl Module {
             OutputDevice,
             Mixer2ch,
             FmSine,
+            Amplifier,
         }
     }
 
@@ -68,6 +74,7 @@ impl Module {
             OutputDevice,
             Mixer2ch,
             FmSine,
+            Amplifier,
         }
     }
 
@@ -93,10 +100,11 @@ impl Module {
             OutputDevice,
             Mixer2ch,
             FmSine,
+            Amplifier,
         }
     }
 
-    fn run_tick(&mut self, t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> Option<Indication> {
+    fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Indication> {
         macro_rules! gen {
             ($( $module:ident , )*) => {
                 match self {
@@ -112,6 +120,7 @@ impl Module {
             OutputDevice,
             Mixer2ch,
             FmSine,
+            Amplifier,
         }
     }
 
@@ -129,6 +138,7 @@ impl Module {
             OutputDevice,
             Mixer2ch,
             FmSine,
+            Amplifier,
         }
     }
 
@@ -146,6 +156,7 @@ impl Module {
             OutputDevice,
             Mixer2ch,
             FmSine,
+            Amplifier,
         }
     }
 }
@@ -466,14 +477,11 @@ impl Engine {
             }
 
             {
-                static ZERO_BUFFER: [Sample; SAMPLES_PER_TICK * CHANNELS] = [0.0; SAMPLES_PER_TICK * CHANNELS];
-
                 let input_refs = (0..module.input_count())
                     .map(|i| InputId(*module_id, i))
                     .map(|input| connections.get(&input)
-                        .map(|output| buffers[output].as_slice())
-                        .unwrap_or(&ZERO_BUFFER))
-                    .collect::<Vec<&[Sample]>>();
+                        .map(|output| buffers[output].as_slice()))
+                    .collect::<Vec<Option<&[Sample]>>>();
 
                 let mut output_refs = output_buffers.iter_mut()
                     .map(|vec| vec.as_mut_slice())
