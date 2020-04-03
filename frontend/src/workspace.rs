@@ -11,7 +11,7 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRe
 use yew::components::Select;
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, OutputDeviceIndication, FmSineParams, AmplifierParams, KeyboardGateParams, Gate};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, OutputDeviceIndication, FmSineParams, AmplifierParams, GateState};
 
 use crate::{App, AppMsg, State};
 use crate::util::{callback_ex, stop_propagation, prevent_default};
@@ -424,7 +424,7 @@ impl Workspace {
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default(), NodeRef::default()],
                 ModuleParams::FmSine(_) => vec![NodeRef::default()],
                 ModuleParams::Amplifier(_) => vec![NodeRef::default(), NodeRef::default()],
-                ModuleParams::KeyboardGate(_) => vec![],
+                ModuleParams::Gate(_) => vec![],
             },
             outputs: match module {
                 ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
@@ -432,7 +432,7 @@ impl Workspace {
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default()],
                 ModuleParams::FmSine(_) => vec![NodeRef::default()],
                 ModuleParams::Amplifier(_) => vec![NodeRef::default()],
-                ModuleParams::KeyboardGate(_) => vec![NodeRef::default()],
+                ModuleParams::Gate(_) => vec![NodeRef::default()],
             },
         };
 
@@ -467,7 +467,7 @@ impl Workspace {
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None, left: None, right: None })),
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
             ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
-            ("Keyboard Gate", ModuleParams::KeyboardGate(KeyboardGateParams { gate: Gate::Closed })),
+            ("Gate", ModuleParams::Gate(GateState::Closed)),
         ];
 
         html! {
@@ -666,8 +666,8 @@ impl Window {
             ModuleParams::Amplifier(params) => {
                 html! { <Amplifier id={self.props.id} module={self.link.clone()} params={params} /> }
             }
-            ModuleParams::KeyboardGate(params) => {
-                html! { <KeyboardGate id={self.props.id} module={self.link.clone()} params={params} /> }
+            ModuleParams::Gate(params) => {
+                html! { <Gate id={self.props.id} module={self.link.clone()} params={params} /> }
             }
         }
     }
@@ -997,18 +997,18 @@ impl Component for Amplifier {
 }
 
 #[derive(Properties, Clone, Debug)]
-pub struct KeyboardGateProps {
+pub struct GateProps {
     id: ModuleId,
     module: ComponentLink<Window>,
-    params: KeyboardGateParams,
+    params: GateState,
 }
 
-pub struct KeyboardGate {
-    props: KeyboardGateProps,
+pub struct Gate {
+    props: GateProps,
 }
 
-impl Component for KeyboardGate {
-    type Properties = KeyboardGateProps;
+impl Component for Gate {
+    type Properties = GateProps;
     type Message = ();
 
     fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
@@ -1025,31 +1025,14 @@ impl Component for KeyboardGate {
     }
 
     fn view(&self) -> Html {
-        let assign_id = format!("w{}-assign", self.props.id.0);
-
         html! {
             <>
-                <label for={&assign_id}>{"Assigned Key"}</label>
-                <input
-                    id={&assign_id}
-                    type="text"
-                    disabled={true}
-                    value="Q"
-                />
                 <button
                     onmousedown={self.props.module.callback(move |ev| {
-                        WindowMsg::UpdateParams(
-                                ModuleParams::KeyboardGate(KeyboardGateParams {
-                                    gate: Gate::Open
-                                })
-                        )
+                        WindowMsg::UpdateParams(ModuleParams::Gate(GateState::Open))
                     })}
                     onmouseup={self.props.module.callback(move |ev| {
-                        WindowMsg::UpdateParams(
-                                ModuleParams::KeyboardGate(KeyboardGateParams {
-                                    gate: Gate::Closed
-                                })
-                        )
+                        WindowMsg::UpdateParams(ModuleParams::Gate(GateState::Closed))
                     })}
                 >{"Trigger"}</button>
             </>

@@ -1,19 +1,19 @@
-use mixlab_protocol::{Gate, KeyboardGateParams};
+use mixlab_protocol::GateState;
 
 use crate::engine::{Sample, CHANNELS};
 use crate::module::Module;
 
 #[derive(Debug)]
-pub struct KeyboardGate {
-    params: KeyboardGateParams,
+pub struct Gate {
+    params: GateState,
 }
 
-impl Module for KeyboardGate {
-    type Params = KeyboardGateParams;
+impl Module for Gate {
+    type Params = GateState;
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
-        (KeyboardGate { params }, ())
+        (Gate { params }, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -28,9 +28,9 @@ impl Module for KeyboardGate {
     fn run_tick(&mut self, _t: u64, _inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         let len = outputs[0].len() / CHANNELS;
 
-        let value = match self.params.gate {
-            Gate::Open => 1.0,
-            Gate::Closed => 0.0,
+        let value = match self.params {
+            GateState::Open => 1.0,
+            GateState::Closed => 0.0,
         };
 
         for i in 0..len {
