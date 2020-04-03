@@ -11,7 +11,7 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRe
 use yew::components::Select;
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, OutputDeviceIndication, FmSineParams, AmplifierParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, OutputDeviceIndication, FmSineParams, AmplifierParams, KeyboardGateParams, Gate};
 
 use crate::{App, AppMsg, State};
 use crate::util::{callback_ex, stop_propagation, prevent_default};
@@ -424,6 +424,7 @@ impl Workspace {
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default(), NodeRef::default()],
                 ModuleParams::FmSine(_) => vec![NodeRef::default()],
                 ModuleParams::Amplifier(_) => vec![NodeRef::default(), NodeRef::default()],
+                ModuleParams::KeyboardGate(_) => vec![],
             },
             outputs: match module {
                 ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
@@ -431,6 +432,7 @@ impl Workspace {
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default()],
                 ModuleParams::FmSine(_) => vec![NodeRef::default()],
                 ModuleParams::Amplifier(_) => vec![NodeRef::default()],
+                ModuleParams::KeyboardGate(_) => vec![NodeRef::default()],
             },
         };
 
@@ -465,6 +467,7 @@ impl Workspace {
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None, left: None, right: None })),
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
             ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
+            ("Keyboard Gate", ModuleParams::KeyboardGate(KeyboardGateParams { gate: Gate::Closed })),
         ];
 
         html! {
@@ -662,6 +665,9 @@ impl Window {
             }
             ModuleParams::Amplifier(params) => {
                 html! { <Amplifier id={self.props.id} module={self.link.clone()} params={params} /> }
+            }
+            ModuleParams::KeyboardGate(params) => {
+                html! { <KeyboardGate id={self.props.id} module={self.link.clone()} params={params} /> }
             }
         }
     }
@@ -985,6 +991,52 @@ impl Component for Amplifier {
                     })}
                     value={self.props.params.mod_depth}
                 />
+            </>
+        }
+    }
+}
+
+#[derive(Properties, Clone, Debug)]
+pub struct KeyboardGateProps {
+    id: ModuleId,
+    module: ComponentLink<Window>,
+    params: KeyboardGateParams,
+}
+
+pub struct KeyboardGate {
+    props: KeyboardGateProps,
+}
+
+impl Component for KeyboardGate {
+    type Properties = KeyboardGateProps;
+    type Message = ();
+
+    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
+        Self { props }
+    }
+
+    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
+        false
+    }
+
+    fn change(&mut self, props: Self::Properties) -> ShouldRender {
+        self.props = props;
+        true
+    }
+
+    fn view(&self) -> Html {
+        let assign_id = format!("w{}-assign", self.props.id.0);
+
+        html! {
+            <>
+                <label for={&assign_id}>{"Assigned Key"}</label>
+                <input
+                    id={&assign_id}
+                    type="text"
+                    disabled={true}
+                    value="Q"
+                />
+                <button>{"Trigger"}</button>
             </>
         }
     }
