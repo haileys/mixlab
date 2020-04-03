@@ -155,6 +155,8 @@ async fn main() {
         .or(websocket)
         .with(warp::log("mixlab-http"));
 
+    println!("Mixlab is now running at http://localhost:8000");
+
     warp::serve(routes)
         .run(([127, 0, 0, 1], 8000))
         .await;
