@@ -326,7 +326,7 @@ impl Component for Workspace {
                     AppMsg::ClientUpdate(
                         ClientMessage::CreateModule(module, geometry)));
 
-                false
+                true
             }
         };
 
