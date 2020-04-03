@@ -1,3 +1,4 @@
+pub mod amplifier;
 pub mod fm_sine;
 pub mod mixer_2ch;
 pub mod output_device;
