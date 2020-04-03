@@ -9,7 +9,7 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRe
 use yew::components::Select;
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, OutputDeviceIndication, FmSineParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, OutputDeviceIndication, FmSineParams, AmplifierParams};
 
 use crate::{App, AppMsg, State};
 use crate::util::{callback_ex, stop_propagation, prevent_default};
@@ -421,12 +421,14 @@ impl Workspace {
                 ModuleParams::OutputDevice(_) => vec![NodeRef::default()],
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default(), NodeRef::default()],
                 ModuleParams::FmSine(_) => vec![NodeRef::default()],
+                ModuleParams::Amplifier(_) => vec![NodeRef::default(), NodeRef::default()],
             },
             outputs: match module {
                 ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
                 ModuleParams::OutputDevice(_) => vec![],
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default()],
                 ModuleParams::FmSine(_) => vec![NodeRef::default()],
+                ModuleParams::Amplifier(_) => vec![NodeRef::default()],
             },
         };
 
@@ -460,6 +462,7 @@ impl Workspace {
             ("Mixer (2 channel)", ModuleParams::Mixer2ch(())),
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None })),
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
+            ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
         ];
 
         html! {
@@ -655,6 +658,9 @@ impl Window {
             ModuleParams::FmSine(params) => {
                 html! { <FmSine id={self.props.id} module={self.link.clone()} params={params} /> }
             }
+            ModuleParams::Amplifier(params) => {
+                html! { <Amplifier id={self.props.id} module={self.link.clone()} params={params} /> }
+            }
         }
     }
 }
@@ -838,6 +844,84 @@ impl Component for OutputDevice {
                     WindowMsg::UpdateParams(ModuleParams::OutputDevice(params))
                 })}
             />
+        }
+    }
+}
+
+#[derive(Properties, Clone, Debug)]
+pub struct AmplifierProps {
+    id: ModuleId,
+    module: ComponentLink<Window>,
+    params: AmplifierParams,
+}
+
+pub struct Amplifier {
+    props: AmplifierProps,
+}
+
+impl Component for Amplifier {
+    type Properties = AmplifierProps;
+    type Message = ();
+
+    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
+        Self { props }
+    }
+
+    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
+        false
+    }
+
+    fn change(&mut self, props: Self::Properties) -> ShouldRender {
+        self.props = props;
+        true
+    }
+
+    fn view(&self) -> Html {
+        let amp_id = format!("w{}-amp", self.props.id.0);
+        let amp_params = self.props.params.clone();
+
+        let mod_id = format!("w{}-mod", self.props.id.0);
+        let mod_params = self.props.params.clone();
+
+        html! {
+            <>
+                <label for={&amp_id}>{"Volume"}</label>
+                <input type="range"
+                    id={&amp_id}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    onchange={self.props.module.callback(move |ev| {
+                        if let ChangeData::Value(amplitude_str) = ev {
+                            let amplitude = amplitude_str.parse().unwrap_or(0.0);
+                            let params = AmplifierParams { amplitude, ..amp_params };
+                            WindowMsg::UpdateParams(
+                                ModuleParams::Amplifier(params))
+                        } else {
+                            unreachable!()
+                        }
+                    })}
+                    value={self.props.params.amplitude}
+                />
+                <label for={&mod_id}>{"Mod Depth"}</label>
+                <input type="range"
+                    id={&mod_id}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    onchange={self.props.module.callback(move |ev| {
+                        if let ChangeData::Value(mod_str) = ev {
+                            let mod_depth = mod_str.parse().unwrap_or(0.0);
+                            let params = AmplifierParams { mod_depth, ..mod_params };
+                            WindowMsg::UpdateParams(
+                                ModuleParams::Amplifier(params))
+                        } else {
+                            unreachable!()
+                        }
+                    })}
+                    value={self.props.params.mod_depth}
+                />
+            </>
         }
     }
 }

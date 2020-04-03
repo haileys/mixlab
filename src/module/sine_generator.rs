@@ -27,7 +27,7 @@ impl Module for SineGenerator {
         None
     }
 
-    fn run_tick(&mut self, t: u64, _inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
+    fn run_tick(&mut self, t: u64, _inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         let len = outputs[0].len() / CHANNELS;
         let co = self.params.freq as f32 * 2.0 * f32::consts::PI;
 
