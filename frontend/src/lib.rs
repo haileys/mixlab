@@ -134,8 +134,8 @@ impl Component for App {
                             .borrow_mut();
 
                         match op {
-                            ModelOp::CreateModule(id, module, geometry, indication) => {
-                                state.modules.insert(id, module);
+                            ModelOp::CreateModule { id, params, geometry, indication, inputs, outputs } => {
+                                state.modules.insert(id, params);
                                 state.geometry.insert(id, geometry);
                                 state.indications.insert(id, indication);
                             }
