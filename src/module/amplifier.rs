@@ -1,4 +1,4 @@
-use crate::engine::Sample;
+use crate::engine::{Sample, ZERO_BUFFER, ONE_BUFFER};
 use crate::module::Module;
 
 use mixlab_protocol::AmplifierParams;
@@ -25,11 +25,11 @@ impl Module for Amplifier {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
+    fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         let len = outputs[0].len();
 
-        let input = &inputs[0];
-        let mod_input = &inputs[1];
+        let input = &inputs[0].unwrap_or(&ZERO_BUFFER);
+        let mod_input = &inputs[1].unwrap_or(&ONE_BUFFER);
         let output = &mut outputs[0];
 
         for i in 0..len {

@@ -6,7 +6,7 @@ use ringbuf::{RingBuffer, Producer};
 
 use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication};
 
-use crate::engine::Sample;
+use crate::engine::{Sample, ZERO_BUFFER};
 use crate::module::Module;
 
 pub struct OutputDevice {
@@ -95,9 +95,9 @@ impl Module for OutputDevice {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[&[Sample]], _outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
+    fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], _outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         if let Some(tx) = &mut self.tx {
-            tx.push_slice(inputs[0]);
+            tx.push_slice(inputs[0].unwrap_or(&ZERO_BUFFER));
         }
 
         None
