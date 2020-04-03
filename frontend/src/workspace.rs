@@ -159,10 +159,10 @@ impl Component for Workspace {
                     true
                 } else {
                     match self.mouse {
-                        MouseMode::Normal | MouseMode::Drag(_) | MouseMode::Connect(..) => {
+                        MouseMode::Normal | MouseMode::Drag(_) => {
                             false
                         }
-                        MouseMode::ContextMenu(_) => {
+                        MouseMode::Connect(..) | MouseMode::ContextMenu(_) => {
                             self.mouse = MouseMode::Normal;
                             true
                         }
