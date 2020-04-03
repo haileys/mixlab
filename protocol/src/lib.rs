@@ -89,6 +89,7 @@ pub enum ModuleParams {
     Mixer2ch(()),
     FmSine(FmSineParams),
     Amplifier(AmplifierParams),
+    Trigger(GateState),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -98,6 +99,7 @@ pub enum Indication {
     Mixer2ch(()),
     FmSine(()),
     Amplifier(()),
+    Trigger(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -127,6 +129,12 @@ pub struct FmSineParams {
 pub struct AmplifierParams {
     pub amplitude: f32,
     pub mod_depth: f32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum GateState {
+    Open,
+    Closed
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
