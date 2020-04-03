@@ -6,7 +6,7 @@ use std::time::{Instant, Duration};
 
 use tokio::sync::{oneshot, broadcast};
 
-use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication};
+use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication, LineType};
 
 use crate::module::{Module as ModuleT};
 use crate::util::Sequence;
@@ -130,11 +130,11 @@ impl Module {
         }
     }
 
-    fn input_count(&self) -> usize {
+    fn inputs(&self) -> &[LineType] {
         macro_rules! gen {
             ($( $module:ident , )*) => {
                 match self {
-                    $(Module::$module(m) => m.input_count(),)*
+                    $(Module::$module(m) => m.inputs(),)*
                 }
             }
         }
@@ -149,11 +149,11 @@ impl Module {
         }
     }
 
-    fn output_count(&self) -> usize {
+    fn outputs(&self) -> &[LineType] {
         macro_rules! gen {
             ($( $module:ident , )*) => {
                 match self {
-                    $(Module::$module(m) => m.output_count(),)*
+                    $(Module::$module(m) => m.outputs(),)*
                 }
             }
         }
@@ -407,10 +407,10 @@ impl Engine {
             if let Some(module) = engine.modules.get(&terminal.module_id()) {
                 match terminal {
                     TerminalId::Input(input) => {
-                        input.index() < module.input_count()
+                        input.index() < module.inputs().len()
                     }
                     TerminalId::Output(output) => {
-                        output.index() < module.output_count()
+                        output.index() < module.outputs().len()
                     }
                 }
             } else {
@@ -458,7 +458,7 @@ impl Engine {
             reverse_module_order.push(module_id);
 
             // traverse input edges
-            for i in 0..module.input_count() {
+            for i in 0..module.inputs().len() {
                 let terminal_id = InputId(module_id, i);
 
                 if let Some(output_id) = self.connections.get(&terminal_id) {
@@ -480,12 +480,12 @@ impl Engine {
 
             let mut output_buffers = Vec::<Vec<Sample>>::new();
 
-            for _ in 0..module.output_count() {
+            for _ in 0..module.outputs().len() {
                 output_buffers.push(vec![0.0; SAMPLES_PER_TICK * CHANNELS]);
             }
 
             {
-                let input_refs = (0..module.input_count())
+                let input_refs = (0..module.inputs().len())
                     .map(|i| InputId(*module_id, i))
                     .map(|input| connections.get(&input)
                         .map(|output| buffers[output].as_slice()))

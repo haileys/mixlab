@@ -1,4 +1,4 @@
-use mixlab_protocol::GateState;
+use mixlab_protocol::{GateState, LineType};
 
 use crate::engine::Sample;
 use crate::module::Module;
@@ -40,11 +40,11 @@ impl Module for Trigger {
         None
     }
 
-    fn input_count(&self) -> usize {
-        0
+    fn inputs(&self) -> &[LineType] {
+        &[]
     }
 
-    fn output_count(&self) -> usize {
-        1
+    fn outputs(&self) -> &[LineType] {
+        &[LineType::Stereo]
     }
 }

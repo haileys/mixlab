@@ -1,3 +1,5 @@
+use mixlab_protocol::LineType;
+
 use crate::engine::{Sample, ZERO_BUFFER};
 use crate::module::Module;
 
@@ -33,11 +35,11 @@ impl Module for Mixer2ch {
         None
     }
 
-    fn input_count(&self) -> usize {
-        2
+    fn inputs(&self) -> &[LineType] {
+        &[LineType::Stereo, LineType::Stereo]
     }
 
-    fn output_count(&self) -> usize {
-        1
+    fn outputs(&self) -> &[LineType] {
+        &[LineType::Stereo]
     }
 }
