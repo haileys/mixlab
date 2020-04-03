@@ -99,21 +99,25 @@ pub enum LineType {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModuleParams {
-    SineGenerator(SineGeneratorParams),
-    OutputDevice(OutputDeviceParams),
-    Mixer2ch(()),
-    FmSine(FmSineParams),
     Amplifier(AmplifierParams),
+    FmSine(FmSineParams),
+    Mixer2ch(()),
+    OutputDevice(OutputDeviceParams),
+    SineGenerator(SineGeneratorParams),
+    StereoPanner(()),
+    StereoSplitter(()),
     Trigger(GateState),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Indication {
-    SineGenerator(()),
-    OutputDevice(OutputDeviceIndication),
-    Mixer2ch(()),
-    FmSine(()),
     Amplifier(()),
+    FmSine(()),
+    Mixer2ch(()),
+    OutputDevice(OutputDeviceIndication),
+    SineGenerator(()),
+    StereoPanner(()),
+    StereoSplitter(()),
     Trigger(()),
 }
 

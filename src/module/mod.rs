@@ -3,6 +3,8 @@ pub mod fm_sine;
 pub mod mixer_2ch;
 pub mod output_device;
 pub mod sine_generator;
+pub mod stereo_panner;
+pub mod stereo_splitter;
 pub mod trigger;
 
 use mixlab_protocol::LineType;
