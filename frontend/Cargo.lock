@@ -86,6 +86,7 @@ version = "0.0.0"
 dependencies = [
  "bincode",
  "console_error_panic_hook",
+ "gloo-events",
  "mixlab-protocol",
  "wasm-bindgen",
  "web-sys",

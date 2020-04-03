@@ -8,10 +8,12 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
-use yew::{html, Component, ComponentLink, Html, ShouldRender};
+use gloo_events::EventListener;
+use wasm_bindgen::prelude::*;
+use web_sys::Element;
 use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
-use wasm_bindgen::prelude::*;
+use yew::{html, Component, ComponentLink, Html, ShouldRender};
 
 use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, Indication};
 
@@ -22,6 +24,10 @@ pub struct App {
     websocket: WebSocketTask,
     state: Option<Rc<RefCell<State>>>,
     state_seq: usize,
+    root_element: Element,
+    resize_listener: EventListener,
+    viewport_width: usize,
+    viewport_height: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -47,6 +53,7 @@ impl From<WorkspaceState> for State {
 #[derive(Debug)]
 pub enum AppMsg {
     NoOp,
+    WindowResize,
     ServerMessage(ServerMessage),
     ClientUpdate(ClientMessage),
 }
@@ -79,12 +86,41 @@ impl Component for App {
             }))
         .expect("websocket.connect_binary");
 
-        App { link, websocket, state: None, state_seq: 0 }
+        let window = web_sys::window()
+            .expect("window");
+
+        let resize_listener = EventListener::new(&window, "resize", {
+            let link = link.clone();
+            move |_| { link.send_message(AppMsg::WindowResize) }
+        });
+
+        let root_element = window.document()
+            .and_then(|doc| doc.document_element())
+            .expect("root element");
+
+        let viewport_width = root_element.client_width() as usize;
+        let viewport_height = root_element.client_height() as usize;
+
+        App {
+            link,
+            websocket,
+            state: None,
+            state_seq: 0,
+            root_element,
+            resize_listener,
+            viewport_width,
+            viewport_height,
+        }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             AppMsg::NoOp => false,
+            AppMsg::WindowResize => {
+                self.viewport_width = self.root_element.client_width() as usize;
+                self.viewport_height = self.root_element.client_height() as usize;
+                true
+            }
             AppMsg::ServerMessage(msg) => {
                 match msg {
                     ServerMessage::WorkspaceState(state) => {
@@ -155,7 +191,15 @@ impl Component for App {
     fn view(&self) -> Html {
         match &self.state {
             Some(state) => {
-                html! { <Workspace app={self.link.clone()} state={state} state_seq={self.state_seq} /> }
+                html! {
+                    <Workspace
+                        app={self.link.clone()}
+                        state={state}
+                        state_seq={self.state_seq}
+                        width={self.viewport_width}
+                        height={self.viewport_height}
+                    />
+                }
             }
             None => html! {}
         }
