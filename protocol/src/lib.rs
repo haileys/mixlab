@@ -89,6 +89,7 @@ pub enum ModuleParams {
     Mixer2ch(()),
     FmSine(FmSineParams),
     Amplifier(AmplifierParams),
+    KeyboardGate(KeyboardGateParams),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -98,6 +99,7 @@ pub enum Indication {
     Mixer2ch(()),
     FmSine(()),
     Amplifier(()),
+    KeyboardGate(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -127,6 +129,17 @@ pub struct FmSineParams {
 pub struct AmplifierParams {
     pub amplitude: f32,
     pub mod_depth: f32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum Gate {
+    Open,
+    Closed
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct KeyboardGateParams {
+    pub gate: Gate,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]

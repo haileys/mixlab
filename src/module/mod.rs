@@ -3,6 +3,7 @@ pub mod fm_sine;
 pub mod mixer_2ch;
 pub mod output_device;
 pub mod sine_generator;
+pub mod keyboard_gate;
 
 use crate::engine::Sample;
 

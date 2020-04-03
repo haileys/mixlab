@@ -16,6 +16,7 @@ use crate::module::output_device::OutputDevice;
 use crate::module::sine_generator::SineGenerator;
 use crate::module::fm_sine::FmSine;
 use crate::module::amplifier::Amplifier;
+use crate::module::keyboard_gate::KeyboardGate;
 
 pub type Sample = f32;
 
@@ -34,6 +35,7 @@ enum Module {
     Mixer2ch(Mixer2ch),
     FmSine(FmSine),
     Amplifier(Amplifier),
+    KeyboardGate(KeyboardGate),
 }
 
 impl Module {
@@ -57,6 +59,7 @@ impl Module {
             Mixer2ch,
             FmSine,
             Amplifier,
+            KeyboardGate,
         }
     }
 
@@ -75,6 +78,7 @@ impl Module {
             Mixer2ch,
             FmSine,
             Amplifier,
+            KeyboardGate,
         }
     }
 
@@ -101,6 +105,7 @@ impl Module {
             Mixer2ch,
             FmSine,
             Amplifier,
+            KeyboardGate,
         }
     }
 
@@ -121,6 +126,7 @@ impl Module {
             Mixer2ch,
             FmSine,
             Amplifier,
+            KeyboardGate,
         }
     }
 
@@ -139,6 +145,7 @@ impl Module {
             Mixer2ch,
             FmSine,
             Amplifier,
+            KeyboardGate,
         }
     }
 
@@ -157,6 +164,7 @@ impl Module {
             Mixer2ch,
             FmSine,
             Amplifier,
+            KeyboardGate,
         }
     }
 }
