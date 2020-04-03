@@ -1,4 +1,4 @@
-use crate::engine::Sample;
+use crate::engine::{Sample, ZERO_BUFFER};
 use crate::module::Module;
 
 #[derive(Debug)]
@@ -20,11 +20,14 @@ impl Module for Mixer2ch {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
+    fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         let len = outputs[0].len();
 
+        let input0 = &inputs[0].unwrap_or(&ZERO_BUFFER);
+        let input1 = &inputs[0].unwrap_or(&ZERO_BUFFER);
+
         for i in 0..len {
-            outputs[0][i] = inputs[0][i] + inputs[1][i];
+            outputs[0][i] = input0[i] + input1[i];
         }
 
         None
