@@ -649,28 +649,26 @@ impl Component for Window {
 
 impl Window {
     fn view_inputs(&self) -> Html {
-        html! {
-            { for self.props.refs.inputs.iter().cloned().enumerate().map(|(index, terminal_ref)| {
-                let terminal_id = TerminalId::Input(InputId(self.props.id, index));
-
-                html! {
-                    <Terminal
-                        terminal={terminal_ref.clone()}
-                        onmousedown={self.link.callback({
-                            let terminal_ref = terminal_ref.clone();
-                            move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id, terminal_ref.clone())
-                        })}
-                    />
-                }
-            }) }
-        }
+        self.view_terminals(
+            self.props.refs.inputs.iter()
+                .cloned()
+                .enumerate()
+                .map(|(index, terminal_ref)|
+                    (TerminalId::Input(InputId(self.props.id, index)), terminal_ref)))
     }
 
     fn view_outputs(&self) -> Html {
-        html! {
-            { for self.props.refs.outputs.iter().cloned().enumerate().map(|(index, terminal_ref)| {
-                let terminal_id = TerminalId::Output(OutputId(self.props.id, index));
+        self.view_terminals(
+            self.props.refs.outputs.iter()
+                .cloned()
+                .enumerate()
+                .map(|(index, terminal_ref)|
+                    (TerminalId::Output(OutputId(self.props.id, index)), terminal_ref)))
+    }
 
+    fn view_terminals(&self, terminals: impl Iterator<Item = (TerminalId, TerminalRef)>) -> Html {
+        html! {
+            { for terminals.map(|(terminal_id, terminal_ref)| {
                 html! {
                     <Terminal
                         terminal={terminal_ref.clone()}
