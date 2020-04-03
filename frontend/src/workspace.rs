@@ -421,7 +421,7 @@ impl Workspace {
                 ModuleParams::OutputDevice(_) => vec![NodeRef::default()],
                 ModuleParams::Mixer2ch(()) => vec![NodeRef::default(), NodeRef::default()],
                 ModuleParams::FmSine(_) => vec![NodeRef::default()],
-                ModuleParams::Amplifier(_) => vec![NodeRef::default()],
+                ModuleParams::Amplifier(_) => vec![NodeRef::default(), NodeRef::default()],
             },
             outputs: match module {
                 ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
