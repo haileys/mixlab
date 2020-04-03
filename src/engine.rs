@@ -300,10 +300,14 @@ impl Engine {
             geometry: Vec::new(),
             indications: Vec::new(),
             connections: Vec::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
         };
 
         for (module_id, module) in &self.modules {
             state.modules.push((*module_id, module.params()));
+            state.inputs.push((*module_id, module.inputs().to_vec()));
+            state.outputs.push((*module_id, module.outputs().to_vec()));
         }
 
         for (module_id, geometry) in &self.geometry {
