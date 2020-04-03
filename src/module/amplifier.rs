@@ -50,5 +50,5 @@ impl Module for Amplifier {
 }
 
 pub fn depth(value: f32, depth: f32) -> f32 {
-    1.0 - value + depth * value
+    1.0 - depth + depth * value
 }
