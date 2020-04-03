@@ -108,11 +108,13 @@ pub struct SineGeneratorParams {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OutputDeviceParams {
     pub device: Option<String>,
+    pub left: Option<usize>,
+    pub right: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OutputDeviceIndication {
-    pub devices: Option<Vec<String>>,
+    pub devices: Option<Vec<(String, usize)>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
