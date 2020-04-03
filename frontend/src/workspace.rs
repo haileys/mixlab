@@ -44,6 +44,8 @@ pub struct WorkspaceProps {
     pub app: ComponentLink<App>,
     pub state: Rc<RefCell<State>>,
     pub state_seq: usize,
+    pub width: usize,
+    pub height: usize,
 }
 
 pub enum MouseMode {
@@ -114,6 +116,14 @@ impl Component for Workspace {
         }
 
         if self.props.state_seq != new_props.state_seq {
+            should_render = true;
+        }
+
+        if self.props.width != new_props.width {
+            should_render = true;
+        }
+
+        if self.props.height != new_props.height {
             should_render = true;
         }
 
@@ -400,7 +410,7 @@ impl Component for Workspace {
                         }
                     }) }
 
-                    <Connections connections={connections} width={2000} height={2000} />
+                    <Connections connections={connections} width={self.props.width} height={self.props.height} />
 
                     {self.view_context_menu()}
                 </div>
