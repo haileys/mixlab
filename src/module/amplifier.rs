@@ -28,15 +28,19 @@ impl Module for Amplifier {
     fn run_tick(&mut self, _t: u64, inputs: &[&[Sample]], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         let len = outputs[0].len();
 
+        let input = &inputs[0];
+        let mod_input = &inputs[1];
+        let output = &mut outputs[0];
+
         for i in 0..len {
-            outputs[0][i] = inputs[0][i] * self.params.amplitude;
+            output[i] = input[i] * mod_input[i] * self.params.amplitude;
         }
 
         None
     }
 
     fn input_count(&self) -> usize {
-        1
+        2
     }
 
     fn output_count(&self) -> usize {
