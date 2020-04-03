@@ -13,6 +13,7 @@ use yew::events::ChangeData;
 
 use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, OutputDeviceIndication, FmSineParams, AmplifierParams, GateState};
 
+use crate::module::gate::Gate;
 use crate::{App, AppMsg, State};
 use crate::util::{callback_ex, stop_propagation, prevent_default};
 
@@ -991,50 +992,6 @@ impl Component for Amplifier {
                     })}
                     value={self.props.params.mod_depth}
                 />
-            </>
-        }
-    }
-}
-
-#[derive(Properties, Clone, Debug)]
-pub struct GateProps {
-    id: ModuleId,
-    module: ComponentLink<Window>,
-    params: GateState,
-}
-
-pub struct Gate {
-    props: GateProps,
-}
-
-impl Component for Gate {
-    type Properties = GateProps;
-    type Message = ();
-
-    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
-        Self { props }
-    }
-
-    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
-        false
-    }
-
-    fn change(&mut self, props: Self::Properties) -> ShouldRender {
-        self.props = props;
-        true
-    }
-
-    fn view(&self) -> Html {
-        html! {
-            <>
-                <button
-                    onmousedown={self.props.module.callback(move |ev| {
-                        WindowMsg::UpdateParams(ModuleParams::Gate(GateState::Open))
-                    })}
-                    onmouseup={self.props.module.callback(move |ev| {
-                        WindowMsg::UpdateParams(ModuleParams::Gate(GateState::Closed))
-                    })}
-                >{"Trigger"}</button>
             </>
         }
     }
