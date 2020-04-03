@@ -27,21 +27,25 @@ impl Module for Amplifier {
 
     fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         let AmplifierParams {mod_depth, amplitude} = self.params;
-        let len = outputs[0].len();
 
         let input = &inputs[0].unwrap_or(&ZERO_BUFFER);
         let mod_input = &inputs[1].unwrap_or(&ONE_BUFFER);
         let output = &mut outputs[0];
 
+        let len = input.len();
+
         for i in 0..len {
-            output[i] = input[i] * depth(mod_input[i], mod_depth) * amplitude;
+            // mod input is a mono channel and so half the length:
+            let mod_value = mod_input[i / 2];
+
+            output[i] = input[i] * depth(mod_value, mod_depth) * amplitude;
         }
 
         None
     }
 
     fn inputs(&self) -> &[LineType] {
-        &[LineType::Stereo, LineType::Stereo]
+        &[LineType::Stereo, LineType::Mono]
     }
 
     fn outputs(&self) -> &[LineType] {

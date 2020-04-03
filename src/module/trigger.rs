@@ -45,6 +45,6 @@ impl Module for Trigger {
     }
 
     fn outputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+        &[LineType::Mono]
     }
 }

@@ -750,9 +750,10 @@ impl Component for Terminal {
             >
                 <svg width="16" height="16">
                     { match self.props.terminal.line_type {
+                        LineType::Mono => html! {},
                         LineType::Stereo => html! {
                             <polygon points="0,16 16,16 16,0" fill={ if self.hover { "#f0b5b3" } else { "#e0a5a3" } } />
-                        }
+                        },
                     } }
                 </svg>
             </div>
