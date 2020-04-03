@@ -462,7 +462,7 @@ impl Workspace {
             ("Mixer (2 channel)", ModuleParams::Mixer2ch(())),
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None })),
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
-            ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0 })),
+            ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
         ];
 
         html! {
@@ -877,8 +877,11 @@ impl Component for Amplifier {
     }
 
     fn view(&self) -> Html {
-        let amp_id = format!("w{}-amplifier", self.props.id.0);
-        let params = self.props.params.clone();
+        let amp_id = format!("w{}-amp", self.props.id.0);
+        let amp_params = self.props.params.clone();
+
+        let mod_id = format!("w{}-mod", self.props.id.0);
+        let mod_params = self.props.params.clone();
 
         html! {
             <>
@@ -891,7 +894,7 @@ impl Component for Amplifier {
                     onchange={self.props.module.callback(move |ev| {
                         if let ChangeData::Value(amplitude_str) = ev {
                             let amplitude = amplitude_str.parse().unwrap_or(0.0);
-                            let params = AmplifierParams { amplitude, ..params };
+                            let params = AmplifierParams { amplitude, ..amp_params };
                             WindowMsg::UpdateParams(
                                 ModuleParams::Amplifier(params))
                         } else {
@@ -899,6 +902,24 @@ impl Component for Amplifier {
                         }
                     })}
                     value={self.props.params.amplitude}
+                />
+                <label for={&mod_id}>{"Mod Depth"}</label>
+                <input type="range"
+                    id={&mod_id}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    onchange={self.props.module.callback(move |ev| {
+                        if let ChangeData::Value(mod_str) = ev {
+                            let mod_depth = mod_str.parse().unwrap_or(0.0);
+                            let params = AmplifierParams { mod_depth, ..mod_params };
+                            WindowMsg::UpdateParams(
+                                ModuleParams::Amplifier(params))
+                        } else {
+                            unreachable!()
+                        }
+                    })}
+                    value={self.props.params.mod_depth}
                 />
             </>
         }

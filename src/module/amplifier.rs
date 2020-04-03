@@ -26,6 +26,7 @@ impl Module for Amplifier {
     }
 
     fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
+        let AmplifierParams {mod_depth, amplitude} = self.params;
         let len = outputs[0].len();
 
         let input = &inputs[0].unwrap_or(&ZERO_BUFFER);
@@ -33,7 +34,7 @@ impl Module for Amplifier {
         let output = &mut outputs[0];
 
         for i in 0..len {
-            output[i] = input[i] * mod_input[i] * self.params.amplitude;
+            output[i] = input[i] * depth(mod_input[i], mod_depth) * amplitude;
         }
 
         None
@@ -46,4 +47,8 @@ impl Module for Amplifier {
     fn output_count(&self) -> usize {
         1
     }
+}
+
+pub fn depth(value: f32, depth: f32) -> f32 {
+    1.0 - value + depth * value
 }
