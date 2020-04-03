@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType};
 
 use crate::module::trigger::Trigger;
 use crate::module::amplifier::Amplifier;
@@ -88,8 +88,14 @@ impl Component for Workspace {
             window_refs: BTreeMap::new(),
         };
 
-        for (id, params) in &state.borrow().modules {
-            workspace.create_window(*id, params);
+        let state = state.borrow();
+        for id in state.modules.keys() {
+            let inputs = state.inputs.get(id);
+            let outputs = state.outputs.get(id);
+
+            if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
+                workspace.register_terminals(*id, inputs, outputs);
+            }
         }
 
         workspace
@@ -100,13 +106,23 @@ impl Component for Workspace {
 
         let mut deleted_windows = self.window_refs.keys().copied().collect::<HashSet<_>>();
 
-        for (id, module) in &new_props.state.borrow().modules {
-            if deleted_windows.remove(id) {
-                // cool, nothing changes with this module
-            } else {
-                // this module was not present before, create a window ref for it
-                self.create_window(*id, module);
-                should_render = true;
+        {
+            let state = new_props.state.borrow();
+
+            for id in state.modules.keys() {
+                if deleted_windows.remove(id) {
+                    // cool, nothing changes with this module
+                } else {
+                    // this module was not present before, create a window ref for it
+                    let inputs = state.inputs.get(id);
+                    let outputs = state.outputs.get(id);
+
+                    if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
+                        self.register_terminals(*id, inputs, outputs);
+                    }
+
+                    should_render = true;
+                }
             }
         }
 
@@ -426,41 +442,37 @@ impl Component for Workspace {
 }
 
 impl Workspace {
-    pub fn create_window(&mut self, id: ModuleId, module: &ModuleParams) {
+    pub fn register_terminals(&mut self, id: ModuleId, inputs: &[LineType], outputs: &[LineType]) {
         let refs = WindowRef {
             module: NodeRef::default(),
-            inputs: match module {
-                ModuleParams::SineGenerator(_) => vec![],
-                ModuleParams::OutputDevice(_) => vec![NodeRef::default()],
-                ModuleParams::Mixer2ch(()) => vec![NodeRef::default(), NodeRef::default()],
-                ModuleParams::FmSine(_) => vec![NodeRef::default()],
-                ModuleParams::Amplifier(_) => vec![NodeRef::default(), NodeRef::default()],
-                ModuleParams::Trigger(_) => vec![],
-            },
-            outputs: match module {
-                ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
-                ModuleParams::OutputDevice(_) => vec![],
-                ModuleParams::Mixer2ch(()) => vec![NodeRef::default()],
-                ModuleParams::FmSine(_) => vec![NodeRef::default()],
-                ModuleParams::Amplifier(_) => vec![NodeRef::default()],
-                ModuleParams::Trigger(_) => vec![NodeRef::default()],
-            },
+            inputs: make_terminal_refs(inputs),
+            outputs: make_terminal_refs(outputs),
         };
 
         self.window_refs.insert(id, refs);
+
+        fn make_terminal_refs(line_types: &[LineType]) -> Vec<TerminalRef> {
+            line_types.iter()
+                .cloned()
+                .map(|line_type| TerminalRef {
+                    node: NodeRef::default(),
+                    line_type,
+                })
+                .collect()
+        }
     }
 
-    fn screen_coords_for_terminal(&self, terminal: TerminalId) -> Option<Coords> {
+    fn screen_coords_for_terminal(&self, terminal_id: TerminalId) -> Option<Coords> {
         let state = self.props.state.borrow();
-        let geometry = state.geometry.get(&terminal.module_id())?;
-        let refs = self.window_refs.get(&terminal.module_id())?;
+        let geometry = state.geometry.get(&terminal_id.module_id())?;
+        let refs = self.window_refs.get(&terminal_id.module_id())?;
 
-        let terminal_node = match terminal {
+        let terminal_ref = match terminal_id {
             TerminalId::Input(InputId(_, index)) => refs.inputs.get(index)?,
             TerminalId::Output(OutputId(_, index)) => refs.outputs.get(index)?,
         };
 
-        let terminal_node = terminal_node.cast::<HtmlElement>()?;
+        let terminal_node = terminal_ref.node.cast::<HtmlElement>()?;
 
         let terminal_coords = Coords { x: terminal_node.offset_left() + 9, y: terminal_node.offset_top() + 9 };
         Some(geometry.position.add(terminal_coords))
@@ -531,8 +543,14 @@ pub struct WindowProps {
 #[derive(Clone, Debug)]
 pub struct WindowRef {
     module: NodeRef,
-    inputs: Vec<NodeRef>,
-    outputs: Vec<NodeRef>,
+    inputs: Vec<TerminalRef>,
+    outputs: Vec<TerminalRef>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TerminalRef {
+    node: NodeRef,
+    line_type: LineType,
 }
 
 impl Component for Window {
@@ -631,7 +649,7 @@ impl Window {
 
                 html! {
                     <div class="module-window-terminal"
-                        ref={terminal_ref}
+                        ref={terminal_ref.node}
                         onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
                     >
                     </div>
@@ -647,7 +665,7 @@ impl Window {
 
                 html! {
                     <div class="module-window-terminal"
-                        ref={terminal_ref}
+                        ref={terminal_ref.node}
                         onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
                     >
                     </div>

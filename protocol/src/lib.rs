@@ -12,6 +12,8 @@ pub struct WorkspaceState {
     pub geometry: Vec<(ModuleId, WindowGeometry)>,
     pub indications: Vec<(ModuleId, Indication)>,
     pub connections: Vec<(InputId, OutputId)>,
+    pub inputs: Vec<(ModuleId, Vec<LineType>)>,
+    pub outputs: Vec<(ModuleId, Vec<LineType>)>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
