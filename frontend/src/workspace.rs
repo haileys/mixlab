@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
+use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
 use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType};
 
@@ -648,11 +648,10 @@ impl Window {
                 let terminal_id = TerminalId::Input(InputId(self.props.id, index));
 
                 html! {
-                    <div class="module-window-terminal"
-                        ref={terminal_ref.node}
+                    <Terminal
+                        terminal={terminal_ref}
                         onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
-                    >
-                    </div>
+                    />
                 }
             }) }
         }
@@ -664,11 +663,10 @@ impl Window {
                 let terminal_id = TerminalId::Output(OutputId(self.props.id, index));
 
                 html! {
-                    <div class="module-window-terminal"
-                        ref={terminal_ref.node}
+                    <Terminal
+                        terminal={terminal_ref}
                         onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
-                    >
-                    </div>
+                    />
                 }
             }) }
         }
@@ -698,6 +696,56 @@ impl Window {
             ModuleParams::Trigger(params) => {
                 html! { <Trigger id={self.props.id} module={self.link.clone()} params={params} /> }
             }
+        }
+    }
+}
+
+pub struct Terminal {
+    link: ComponentLink<Self>,
+    props: TerminalProps,
+    hover: bool,
+}
+
+#[derive(Properties, Clone, Debug)]
+pub struct TerminalProps {
+    terminal: TerminalRef,
+    onmousedown: Callback<MouseEvent>,
+}
+
+impl Component for Terminal {
+    type Properties = TerminalProps;
+    type Message = bool;
+
+    fn create(props: TerminalProps, link: ComponentLink<Self>) -> Self {
+        Terminal { link, props, hover: false }
+    }
+
+    fn change(&mut self, props: TerminalProps) -> ShouldRender {
+        self.props = props;
+        true
+    }
+
+    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        self.hover = msg;
+        true
+    }
+
+    fn view(&self) -> Html {
+        html! {
+            <div class="module-window-terminal"
+                ref={self.props.terminal.node.clone()}
+                onmousedown={self.props.onmousedown.clone()}
+                onmouseover={self.link.callback(|_| true)}
+                onmouseout={self.link.callback(|_| false)}
+            >
+                <svg width="16" height="16">
+                    { match self.props.terminal.line_type {
+                        LineType::Stereo => html! {
+                            <polygon points="0,16 16,16 16,0" fill={ if self.hover { "#f0b5b3" } else { "#e0a5a3" } } />
+                        }
+                    } }
+                </svg>
+            </div>
         }
     }
 }
