@@ -9,7 +9,7 @@ use ringbuf::{RingBuffer, Producer};
 
 use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType, OutputDeviceWarning};
 
-use crate::engine::{Sample, CHANNELS};
+use crate::engine::{Sample, CHANNELS, ZERO_BUFFER_STEREO};
 use crate::module::Module;
 
 pub struct OutputDevice {
@@ -99,20 +99,31 @@ impl Module for OutputDevice {
 
                 let (tx, mut rx) = RingBuffer::<f32>::new(65536).split();
 
-                let lag_flag = self.lag_flag.clone();
-
                 let stream = output_device.build_output_stream(
                         &config.config(),
-                        move |data: &mut [f32]| {
-                            let bytes = rx.pop_slice(data);
-
-                            if bytes < data.len() {
-                                lag_flag.store(true, Ordering::Relaxed);
+                        {
+                            fn zero(slice: &mut [f32]) {
+                                for sample in slice.iter_mut() {
+                                    *sample = 0.0;
+                                }
                             }
 
-                            // zero-fill rest of buffer
-                            for i in bytes..data.len() {
-                                data[i] = 0.0;
+                            let lag_flag = self.lag_flag.clone();
+                            let mut backoff_ticks = 0;
+                            move |data: &mut [f32]| {
+                                if backoff_ticks > 0 {
+                                    backoff_ticks -= 1;
+                                    zero(data);
+                                    return;
+                                }
+
+                                let bytes = rx.pop_slice(data);
+
+                                if bytes < data.len() {
+                                    lag_flag.store(true, Ordering::Relaxed);
+                                    backoff_ticks += 3;
+                                    zero(&mut data[bytes..])
+                                }
                             }
                         },
                         |err| {
