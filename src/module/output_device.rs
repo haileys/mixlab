@@ -1,10 +1,13 @@
 use std::f32;
 use std::fmt::{self, Debug};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Instant, Duration};
 
 use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use ringbuf::{RingBuffer, Producer};
 
-use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType};
+use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType, OutputDeviceWarning};
 
 use crate::engine::{Sample, CHANNELS};
 use crate::module::Module;
@@ -14,6 +17,10 @@ pub struct OutputDevice {
     host: cpal::Host,
     scratch: Vec<Sample>,
     stream: Option<OutputStream>,
+    last_clip: Option<Instant>,
+    last_lag: Option<Instant>,
+    lag_flag: Arc<AtomicBool>,
+    indication: OutputDeviceIndication,
 }
 
 struct OutputStream {
@@ -37,16 +44,8 @@ impl Module for OutputDevice {
     fn create(params: Self::Params) -> (Self, Self::Indication) {
         let host = cpal::default_host();
 
-        let device = OutputDevice {
-            params,
-            host,
-            scratch: Vec::new(),
-            stream: None,
-        };
-
         // TODO - see if we can update devices as they are added/removed from host
-        let devices = Some(device.host
-            .output_devices()
+        let devices = Some(host.output_devices()
             .map(|devices| devices
                 .flat_map(|device| -> Option<_> {
                     let name = device.name().ok()?;
@@ -56,11 +55,28 @@ impl Module for OutputDevice {
                 .collect())
             .unwrap_or(Vec::new()));
 
-        let default_device = device.host
-            .default_output_device()
+        let default_device = host.default_output_device()
             .and_then(|dev| dev.name().ok());
 
-        (device, OutputDeviceIndication { default_device, devices })
+        let indication = OutputDeviceIndication {
+            default_device,
+            devices,
+            clip: None,
+            lag: None,
+        };
+
+        let device = OutputDevice {
+            params,
+            host,
+            scratch: Vec::new(),
+            stream: None,
+            last_clip: None,
+            last_lag: None,
+            lag_flag: Arc::new(AtomicBool::new(false)),
+            indication: indication.clone(),
+        };
+
+        (device, indication)
     }
 
     fn params(&self) -> Self::Params {
@@ -83,10 +99,16 @@ impl Module for OutputDevice {
 
                 let (tx, mut rx) = RingBuffer::<f32>::new(65536).split();
 
+                let lag_flag = self.lag_flag.clone();
+
                 let stream = output_device.build_output_stream(
                         &config.config(),
                         move |data: &mut [f32]| {
                             let bytes = rx.pop_slice(data);
+
+                            if bytes < data.len() {
+                                lag_flag.store(true, Ordering::Relaxed);
+                            }
 
                             // zero-fill rest of buffer
                             for i in bytes..data.len() {
@@ -141,6 +163,8 @@ impl Module for OutputDevice {
             None => return None,
         };
 
+        let mut clip = false;
+
         if let Some(stream) = &mut self.stream {
             let output_channels = stream.config.channels as usize;
             let samples_per_channel = input.len() / CHANNELS;
@@ -152,18 +176,62 @@ impl Module for OutputDevice {
 
             for i in 0..samples_per_channel {
                 if let Some(left) = self.params.left {
-                    self.scratch[output_channels * i + left] = input[CHANNELS * i + 0];
+                    let sample = input[CHANNELS * i + 0];
+
+                    if sample < -1.0 || sample > 1.0 {
+                        clip = true;
+                    }
+
+                    self.scratch[output_channels * i + left] = sample;
                 }
 
                 if let Some(right) = self.params.right {
-                    self.scratch[output_channels * i + right] = input[CHANNELS * i + 1];
+                    let sample = input[CHANNELS * i + 1];
+
+                    if sample < -1.0 || sample > 1.0 {
+                        clip = true;
+                    }
+
+                    self.scratch[output_channels * i + right] = sample;
                 }
             }
 
             stream.tx.push_slice(&self.scratch[0..(samples_per_channel * output_channels)]);
         }
 
-        None
+        let now = Instant::now();
+
+        if clip {
+            self.last_clip = Some(now);
+        }
+
+        if self.lag_flag.swap(false, Ordering::Relaxed) {
+            self.last_lag = Some(now);
+        }
+
+        let mut indication_changed = false;
+
+        let new_clip_status = warning_status(
+            self.last_clip.map(|time| now - time));
+
+        if self.indication.clip != new_clip_status {
+            self.indication.clip = new_clip_status;
+            indication_changed = true;
+        }
+
+        let new_lag_status = warning_status(
+            self.last_lag.map(|time| now - time));
+
+        if self.indication.lag != new_lag_status {
+            self.indication.lag = new_lag_status;
+            indication_changed = true;
+        }
+
+        if indication_changed {
+            Some(self.indication.clone())
+        } else {
+            None
+        }
     }
 
     fn inputs(&self) -> &[LineType] {
@@ -173,4 +241,19 @@ impl Module for OutputDevice {
     fn outputs(&self) -> &[LineType] {
         &[]
     }
+}
+
+fn warning_status(time_since: Option<Duration>) -> Option<OutputDeviceWarning> {
+    const ACTIVE: Duration = Duration::from_millis(100);
+    const RECENT: Duration = Duration::from_millis(5000);
+
+    time_since.and_then(|dur| {
+        if dur < ACTIVE {
+            Some(OutputDeviceWarning::Active)
+        } else if dur < RECENT {
+            Some(OutputDeviceWarning::Recent)
+        } else {
+            None
+        }
+    })
 }

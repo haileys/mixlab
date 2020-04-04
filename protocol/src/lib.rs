@@ -141,8 +141,16 @@ pub struct OutputDeviceParams {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OutputDeviceIndication {
+    pub clip: Option<OutputDeviceWarning>,
+    pub lag: Option<OutputDeviceWarning>,
     pub default_device: Option<String>,
     pub devices: Option<Vec<(String, usize)>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputDeviceWarning {
+    Active,
+    Recent,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
