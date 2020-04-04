@@ -1,3 +1,4 @@
+use gloo_events::{EventListener, EventListenerOptions};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};
@@ -18,14 +19,17 @@ pub struct Fader {
     mouse_mode: MouseMode,
 }
 
-#[derive(PartialEq, Clone, Copy)]
+struct DragState {
+    origin_y: i32,
+    mousemove: EventListener,
+    mouseup: EventListener,
+    fader_value: f32,
+}
+
 enum MouseMode {
     Normal,
     Hover,
-    Drag {
-        offset_y: i32,
-        fader_value: f32,
-    }
+    Drag(DragState),
 }
 
 #[derive(Properties, Clone)]
@@ -42,11 +46,11 @@ pub enum FaderMsg {
 
 impl Fader {
     fn fader_value(&self) -> f32 {
-        match self.mouse_mode {
+        match &self.mouse_mode {
             MouseMode::Normal | MouseMode::Hover =>
                 self.props.value,
-            MouseMode::Drag { fader_value, .. } =>
-                fader_value,
+            MouseMode::Drag(drag_state) =>
+                drag_state.fader_value,
         }
     }
 
@@ -55,19 +59,52 @@ impl Fader {
     }
 
     fn drag_event(&mut self, ev: MouseEvent) -> ShouldRender {
-        let offset_y = match self.mouse_mode {
+        let drag_state = match self.mouse_mode {
             MouseMode::Normal | MouseMode::Hover => {
+                let window = web_sys::window().expect("web_sys::window");
+
+                let mousemove_link = self.link.clone();
+                let mousemove = EventListener::new_with_options(
+                    &window, "mousemove", EventListenerOptions::run_in_capture_phase(),
+                    move |ev| {
+                        if let Some(ev) = ev.dyn_ref::<MouseEvent>().cloned() {
+                            mousemove_link.send_message(FaderMsg::MouseMove(ev));
+                        }
+                    });
+
+                let mouseup_link = self.link.clone();
+                let mouseup = EventListener::new_with_options(
+                    &window, "mouseup", EventListenerOptions::run_in_capture_phase(),
+                    move |ev| {
+                        if let Some(ev) = ev.dyn_ref::<MouseEvent>().cloned() {
+                            mouseup_link.send_message(FaderMsg::MouseUp(ev));
+                        }
+                    });
+
+                let origin_y = ev.page_y();
+
                 let handle_y = self.fader_handle_offset_top();
-                crate::log!("handle_y = {}", handle_y);
                 let midpoint_y = handle_y + FADER_HANDLE_HEIGHT as f32 / 2.0;
-                crate::log!("midpoint_y = {}", midpoint_y);
-                crate::log!("ev_offset_y = {}", ev.offset_y());
-                ev.offset_y() - midpoint_y as i32
+
+                let origin_y = origin_y - midpoint_y as i32;
+
+                self.mouse_mode = MouseMode::Drag(DragState {
+                    origin_y,
+                    mousemove,
+                    mouseup,
+                    fader_value: self.props.value,
+                });
+
+                if let MouseMode::Drag(drag_state) = &mut self.mouse_mode {
+                    drag_state
+                } else {
+                    unreachable!()
+                }
             }
-            MouseMode::Drag { offset_y, .. } => offset_y,
+            MouseMode::Drag(ref mut drag_state) => drag_state,
         };
 
-        let new_fader_y = ev.offset_y() - offset_y;
+        let new_fader_y = ev.page_y() - drag_state.origin_y;
 
         let position = (new_fader_y - FADER_SHAFT_OFFSET_TOP as i32) as f32
             / FADER_SHAFT_HEIGHT as f32;
@@ -82,7 +119,7 @@ impl Fader {
             fader_value
         };
 
-        self.mouse_mode = MouseMode::Drag { offset_y, fader_value };
+        drag_state.fader_value = fader_value;
         crate::log!("fader_value = {}", fader_value);
         self.props.onchange.emit(fader_value);
 
@@ -117,15 +154,13 @@ impl Component for Fader {
                         let y = ev.offset_y() as f32;
                         let fader_y = self.fader_handle_offset_top();
 
-                        let prev_mouse_mode = self.mouse_mode;
-
                         if y >= fader_y && y < fader_y + FADER_HANDLE_HEIGHT as f32 {
                             self.mouse_mode = MouseMode::Hover;
                         } else {
                             self.mouse_mode = MouseMode::Normal;
                         }
 
-                        prev_mouse_mode != self.mouse_mode
+                        true
                     }
                     MouseMode::Drag { .. } => {
                         self.drag_event(ev)
@@ -203,9 +238,7 @@ impl Component for Fader {
                     width={FADER_WIDTH}
                     height={FADER_HEIGHT}
                     ref={self.canvas.clone()}
-                    onmousemove={self.link.callback(FaderMsg::MouseMove)}
                     onmousedown={self.link.callback(FaderMsg::MouseDown)}
-                    onmouseup={self.link.callback(FaderMsg::MouseUp)}
                     style={canvas_style}
                 />
             </div>
