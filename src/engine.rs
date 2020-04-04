@@ -472,26 +472,29 @@ impl Engine {
 
         for id in terminal_modules.into_iter() {
             module_stack.push(id);
+            reverse_module_order.push(id);
         }
 
         while let Some(module_id) = module_stack.pop() {
             let module = &self.modules[&module_id];
 
-            // skip module if visited already
-            if visited_modules.contains(&module_id) {
-                continue;
-            }
-
             // visit this module
             visited_modules.insert(module_id);
-            reverse_module_order.push(module_id);
 
             // traverse input edges
             for i in 0..module.inputs().len() {
                 let terminal_id = InputId(module_id, i);
 
                 if let Some(output_id) = self.connections.get(&terminal_id) {
-                    module_stack.push(output_id.module_id());
+                    let output_module_id = output_id.module_id();
+
+                    // skip module if visited already
+                    if visited_modules.contains(&output_module_id) {
+                        continue;
+                    }
+
+                    module_stack.push(output_module_id);
+                    reverse_module_order.push(output_module_id);
                 }
             }
         }
