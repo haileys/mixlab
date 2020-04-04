@@ -189,3 +189,34 @@ body {
     font-size:12px;
     text-align:center;
 }
+
+.output-device-status-bar {
+    display:flex;
+    flex-flow:row nowrap;
+    justify-content:center;
+    gap:12px;
+}
+
+.output-device-status {
+    border:1px solid #e0e0e0;
+    color:#e0e0e0;
+    width:64px;
+    height:18px;
+    line-height:18px;
+    text-align:center;
+    vertical-align:middle;
+    font-size:12px;
+}
+
+.output-device-status-red {
+    border:1px solid #ff003a;
+    color:#ff003a;
+    font-weight:bold;
+}
+
+.output-device-status-red-active {
+    border:1px solid #ff003a;
+    color:#ffffff;
+    background-color:#ff003a;
+    font-weight:bold;
+}

@@ -4,7 +4,7 @@ use std::iter;
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 use yew::components::Select;
 
-use mixlab_protocol::{ModuleId, ModuleParams, OutputDeviceParams, OutputDeviceIndication};
+use mixlab_protocol::{ModuleId, ModuleParams, OutputDeviceParams, OutputDeviceIndication, OutputDeviceWarning};
 
 use crate::workspace::{Window, WindowMsg};
 
@@ -78,6 +78,10 @@ impl Component for OutputDevice {
 
         html! {
             <>
+                <div class="output-device-status-bar">
+                    <div class={warning_class(self.props.indication.clip)}>{"CLIP"}</div>
+                    <div class={warning_class(self.props.indication.lag)}>{"LAG"}</div>
+                </div>
                 <button
                     onclick={self.props.module.callback({
                         let device = self.props.indication.default_device.clone();
@@ -143,5 +147,13 @@ impl Component for OutputDevice {
                 />
             </>
         }
+    }
+}
+
+fn warning_class(warning_status: Option<OutputDeviceWarning>) -> &'static str {
+    match warning_status {
+        None => "output-device-status",
+        Some(OutputDeviceWarning::Active) => "output-device-status output-device-status-red-active",
+        Some(OutputDeviceWarning::Recent) => "output-device-status output-device-status-red",
     }
 }
