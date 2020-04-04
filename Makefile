@@ -1,10 +1,10 @@
 .PHONY: build run check
 
 build:
-	./build-frontend.sh && cargo build
+	./frontend-exec.sh ./build.sh && cargo build
 
 run:
-	./build-frontend.sh && cargo run
+	./frontend-exec.sh ./build.sh && cargo run
 
 check:
-	(cd frontend && cargo check) && cargo check
+	./frontend-exec.sh cargo check && cargo check
