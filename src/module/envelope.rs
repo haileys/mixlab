@@ -43,14 +43,14 @@ fn amplitude(params: &EnvelopeParams, state: &EnvelopeState, t: SampleSeq) -> f3
             } else {
                 // In decay/sustain phase
                 let ms_since_decay_started = ms_since_on - params.attack_ms;
-                let decay_amplitude = invert(clamp((1.0 / params.decay_ms * ms_since_decay_started)));
+                let decay_amplitude = invert(clamp(1.0 / params.decay_ms * ms_since_decay_started));
 
                 params.sustain_amplitude + ((1.0 - params.sustain_amplitude) * decay_amplitude)
             }
         }
         EnvelopeState::TriggerOff {off, off_amplitude} => {
             let ms_since_off = sample_seq_duration_ms(*off, t);
-            let release_amplitude = invert(clamp((1.0 / params.release_ms * ms_since_off)));
+            let release_amplitude = invert(clamp(1.0 / params.release_ms * ms_since_off));
 
             off_amplitude * release_amplitude
         }
