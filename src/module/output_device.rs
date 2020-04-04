@@ -56,7 +56,11 @@ impl Module for OutputDevice {
                 .collect())
             .unwrap_or(Vec::new()));
 
-        (device, OutputDeviceIndication { devices })
+        let default_device = device.host
+            .default_output_device()
+            .and_then(|dev| dev.name().ok());
+
+        (device, OutputDeviceIndication { default_device, devices })
     }
 
     fn params(&self) -> Self::Params {

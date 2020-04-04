@@ -13,7 +13,7 @@ pub struct OutputDeviceProps {
     pub id: ModuleId,
     pub module: ComponentLink<Window>,
     pub params: OutputDeviceParams,
-    pub indication: Option<OutputDeviceIndication>,
+    pub indication: OutputDeviceIndication,
 }
 
 pub struct OutputDevice {
@@ -57,8 +57,7 @@ impl Component for OutputDevice {
             }
         }
 
-        let devices = self.props.indication.as_ref()
-            .and_then(|indication| indication.devices.as_ref())
+        let devices = self.props.indication.devices.as_ref()
             .map(|devices| devices.as_slice())
             .unwrap_or(&[]);
 
@@ -79,6 +78,31 @@ impl Component for OutputDevice {
 
         html! {
             <>
+                <button
+                    onclick={self.props.module.callback({
+                        let device = self.props.indication.default_device.clone();
+
+                        let channel_count = devices.iter()
+                            .find(|(name, _)| Some(name) == device.as_ref())
+                            .map(|(_, channels)| channels);
+
+                        let left = Some(0).filter(|ch| channel_count >= Some(ch));
+                        let right = Some(1).filter(|ch| channel_count >= Some(ch));
+
+                        let params = OutputDeviceParams {
+                            device,
+                            left,
+                            right,
+                            ..self.props.params.clone()
+                        };
+
+                        move |_| WindowMsg::UpdateParams(
+                            ModuleParams::OutputDevice(params.clone()))
+                    })}
+                >
+                    {"Use system defaults"}
+                </button>
+
                 <label>{"Output device"}</label>
                 <Select<String>
                     selected={&self.props.params.device}
