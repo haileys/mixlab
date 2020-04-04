@@ -184,8 +184,7 @@ impl Component for App {
                 let packet = bincode::serialize(&msg)
                     .expect("bincode::serialize");
 
-                let resp = self.websocket.send_binary(Ok(packet));
-                crate::log!("send_binary: {:?}", resp);
+                let _ = self.websocket.send_binary(Ok(packet));
 
                 false
             }

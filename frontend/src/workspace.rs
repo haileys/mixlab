@@ -389,8 +389,6 @@ impl Component for Workspace {
             }
         }
 
-        crate::log!("view: connections: {:?}", connections);
-
         if let MouseMode::Connect(terminal_id, _, Some(to_coords)) = &self.mouse {
             if let Some(start_coords) = self.screen_coords_for_terminal(*terminal_id) {
                 let pair = match terminal_id {
