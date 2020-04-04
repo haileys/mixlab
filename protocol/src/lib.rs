@@ -166,6 +166,16 @@ pub struct EnvelopeParams {
     pub sustain_amplitude: f32,
     pub release_ms: f32,
 }
+impl Default for EnvelopeParams {
+    fn default() -> EnvelopeParams {
+        EnvelopeParams {
+            attack_ms: 25.0,
+            decay_ms: 500.0,
+            sustain_amplitude: 0.8,
+            release_ms: 200.0,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct Coords {

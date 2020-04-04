@@ -26,7 +26,7 @@ impl Module for Envelope {
     }
 
     fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        unimplemented!()
+        None
     }
 
     fn inputs(&self) -> &[LineType] {
