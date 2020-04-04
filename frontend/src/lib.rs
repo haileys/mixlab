@@ -1,5 +1,7 @@
 #![recursion_limit="512"]
 
+mod component;
+mod control;
 mod module;
 mod util;
 mod workspace;
