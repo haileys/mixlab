@@ -1,9 +1,7 @@
 use gloo_events::{EventListener, EventListenerOptions};
-use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, MouseEvent, Element, HtmlElement};
+use wasm_bindgen::JsCast;
+use web_sys::MouseEvent;
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback, Children, Renderable};
-
-use crate::util::stop_propagation;
 
 pub struct DragTarget {
     link: ComponentLink<Self>,
