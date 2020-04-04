@@ -1,8 +1,8 @@
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback};
 
-use mixlab_protocol::{ModuleId, Mixer4chParams, MixerChannelParams, ModuleParams};
+use mixlab_protocol::{ModuleId, Mixer4chParams, MixerChannelParams, ModuleParams, Decibel};
 
-use crate::control::fader::Fader;
+use crate::control::{Fader, Rotary};
 use crate::workspace::{Window, WindowMsg};
 
 pub struct Mixer4ch {
@@ -73,6 +73,7 @@ pub struct Channel {
 }
 
 pub enum ChannelMsg {
+    GainChanged(Decibel),
     CueClick,
     FaderChanged(f32),
 }
@@ -100,6 +101,12 @@ impl Component for Channel {
         let params = self.props.params.clone();
 
         match msg {
+            ChannelMsg::GainChanged(gain) => {
+                self.props.onchange.emit(MixerChannelParams {
+                    gain,
+                    ..params
+                })
+            }
             ChannelMsg::CueClick => {
                 self.props.onchange.emit(MixerChannelParams {
                     cue: !params.cue,
@@ -126,6 +133,13 @@ impl Component for Channel {
 
         html! {
             <div class="mixer-channel">
+                <Rotary<Decibel>
+                    value={self.props.params.gain}
+                    min={Decibel(-24.0)}
+                    max={Decibel(6.0)}
+                    default={Decibel(0.0)}
+                    onchange={self.link.callback(ChannelMsg::GainChanged)}
+                />
                 <div class={cue_style} onclick={self.link.callback(|_| ChannelMsg::CueClick)}>
                     {"CUE"}
                 </div>

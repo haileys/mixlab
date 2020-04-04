@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde_derive::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -187,6 +189,7 @@ pub struct Mixer4chParams {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct MixerChannelParams {
+    pub gain: Decibel,
     pub fader: f32,
     pub cue: bool,
 }
@@ -216,5 +219,36 @@ impl Coords {
             x: self.x - other.x,
             y: self.y - other.y,
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
+pub struct Decibel(pub f64);
+
+impl fmt::Display for Decibel {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:.2} dB", self.0)
+    }
+}
+
+impl Decibel {
+    pub fn from_linear(linear: f32) -> Self {
+        Decibel((linear.log10() * 20.0) as f64)
+    }
+
+    pub fn to_linear(self) -> f32 {
+        f64::powf(10.0, self.0 / 20.0) as f32
+    }
+}
+
+impl From<f64> for Decibel {
+    fn from(db: f64) -> Decibel {
+        Decibel(db)
+    }
+}
+
+impl From<Decibel> for f64 {
+    fn from(db: Decibel) -> f64 {
+        db.0
     }
 }

@@ -5,7 +5,7 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRe
 use crate::component::drag_target::{DragTarget, DragEvent};
 use crate::util;
 
-const FADER_WIDTH: usize = 40;
+const FADER_WIDTH: usize = 64;
 const FADER_HEIGHT: usize = 160;
 const FADER_HANDLE_HEIGHT: usize = 17; // always odd to account for line in the middle
 const FADER_SHAFT_HEIGHT: usize = FADER_HEIGHT - FADER_HANDLE_HEIGHT;

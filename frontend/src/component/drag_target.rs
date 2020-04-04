@@ -19,6 +19,7 @@ struct DragState {
     pub mouseup: EventListener,
 }
 
+#[derive(Debug)]
 pub struct DragEvent {
     pub offset_x: i32,
     pub offset_y: i32,
