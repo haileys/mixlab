@@ -47,7 +47,6 @@ impl DragTarget {
         let link = self.link.clone();
 
         Callback::from(move |ev: MouseEvent| {
-            crate::log!("mouse down: buttons: {}", ev.buttons());
             if ev.buttons() == 1 {
                 ev.stop_propagation();
                 link.send_message(f(ev))

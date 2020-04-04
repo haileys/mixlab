@@ -93,7 +93,6 @@ impl Fader {
             fader_value
         };
 
-        crate::log!("fader_value = {}", fader_value);
         self.mouse_mode = MouseMode::Drag(DragState { origin_y, fader_value });
         self.props.onchange.emit(fader_value);
 
