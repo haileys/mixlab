@@ -7,13 +7,14 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams};
 
-use crate::module::trigger::Trigger;
 use crate::module::amplifier::Amplifier;
+use crate::module::envelope::Envelope;
 use crate::module::fm_sine::FmSine;
 use crate::module::output_device::OutputDevice;
 use crate::module::sine_generator::SineGenerator;
+use crate::module::trigger::Trigger;
 use crate::util::{callback_ex, stop_propagation, prevent_default};
 use crate::{App, AppMsg, State};
 
@@ -497,6 +498,7 @@ impl Workspace {
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
             ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
             ("Trigger", ModuleParams::Trigger(GateState::Closed)),
+            ("Envelope", ModuleParams::Envelope(EnvelopeParams::default())),
             ("Stereo Panner", ModuleParams::StereoPanner(())),
             ("Stereo Splitter", ModuleParams::StereoSplitter(())),
         ];
@@ -710,8 +712,8 @@ impl Window {
             ModuleParams::Trigger(params) => {
                 html! { <Trigger id={self.props.id} module={self.link.clone()} params={params} /> }
             }
-            ModuleParams::Envelope(_params) => {
-                html! {}
+            ModuleParams::Envelope(params) => {
+                html! { <Envelope id={self.props.id} module={self.link.clone()} params={params} /> }
             }
         }
     }
