@@ -51,7 +51,7 @@ impl Component for Envelope {
                 <label for={&attack_id}>{"Attack"}</label>
                 <input type="range"
                     id={&attack_id}
-                    min={0}
+                    min={5}
                     max={500}
                     step={1}
                     onchange={self.props.module.callback(move |ev| {
@@ -90,7 +90,7 @@ impl Component for Envelope {
                 <label for={&release_id}>{"Release"}</label>
                 <input type="range"
                     id={&release_id}
-                    min={0}
+                    min={5}
                     max={5000}
                     step={1}
                     onchange={self.props.module.callback(move |ev| {
