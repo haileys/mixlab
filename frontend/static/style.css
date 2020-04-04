@@ -159,6 +159,8 @@ body {
 .mixer-channel {
     display:flex;
     flex-flow:column nowrap;
+    align-items:center;
+    gap:12px;
 }
 
 .mixer-channel-cue-btn {
@@ -171,7 +173,6 @@ body {
     vertical-align:middle;
     font-size:12px;
     cursor:pointer;
-    margin-bottom:12px;
 }
 
 .mixer-channel-cue-on {
@@ -181,4 +182,10 @@ body {
 
 .drag-target-container {
     display:inline-flex;
+}
+
+.control-rotary-label {
+    color:#8d8bb0;
+    font-size:12px;
+    text-align:center;
 }
