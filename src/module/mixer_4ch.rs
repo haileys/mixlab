@@ -29,13 +29,20 @@ impl Module for Mixer4ch {
         let len = outputs[0].len();
 
         for i in 0..len {
-            let output = &mut outputs[0][i];
-            *output = 0.0;
+            outputs[0][i] = 0.0;
+            outputs[1][i] = 0.0;
 
             for ch in 0..4 {
                 if let Some(input) = &inputs[ch] {
                     let channel = &self.params.channels[ch];
-                    *output += input[i] * channel.fader;
+
+                    // master
+                    outputs[0][i] += input[i] * channel.fader;
+
+                    // cue
+                    if channel.cue {
+                        outputs[1][i] += input[i]
+                    }
                 }
             }
         }
@@ -53,6 +60,6 @@ impl Module for Mixer4ch {
     }
 
     fn outputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+        &[LineType::Stereo, LineType::Stereo]
     }
 }
