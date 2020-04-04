@@ -48,6 +48,6 @@ impl Module for SineGenerator {
     }
 
     fn outputs(&self)-> &[LineType] {
-        &[LineType::Stereo]
+        &[LineType::Mono]
     }
 }
