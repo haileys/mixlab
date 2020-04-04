@@ -108,6 +108,7 @@ pub enum ModuleParams {
     StereoSplitter(()),
     Trigger(GateState),
     Envelope(EnvelopeParams),
+    Mixer4ch(Mixer4chParams),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -121,6 +122,7 @@ pub enum Indication {
     StereoSplitter(()),
     Trigger(()),
     Envelope(()),
+    Mixer4ch(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -166,6 +168,7 @@ pub struct EnvelopeParams {
     pub sustain_amplitude: f32,
     pub release_ms: f32,
 }
+
 impl Default for EnvelopeParams {
     fn default() -> EnvelopeParams {
         EnvelopeParams {
@@ -177,7 +180,17 @@ impl Default for EnvelopeParams {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct Mixer4chParams {
+    pub channels: [MixerChannelParams; 4]
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct MixerChannelParams {
+    pub fader: f32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Coords {
     pub x: i32,
     pub y: i32,

@@ -2,6 +2,7 @@ pub mod amplifier;
 pub mod envelope;
 pub mod fm_sine;
 pub mod mixer_2ch;
+pub mod mixer_4ch;
 pub mod output_device;
 pub mod sine_generator;
 pub mod stereo_panner;

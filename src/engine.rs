@@ -15,6 +15,7 @@ use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
 use crate::module::fm_sine::FmSine;
 use crate::module::mixer_2ch::Mixer2ch;
+use crate::module::mixer_4ch::Mixer4ch;
 use crate::module::output_device::OutputDevice;
 use crate::module::sine_generator::SineGenerator;
 use crate::module::stereo_panner::StereoPanner;
@@ -39,6 +40,7 @@ enum Module {
     Envelope(Envelope),
     FmSine(FmSine),
     Mixer2ch(Mixer2ch),
+    Mixer4ch(Mixer4ch),
     OutputDevice(OutputDevice),
     SineGenerator(SineGenerator),
     StereoPanner(StereoPanner),
@@ -65,6 +67,7 @@ impl Module {
             Amplifier,
             FmSine,
             Mixer2ch,
+            Mixer4ch,
             OutputDevice,
             SineGenerator,
             StereoPanner,
@@ -88,6 +91,7 @@ impl Module {
             Envelope,
             FmSine,
             Mixer2ch,
+            Mixer4ch,
             OutputDevice,
             SineGenerator,
             StereoPanner,
@@ -118,6 +122,7 @@ impl Module {
             Envelope,
             FmSine,
             Mixer2ch,
+            Mixer4ch,
             OutputDevice,
             SineGenerator,
             StereoPanner,
@@ -142,6 +147,7 @@ impl Module {
             Envelope,
             FmSine,
             Mixer2ch,
+            Mixer4ch,
             OutputDevice,
             SineGenerator,
             StereoPanner,
@@ -164,6 +170,7 @@ impl Module {
             Envelope,
             FmSine,
             Mixer2ch,
+            Mixer4ch,
             OutputDevice,
             SineGenerator,
             StereoPanner,
@@ -186,6 +193,7 @@ impl Module {
             Envelope,
             FmSine,
             Mixer2ch,
+            Mixer4ch,
             OutputDevice,
             SineGenerator,
             StereoPanner,
