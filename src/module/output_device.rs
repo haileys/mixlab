@@ -4,7 +4,7 @@ use std::fmt::{self, Debug};
 use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use ringbuf::{RingBuffer, Producer};
 
-use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication};
+use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType};
 
 use crate::engine::{Sample, CHANNELS};
 use crate::module::Module;
@@ -162,11 +162,11 @@ impl Module for OutputDevice {
         None
     }
 
-    fn input_count(&self) -> usize {
-        1
+    fn inputs(&self) -> &[LineType] {
+        &[LineType::Stereo]
     }
 
-    fn output_count(&self) -> usize {
-        0
+    fn outputs(&self) -> &[LineType] {
+        &[]
     }
 }

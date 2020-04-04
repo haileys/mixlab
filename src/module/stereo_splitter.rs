@@ -1,17 +1,15 @@
-use mixlab_protocol::LineType;
-
 use crate::engine::{Sample, ZERO_BUFFER_STEREO};
-use crate::module::Module;
+use crate::module::{Module, LineType};
 
 #[derive(Debug)]
-pub struct Mixer2ch;
+pub struct StereoSplitter;
 
-impl Module for Mixer2ch {
+impl Module for StereoSplitter {
     type Params = ();
     type Indication = ();
 
     fn create(_: Self::Params) -> (Self, Self::Indication) {
-        (Mixer2ch, ())
+        (StereoSplitter, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -23,23 +21,25 @@ impl Module for Mixer2ch {
     }
 
     fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let len = outputs[0].len();
+        let input = &inputs[0].unwrap_or(&ZERO_BUFFER_STEREO);
 
-        let input0 = &inputs[0].unwrap_or(&ZERO_BUFFER_STEREO);
-        let input1 = &inputs[1].unwrap_or(&ZERO_BUFFER_STEREO);
-
-        for i in 0..len {
-            outputs[0][i] = input0[i] + input1[i];
+        if let [left, right] = outputs {
+            for i in 0..left.len() {
+                left[i] = input[i * 2 + 0];
+                right[i] = input[i * 2 + 1];
+            }
+        } else {
+            unreachable!();
         }
 
         None
     }
 
     fn inputs(&self) -> &[LineType] {
-        &[LineType::Stereo, LineType::Stereo]
+        &[LineType::Stereo]
     }
 
     fn outputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+        &[LineType::Mono, LineType::Mono]
     }
 }

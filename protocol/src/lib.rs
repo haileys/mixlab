@@ -4,7 +4,6 @@ use serde_derive::{Serialize, Deserialize};
 pub enum ServerMessage {
     WorkspaceState(WorkspaceState),
     ModelOp(LogPosition, ModelOp),
-    Indication(ModuleId, Indication),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -13,6 +12,8 @@ pub struct WorkspaceState {
     pub geometry: Vec<(ModuleId, WindowGeometry)>,
     pub indications: Vec<(ModuleId, Indication)>,
     pub connections: Vec<(InputId, OutputId)>,
+    pub inputs: Vec<(ModuleId, Vec<LineType>)>,
+    pub outputs: Vec<(ModuleId, Vec<LineType>)>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -30,9 +31,17 @@ pub struct LogPosition(pub usize);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModelOp {
-    CreateModule(ModuleId, ModuleParams, WindowGeometry, Indication),
+    CreateModule {
+        id: ModuleId,
+        params: ModuleParams,
+        geometry: WindowGeometry,
+        indication: Indication,
+        inputs: Vec<LineType>,
+        outputs: Vec<LineType>,
+    },
     UpdateModuleParams(ModuleId, ModuleParams),
     UpdateWindowGeometry(ModuleId, WindowGeometry),
+    UpdateModuleIndication(ModuleId, Indication),
     DeleteModule(ModuleId),
     CreateConnection(InputId, OutputId),
     DeleteConnection(InputId),
@@ -82,23 +91,33 @@ impl OutputId {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineType {
+    Mono,
+    Stereo,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModuleParams {
-    SineGenerator(SineGeneratorParams),
-    OutputDevice(OutputDeviceParams),
-    Mixer2ch(()),
-    FmSine(FmSineParams),
     Amplifier(AmplifierParams),
+    FmSine(FmSineParams),
+    Mixer2ch(()),
+    OutputDevice(OutputDeviceParams),
+    SineGenerator(SineGeneratorParams),
+    StereoPanner(()),
+    StereoSplitter(()),
     Trigger(GateState),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Indication {
-    SineGenerator(()),
-    OutputDevice(OutputDeviceIndication),
-    Mixer2ch(()),
-    FmSine(()),
     Amplifier(()),
+    FmSine(()),
+    Mixer2ch(()),
+    OutputDevice(OutputDeviceIndication),
+    SineGenerator(()),
+    StereoPanner(()),
+    StereoSplitter(()),
     Trigger(()),
 }
 

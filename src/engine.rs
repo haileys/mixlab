@@ -6,16 +6,18 @@ use std::time::{Instant, Duration};
 
 use tokio::sync::{oneshot, broadcast};
 
-use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication};
+use mixlab_protocol::{ModuleId, InputId, OutputId, ModuleParams, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication, LineType};
 
 use crate::module::{Module as ModuleT};
 use crate::util::Sequence;
 
+use crate::module::amplifier::Amplifier;
+use crate::module::fm_sine::FmSine;
 use crate::module::mixer_2ch::Mixer2ch;
 use crate::module::output_device::OutputDevice;
 use crate::module::sine_generator::SineGenerator;
-use crate::module::fm_sine::FmSine;
-use crate::module::amplifier::Amplifier;
+use crate::module::stereo_panner::StereoPanner;
+use crate::module::stereo_splitter::StereoSplitter;
 use crate::module::trigger::Trigger;
 
 pub type Sample = f32;
@@ -25,16 +27,20 @@ pub const SAMPLE_RATE: usize = 44100;
 const TICKS_PER_SECOND: usize = 100;
 const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
-pub static ZERO_BUFFER: [Sample; SAMPLES_PER_TICK * CHANNELS] = [0.0; SAMPLES_PER_TICK * CHANNELS];
-pub static ONE_BUFFER: [Sample; SAMPLES_PER_TICK * CHANNELS] = [1.0; SAMPLES_PER_TICK * CHANNELS];
+pub static ZERO_BUFFER_STEREO: [Sample; SAMPLES_PER_TICK * CHANNELS] = [0.0; SAMPLES_PER_TICK * CHANNELS];
+
+pub static ZERO_BUFFER_MONO: [Sample; SAMPLES_PER_TICK] = [0.0; SAMPLES_PER_TICK];
+pub static ONE_BUFFER_MONO: [Sample; SAMPLES_PER_TICK] = [1.0; SAMPLES_PER_TICK];
 
 #[derive(Debug)]
 enum Module {
-    SineGenerator(SineGenerator),
-    OutputDevice(OutputDevice),
-    Mixer2ch(Mixer2ch),
-    FmSine(FmSine),
     Amplifier(Amplifier),
+    FmSine(FmSine),
+    Mixer2ch(Mixer2ch),
+    OutputDevice(OutputDevice),
+    SineGenerator(SineGenerator),
+    StereoPanner(StereoPanner),
+    StereoSplitter(StereoSplitter),
     Trigger(Trigger),
 }
 
@@ -54,11 +60,13 @@ impl Module {
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
@@ -73,11 +81,13 @@ impl Module {
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
@@ -100,11 +110,13 @@ impl Module {
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
@@ -121,56 +133,62 @@ impl Module {
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
 
-    fn input_count(&self) -> usize {
+    fn inputs(&self) -> &[LineType] {
         macro_rules! gen {
             ($( $module:ident , )*) => {
                 match self {
-                    $(Module::$module(m) => m.input_count(),)*
+                    $(Module::$module(m) => m.inputs(),)*
                 }
             }
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
 
-    fn output_count(&self) -> usize {
+    fn outputs(&self) -> &[LineType] {
         macro_rules! gen {
             ($( $module:ident , )*) => {
                 match self {
-                    $(Module::$module(m) => m.output_count(),)*
+                    $(Module::$module(m) => m.outputs(),)*
                 }
             }
         }
 
         gen! {
-            SineGenerator,
-            OutputDevice,
-            Mixer2ch,
-            FmSine,
             Amplifier,
+            FmSine,
+            Mixer2ch,
+            OutputDevice,
+            SineGenerator,
+            StereoPanner,
+            StereoSplitter,
             Trigger,
         }
     }
 }
 
 pub enum EngineMessage {
-    ConnectSession(oneshot::Sender<(WorkspaceState, EngineOps, Indications)>),
+    ConnectSession(oneshot::Sender<(WorkspaceState, EngineOps)>),
     ClientMessage(ClientMessage),
 }
 
@@ -185,13 +203,11 @@ pub struct EngineSession {
 pub fn start() -> EngineHandle {
     let (cmd_tx, cmd_rx) = mpsc::sync_channel(8);
     let (log_tx, _) = broadcast::channel(64);
-    let (indic_tx, _) = broadcast::channel(64);
 
     thread::spawn(move || {
         let mut engine = Engine {
             cmd_rx,
             log_tx,
-            indic_tx,
             log_seq: Sequence::new(),
             modules: HashMap::new(),
             geometry: HashMap::new(),
@@ -222,17 +238,16 @@ impl<T> From<TrySendError<T>> for EngineError {
 }
 
 pub type EngineOps = broadcast::Receiver<(LogPosition, ModelOp)>;
-pub type Indications = broadcast::Receiver<(ModuleId, Indication)>;
 
 impl EngineHandle {
-    pub async fn connect(&self) -> Result<(WorkspaceState, EngineOps, Indications, EngineSession), EngineError> {
+    pub async fn connect(&self) -> Result<(WorkspaceState, EngineOps, EngineSession), EngineError> {
         let cmd_tx = self.cmd_tx.clone();
 
         let (tx, rx) = oneshot::channel();
         cmd_tx.try_send(EngineMessage::ConnectSession(tx))?;
-        let (state, log_rx, indic_rx) = rx.await.map_err(|_| EngineError::Stopped)?;
+        let (state, log_rx) = rx.await.map_err(|_| EngineError::Stopped)?;
 
-        Ok((state, log_rx, indic_rx, EngineSession { cmd_tx }))
+        Ok((state, log_rx, EngineSession { cmd_tx }))
     }
 }
 
@@ -251,7 +266,6 @@ pub struct Engine {
     cmd_rx: Receiver<EngineMessage>,
     log_tx: broadcast::Sender<(LogPosition, ModelOp)>,
     log_seq: Sequence,
-    indic_tx: broadcast::Sender<(ModuleId, Indication)>,
     modules: HashMap<ModuleId, Module>,
     geometry: HashMap<ModuleId, WindowGeometry>,
     module_seq: Sequence,
@@ -270,7 +284,7 @@ impl Engine {
 
             for (module_id, indication) in indications {
                 self.indications.insert(module_id, indication.clone());
-                let _ = self.indic_tx.send((module_id, indication));
+                self.log_op(ModelOp::UpdateModuleIndication(module_id, indication));
             }
 
             let sleep_until = start + Duration::from_millis(tick * 1_000 / TICKS_PER_SECOND as u64);
@@ -292,11 +306,10 @@ impl Engine {
         }
     }
 
-    fn connect_session(&mut self) -> (WorkspaceState, EngineOps, Indications) {
+    fn connect_session(&mut self) -> (WorkspaceState, EngineOps) {
         let log_rx = self.log_tx.subscribe();
-        let indic_rx = self.indic_tx.subscribe();
         let state = self.dump_state();
-        (state, log_rx, indic_rx)
+        (state, log_rx)
     }
 
     fn dump_state(&self) -> WorkspaceState {
@@ -305,10 +318,14 @@ impl Engine {
             geometry: Vec::new(),
             indications: Vec::new(),
             connections: Vec::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
         };
 
         for (module_id, module) in &self.modules {
             state.modules.push((*module_id, module.params()));
+            state.inputs.push((*module_id, module.inputs().to_vec()));
+            state.outputs.push((*module_id, module.outputs().to_vec()));
         }
 
         for (module_id, geometry) in &self.geometry {
@@ -338,11 +355,21 @@ impl Engine {
                 // window geometry and so should not own this data and force
                 // all accesses to it to go via the live audio thread
                 let id = ModuleId(self.module_seq.next());
-                let (module, indications) = Module::create(params.clone());
+                let (module, indication) = Module::create(params.clone());
+                let inputs = module.inputs().to_vec();
+                let outputs = module.outputs().to_vec();
                 self.modules.insert(id, module);
                 self.geometry.insert(id, geometry.clone());
-                self.indications.insert(id, indications.clone());
-                self.log_op(ModelOp::CreateModule(id, params, geometry, indications));
+                self.indications.insert(id, indication.clone());
+
+                self.log_op(ModelOp::CreateModule {
+                    id,
+                    params,
+                    geometry,
+                    indication,
+                    inputs,
+                    outputs,
+                });
             }
             ClientMessage::UpdateModuleParams(module_id, params) => {
                 if let Some(module) = self.modules.get_mut(&module_id) {
@@ -381,20 +408,25 @@ impl Engine {
                 }
             }
             ClientMessage::CreateConnection(input_id, output_id) => {
-                // validate
-                if !validate_terminal(self, TerminalId::Input(input_id)) {
-                    return;
-                }
+                let input_type = match terminal_line_type(self, TerminalId::Input(input_id)) {
+                    Some(ty) => ty,
+                    None => return,
+                };
 
-                if !validate_terminal(self, TerminalId::Output(output_id)) {
-                    return;
-                }
+                let output_type = match terminal_line_type(self, TerminalId::Output(output_id)) {
+                    Some(ty) => ty,
+                    None => return,
+                };
 
-                if let Some(_) = self.connections.insert(input_id, output_id) {
-                    self.log_op(ModelOp::DeleteConnection(input_id));
-                }
+                if input_type == output_type {
+                    if let Some(_) = self.connections.insert(input_id, output_id) {
+                        self.log_op(ModelOp::DeleteConnection(input_id));
+                    }
 
-                self.log_op(ModelOp::CreateConnection(input_id, output_id));
+                    self.log_op(ModelOp::CreateConnection(input_id, output_id));
+                } else {
+                    // type mismatch, don't connect
+                }
             }
             ClientMessage::DeleteConnection(input_id) => {
                 if let Some(_) = self.connections.remove(&input_id) {
@@ -403,20 +435,17 @@ impl Engine {
             }
         }
 
-        fn validate_terminal(engine: &Engine, terminal: TerminalId) -> bool{
-            if let Some(module) = engine.modules.get(&terminal.module_id()) {
+        fn terminal_line_type(engine: &Engine, terminal: TerminalId) -> Option<LineType> {
+            engine.modules.get(&terminal.module_id()).and_then(|module| {
                 match terminal {
                     TerminalId::Input(input) => {
-                        input.index() < module.input_count()
+                        module.inputs().get(input.index()).cloned()
                     }
                     TerminalId::Output(output) => {
-                        output.index() < module.output_count()
+                        module.outputs().get(output.index()).cloned()
                     }
                 }
-            } else {
-                // no such module
-                false
-            }
+            })
         }
     }
 
@@ -458,7 +487,7 @@ impl Engine {
             reverse_module_order.push(module_id);
 
             // traverse input edges
-            for i in 0..module.input_count() {
+            for i in 0..module.inputs().len() {
                 let terminal_id = InputId(module_id, i);
 
                 if let Some(output_id) = self.connections.get(&terminal_id) {
@@ -480,19 +509,22 @@ impl Engine {
 
             let mut output_buffers = Vec::<Vec<Sample>>::new();
 
-            for _ in 0..module.output_count() {
+            for _ in 0..module.outputs().len() {
                 output_buffers.push(vec![0.0; SAMPLES_PER_TICK * CHANNELS]);
             }
 
             {
-                let input_refs = (0..module.input_count())
-                    .map(|i| InputId(*module_id, i))
-                    .map(|input| connections.get(&input)
-                        .map(|output| buffers[output].as_slice()))
+                let input_refs = module.inputs().iter()
+                    .enumerate()
+                    .map(|(i, ty)| (InputId(*module_id, i), ty))
+                    .map(|(input, ty)|
+                        connections.get(&input).map(|output|
+                            &buffers[output][0..line_type_sample_count(ty)]))
                     .collect::<Vec<Option<&[Sample]>>>();
 
                 let mut output_refs = output_buffers.iter_mut()
-                    .map(|vec| vec.as_mut_slice())
+                    .zip(module.outputs())
+                    .map(|(vec, ty)| &mut vec[0..line_type_sample_count(ty)])
                     .collect::<Vec<_>>();
 
                 let t = tick * SAMPLES_PER_TICK as u64;
@@ -511,5 +543,12 @@ impl Engine {
         }
 
         indications
+    }
+}
+
+fn line_type_sample_count(line_type: &LineType) -> usize {
+    match line_type {
+        LineType::Mono => SAMPLES_PER_TICK,
+        LineType::Stereo => SAMPLES_PER_TICK * 2,
     }
 }
