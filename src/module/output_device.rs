@@ -158,10 +158,7 @@ impl Module for OutputDevice {
     }
 
     fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], _outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let input = match inputs[0] {
-            Some(input) => input,
-            None => return None,
-        };
+        let input = inputs[0].unwrap_or(&ZERO_BUFFER_STEREO);
 
         let mut clip = false;
 
