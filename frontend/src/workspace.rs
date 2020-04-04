@@ -7,11 +7,12 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, Mixer4chParams};
 
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
 use crate::module::fm_sine::FmSine;
+use crate::module::mixer_4ch::Mixer4ch;
 use crate::module::output_device::OutputDevice;
 use crate::module::sine_generator::SineGenerator;
 use crate::module::trigger::Trigger;
@@ -492,6 +493,7 @@ impl Workspace {
         let items = &[
             ("Sine Generator", ModuleParams::SineGenerator(SineGeneratorParams { freq: 100.0 })),
             ("Mixer (2 channel)", ModuleParams::Mixer2ch(())),
+            ("Mixer (4 channel)", ModuleParams::Mixer4ch(Mixer4chParams::default())),
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None, left: None, right: None })),
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
             ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
@@ -712,6 +714,9 @@ impl Window {
             }
             ModuleParams::Envelope(params) => {
                 html! { <Envelope id={self.props.id} module={self.link.clone()} params={params} /> }
+            }
+            ModuleParams::Mixer4ch(params) => {
+                html! { <Mixer4ch id={self.props.id} module={self.link.clone()} params={params} /> }
             }
         }
     }

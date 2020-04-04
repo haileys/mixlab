@@ -142,3 +142,14 @@ body {
 .context-menu-item:hover {
     background-color:#fafafc;
 }
+
+.mixer-channels {
+    display:flex;
+    flex-flow:row nowrap;
+    gap:24px;
+}
+
+.mixer-channel {
+    display:flex;
+    flex-flow:column nowrap;
+}
