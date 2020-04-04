@@ -11,6 +11,8 @@ body {
 
 .workspace {
     position:absolute;
+    left:0px;
+    top:0px;
     width:100%;
     height:100%;
     z-index:0;
@@ -152,4 +154,8 @@ body {
 .mixer-channel {
     display:flex;
     flex-flow:column nowrap;
+}
+
+.drag-target-container {
+    display:inline-flex;
 }
