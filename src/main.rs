@@ -94,9 +94,13 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
                 let msg = bincode::serialize(&ServerMessage::ModelOp(pos, op))
                     .expect("bincode::serialize");
 
-                tx.send(ws::Message::binary(msg))
-                    .await
-                    .expect("tx.send ModelOp")
+                match tx.send(ws::Message::binary(msg)).await {
+                    Ok(()) => {}
+                    Err(_) => {
+                        // client disconnected
+                        return;
+                    }
+                }
             }
         }
     }
