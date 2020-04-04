@@ -3,6 +3,7 @@ use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};
 
 use crate::component::drag_target::{DragTarget, DragEvent};
+use crate::util;
 
 const FADER_WIDTH: usize = 40;
 const FADER_HEIGHT: usize = 160;
@@ -83,15 +84,7 @@ impl Fader {
         let position = (new_fader_y - FADER_SHAFT_OFFSET_TOP as i32) as f32
             / FADER_SHAFT_HEIGHT as f32;
 
-        let fader_value = 1.0 - position;
-
-        let fader_value = if fader_value < 0.0 {
-            0.0
-        } else if fader_value > 1.0 {
-            1.0
-        } else {
-            fader_value
-        };
+        let fader_value = util::clamp(0.0, 1.0, 1.0 - position);
 
         self.mouse_mode = MouseMode::Drag(DragState { origin_y, fader_value });
         self.props.onchange.emit(fader_value);

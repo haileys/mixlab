@@ -33,3 +33,13 @@ where
         f(ev)
     })
 }
+
+pub fn clamp<T: PartialOrd>(min: T, max: T, val: T) -> T {
+    if val < min {
+        min
+    } else if val > max {
+        max
+    } else {
+        val
+    }
+}
