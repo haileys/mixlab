@@ -50,8 +50,8 @@ fn amplitude(params: &EnvelopeParams, state: &EnvelopeState, t: SampleSeq) -> f3
         }
         EnvelopeState::TriggerOff {off, off_amplitude} => {
             let ms_since_off = sample_seq_duration_ms(*off, t);
-
             let release_amplitude = invert(clamp((1.0 / params.release_ms * ms_since_off)));
+
             off_amplitude * release_amplitude
         }
     }
