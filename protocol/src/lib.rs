@@ -188,6 +188,7 @@ pub struct Mixer4chParams {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct MixerChannelParams {
     pub fader: f32,
+    pub cue: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]

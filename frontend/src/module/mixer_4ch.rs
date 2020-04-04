@@ -73,6 +73,7 @@ pub struct Channel {
 }
 
 pub enum ChannelMsg {
+    CueClick,
     FaderChanged(f32),
 }
 
@@ -96,22 +97,43 @@ impl Component for Channel {
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        let params = self.props.params.clone();
+
         match msg {
-            ChannelMsg::FaderChanged(value) => self.props.onchange.emit(MixerChannelParams {
-                fader: value,
-            }),
+            ChannelMsg::CueClick => {
+                self.props.onchange.emit(MixerChannelParams {
+                    cue: !params.cue,
+                    ..params
+                });
+            }
+            ChannelMsg::FaderChanged(value) => {
+                self.props.onchange.emit(MixerChannelParams {
+                    fader: value,
+                    ..params
+                });
+            }
         }
+
         false
     }
 
     fn view(&self) -> Html {
+        let cue_style = if self.props.params.cue {
+            "mixer-channel-cue-btn mixer-channel-cue-on"
+        } else {
+            "mixer-channel-cue-btn"
+        };
+
         html! {
-            <>
+            <div class="mixer-channel">
+                <div class={cue_style} onclick={self.link.callback(|_| ChannelMsg::CueClick)}>
+                    {"CUE"}
+                </div>
                 <Fader
                     value={self.props.params.fader}
                     onchange={self.link.callback(ChannelMsg::FaderChanged)}
                 />
-            </>
+            </div>
         }
     }
 }

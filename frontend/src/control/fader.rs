@@ -1,4 +1,3 @@
-use gloo_events::{EventListener, EventListenerOptions};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};

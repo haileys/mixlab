@@ -156,6 +156,29 @@ body {
     flex-flow:column nowrap;
 }
 
+.mixer-channel {
+    display:flex;
+    flex-flow:column nowrap;
+}
+
+.mixer-channel-cue-btn {
+    border:1px solid #8d8bb0;
+    color:#8d8bb0;
+    width:38px;
+    height:18px;
+    line-height:18px;
+    text-align:center;
+    vertical-align:middle;
+    font-size:12px;
+    cursor:pointer;
+    margin-bottom:12px;
+}
+
+.mixer-channel-cue-on {
+    background-color:#8d8bb0;
+    color:#ffffff;
+}
+
 .drag-target-container {
     display:inline-flex;
 }
