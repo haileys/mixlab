@@ -12,6 +12,7 @@ use crate::module::{Module as ModuleT};
 use crate::util::Sequence;
 
 use crate::module::amplifier::Amplifier;
+use crate::module::envelope::Envelope;
 use crate::module::fm_sine::FmSine;
 use crate::module::mixer_2ch::Mixer2ch;
 use crate::module::output_device::OutputDevice;
@@ -35,6 +36,7 @@ pub static ONE_BUFFER_MONO: [Sample; SAMPLES_PER_TICK] = [1.0; SAMPLES_PER_TICK]
 #[derive(Debug)]
 enum Module {
     Amplifier(Amplifier),
+    Envelope(Envelope),
     FmSine(FmSine),
     Mixer2ch(Mixer2ch),
     OutputDevice(OutputDevice),
@@ -68,6 +70,7 @@ impl Module {
             StereoPanner,
             StereoSplitter,
             Trigger,
+            Envelope,
         }
     }
 
@@ -82,6 +85,7 @@ impl Module {
 
         gen! {
             Amplifier,
+            Envelope,
             FmSine,
             Mixer2ch,
             OutputDevice,
@@ -111,6 +115,7 @@ impl Module {
 
         gen! {
             Amplifier,
+            Envelope,
             FmSine,
             Mixer2ch,
             OutputDevice,
@@ -134,6 +139,7 @@ impl Module {
 
         gen! {
             Amplifier,
+            Envelope,
             FmSine,
             Mixer2ch,
             OutputDevice,
@@ -155,6 +161,7 @@ impl Module {
 
         gen! {
             Amplifier,
+            Envelope,
             FmSine,
             Mixer2ch,
             OutputDevice,
@@ -176,6 +183,7 @@ impl Module {
 
         gen! {
             Amplifier,
+            Envelope,
             FmSine,
             Mixer2ch,
             OutputDevice,

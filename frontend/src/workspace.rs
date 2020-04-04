@@ -710,6 +710,9 @@ impl Window {
             ModuleParams::Trigger(params) => {
                 html! { <Trigger id={self.props.id} module={self.link.clone()} params={params} /> }
             }
+            ModuleParams::Envelope(_params) => {
+                html! {}
+            }
         }
     }
 }
