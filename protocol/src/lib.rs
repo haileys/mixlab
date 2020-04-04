@@ -135,6 +135,7 @@ pub struct OutputDeviceParams {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OutputDeviceIndication {
+    pub default_device: Option<String>,
     pub devices: Option<Vec<(String, usize)>>,
 }
 
