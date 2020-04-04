@@ -15,7 +15,7 @@ use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
 
-use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, Indication};
+use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, Indication, LineType};
 
 use workspace::Workspace;
 
@@ -38,6 +38,8 @@ pub struct State {
     geometry: HashMap<ModuleId, WindowGeometry>,
     connections: HashMap<InputId, OutputId>,
     indications: HashMap<ModuleId, Indication>,
+    inputs: HashMap<ModuleId, Vec<LineType>>,
+    outputs: HashMap<ModuleId, Vec<LineType>>,
 }
 
 impl From<WorkspaceState> for State {
@@ -47,6 +49,8 @@ impl From<WorkspaceState> for State {
             geometry: wstate.geometry.into_iter().collect(),
             indications: wstate.indications.into_iter().collect(),
             connections: wstate.connections.into_iter().collect(),
+            inputs: wstate.inputs.into_iter().collect(),
+            outputs: wstate.outputs.into_iter().collect(),
         }
     }
 }
@@ -134,10 +138,12 @@ impl Component for App {
                             .borrow_mut();
 
                         match op {
-                            ModelOp::CreateModule(id, module, geometry, indication) => {
-                                state.modules.insert(id, module);
+                            ModelOp::CreateModule { id, params, geometry, indication, inputs, outputs } => {
+                                state.modules.insert(id, params);
                                 state.geometry.insert(id, geometry);
                                 state.indications.insert(id, indication);
+                                state.inputs.insert(id, inputs);
+                                state.outputs.insert(id, outputs);
                             }
                             ModelOp::UpdateModuleParams(id, new_params) => {
                                 if let Some(params) = state.modules.get_mut(&id) {
@@ -149,10 +155,17 @@ impl Component for App {
                                     *geometry = new_geometry;
                                 }
                             }
+                            ModelOp::UpdateModuleIndication(id, new_indication) => {
+                                if let Some(indication) = state.indications.get_mut(&id) {
+                                    *indication = new_indication;
+                                }
+                            }
                             ModelOp::DeleteModule(id) => {
                                 state.modules.remove(&id);
                                 state.geometry.remove(&id);
                                 state.indications.remove(&id);
+                                state.inputs.remove(&id);
+                                state.outputs.remove(&id);
                             }
                             ModelOp::CreateConnection(input, output) => {
                                 state.connections.insert(input, output);
@@ -161,16 +174,6 @@ impl Component for App {
                                 state.connections.remove(&input);
                             }
                         }
-
-                        self.state_seq += 1;
-                        true
-                    }
-                    ServerMessage::Indication(module_id, indication) => {
-                        let mut state = self.state.as_ref()
-                            .expect("server should always send a WorkspaceState before an Indication")
-                            .borrow_mut();
-
-                        state.indications.insert(module_id, indication);
 
                         self.state_seq += 1;
                         true

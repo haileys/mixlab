@@ -5,9 +5,9 @@ use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
+use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType};
 
 use crate::module::trigger::Trigger;
 use crate::module::amplifier::Amplifier;
@@ -51,7 +51,7 @@ pub struct WorkspaceProps {
 pub enum MouseMode {
     Normal,
     Drag(Drag),
-    Connect(TerminalId, Option<Coords>),
+    Connect(TerminalId, TerminalRef, Option<Coords>),
     ContextMenu(Coords),
 }
 
@@ -66,7 +66,7 @@ pub enum WorkspaceMsg {
     MouseDown(MouseEvent),
     MouseUp(MouseEvent),
     MouseMove(MouseEvent),
-    SelectTerminal(TerminalId),
+    SelectTerminal(TerminalId, TerminalRef),
     ClearTerminal(TerminalId),
     DeleteWindow(ModuleId),
     UpdateModuleParams(ModuleId, ModuleParams),
@@ -88,8 +88,14 @@ impl Component for Workspace {
             window_refs: BTreeMap::new(),
         };
 
-        for (id, params) in &state.borrow().modules {
-            workspace.create_window(*id, params);
+        let state = state.borrow();
+        for id in state.modules.keys() {
+            let inputs = state.inputs.get(id);
+            let outputs = state.outputs.get(id);
+
+            if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
+                workspace.register_terminals(*id, inputs, outputs);
+            }
         }
 
         workspace
@@ -100,13 +106,23 @@ impl Component for Workspace {
 
         let mut deleted_windows = self.window_refs.keys().copied().collect::<HashSet<_>>();
 
-        for (id, module) in &new_props.state.borrow().modules {
-            if deleted_windows.remove(id) {
-                // cool, nothing changes with this module
-            } else {
-                // this module was not present before, create a window ref for it
-                self.create_window(*id, module);
-                should_render = true;
+        {
+            let state = new_props.state.borrow();
+
+            for id in state.modules.keys() {
+                if deleted_windows.remove(id) {
+                    // cool, nothing changes with this module
+                } else {
+                    // this module was not present before, create a window ref for it
+                    let inputs = state.inputs.get(id);
+                    let outputs = state.outputs.get(id);
+
+                    if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
+                        self.register_terminals(*id, inputs, outputs);
+                    }
+
+                    should_render = true;
+                }
             }
         }
 
@@ -210,33 +226,39 @@ impl Component for Workspace {
                     MouseMode::Drag(ref mut drag) => {
                         drag_event(&mut self.props.state.borrow_mut(), &self.window_refs, drag, ev)
                     }
-                    MouseMode::Connect(_terminal, ref mut coords) => {
+                    MouseMode::Connect(_, _, ref mut coords) => {
                         *coords = Some(Coords { x: ev.page_x(), y: ev.page_y() });
                         true
                     }
                 }
             }
-            WorkspaceMsg::SelectTerminal(terminal) => {
+            WorkspaceMsg::SelectTerminal(terminal_id, terminal_ref) => {
                 match &self.mouse {
                     MouseMode::Normal | MouseMode::ContextMenu(_) => {
-                        self.mouse = MouseMode::Connect(terminal, None);
+                        self.mouse = MouseMode::Connect(terminal_id, terminal_ref, None);
                         false
                     }
-                    MouseMode::Connect(other_terminal, _) => {
-                        match (terminal, *other_terminal) {
+                    MouseMode::Connect(other_terminal_id, other_terminal_ref, _) => {
+                        match (terminal_id, *other_terminal_id) {
                             (TerminalId::Input(input), TerminalId::Output(output)) |
                             (TerminalId::Output(output), TerminalId::Input(input)) => {
-                                self.props.state.borrow_mut()
-                                    .connections
-                                    .insert(input, output);
+                                let mut state = self.props.state.borrow_mut();
 
-                                self.mouse = MouseMode::Normal;
+                                if terminal_ref.line_type == other_terminal_ref.line_type {
+                                    state.connections.insert(input, output);
 
-                                self.props.app.send_message(
-                                    AppMsg::ClientUpdate(
-                                        ClientMessage::CreateConnection(input, output)));
+                                    self.mouse = MouseMode::Normal;
 
-                                true
+                                    self.props.app.send_message(
+                                        AppMsg::ClientUpdate(
+                                            ClientMessage::CreateConnection(input, output)));
+
+                                    true
+                                } else {
+                                    // type mismatch on connection, don't let the user connect it.
+                                    // TODO - should we show an error or an icon or something?
+                                    false
+                                }
                             }
                             _ => {
                                 // invalid connection, don't let the user do it
@@ -368,9 +390,9 @@ impl Component for Workspace {
 
         crate::log!("view: connections: {:?}", connections);
 
-        if let MouseMode::Connect(terminal, Some(to_coords)) = &self.mouse {
-            if let Some(start_coords) = self.screen_coords_for_terminal(*terminal) {
-                let pair = match terminal {
+        if let MouseMode::Connect(terminal_id, _, Some(to_coords)) = &self.mouse {
+            if let Some(start_coords) = self.screen_coords_for_terminal(*terminal_id) {
+                let pair = match terminal_id {
                     TerminalId::Input(_) => (*to_coords, start_coords),
                     TerminalId::Output(_) => (start_coords, *to_coords),
                 };
@@ -426,41 +448,37 @@ impl Component for Workspace {
 }
 
 impl Workspace {
-    pub fn create_window(&mut self, id: ModuleId, module: &ModuleParams) {
+    pub fn register_terminals(&mut self, id: ModuleId, inputs: &[LineType], outputs: &[LineType]) {
         let refs = WindowRef {
             module: NodeRef::default(),
-            inputs: match module {
-                ModuleParams::SineGenerator(_) => vec![],
-                ModuleParams::OutputDevice(_) => vec![NodeRef::default()],
-                ModuleParams::Mixer2ch(()) => vec![NodeRef::default(), NodeRef::default()],
-                ModuleParams::FmSine(_) => vec![NodeRef::default()],
-                ModuleParams::Amplifier(_) => vec![NodeRef::default(), NodeRef::default()],
-                ModuleParams::Trigger(_) => vec![],
-            },
-            outputs: match module {
-                ModuleParams::SineGenerator(_) => vec![NodeRef::default()],
-                ModuleParams::OutputDevice(_) => vec![],
-                ModuleParams::Mixer2ch(()) => vec![NodeRef::default()],
-                ModuleParams::FmSine(_) => vec![NodeRef::default()],
-                ModuleParams::Amplifier(_) => vec![NodeRef::default()],
-                ModuleParams::Trigger(_) => vec![NodeRef::default()],
-            },
+            inputs: make_terminal_refs(inputs),
+            outputs: make_terminal_refs(outputs),
         };
 
         self.window_refs.insert(id, refs);
+
+        fn make_terminal_refs(line_types: &[LineType]) -> Vec<TerminalRef> {
+            line_types.iter()
+                .cloned()
+                .map(|line_type| TerminalRef {
+                    node: NodeRef::default(),
+                    line_type,
+                })
+                .collect()
+        }
     }
 
-    fn screen_coords_for_terminal(&self, terminal: TerminalId) -> Option<Coords> {
+    fn screen_coords_for_terminal(&self, terminal_id: TerminalId) -> Option<Coords> {
         let state = self.props.state.borrow();
-        let geometry = state.geometry.get(&terminal.module_id())?;
-        let refs = self.window_refs.get(&terminal.module_id())?;
+        let geometry = state.geometry.get(&terminal_id.module_id())?;
+        let refs = self.window_refs.get(&terminal_id.module_id())?;
 
-        let terminal_node = match terminal {
+        let terminal_ref = match terminal_id {
             TerminalId::Input(InputId(_, index)) => refs.inputs.get(index)?,
             TerminalId::Output(OutputId(_, index)) => refs.outputs.get(index)?,
         };
 
-        let terminal_node = terminal_node.cast::<HtmlElement>()?;
+        let terminal_node = terminal_ref.node.cast::<HtmlElement>()?;
 
         let terminal_coords = Coords { x: terminal_node.offset_left() + 9, y: terminal_node.offset_top() + 9 };
         Some(geometry.position.add(terminal_coords))
@@ -479,6 +497,8 @@ impl Workspace {
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
             ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
             ("Trigger", ModuleParams::Trigger(GateState::Closed)),
+            ("Stereo Panner", ModuleParams::StereoPanner(())),
+            ("Stereo Splitter", ModuleParams::StereoSplitter(())),
         ];
 
         html! {
@@ -512,7 +532,7 @@ pub struct Window {
 #[derive(Debug)]
 pub enum WindowMsg {
     DragStart(MouseEvent),
-    TerminalMouseDown(MouseEvent, TerminalId),
+    TerminalMouseDown(MouseEvent, TerminalId, TerminalRef),
     Delete,
     UpdateParams(ModuleParams),
 }
@@ -531,8 +551,14 @@ pub struct WindowProps {
 #[derive(Clone, Debug)]
 pub struct WindowRef {
     module: NodeRef,
-    inputs: Vec<NodeRef>,
-    outputs: Vec<NodeRef>,
+    inputs: Vec<TerminalRef>,
+    outputs: Vec<TerminalRef>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TerminalRef {
+    node: NodeRef,
+    line_type: LineType,
 }
 
 impl Component for Window {
@@ -554,13 +580,13 @@ impl Component for Window {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DragStart(self.props.id, ev));
             }
-            WindowMsg::TerminalMouseDown(ev, terminal_id) => {
+            WindowMsg::TerminalMouseDown(ev, terminal_id, terminal_ref) => {
                 let msg =
                     if (ev.buttons() & 2) != 0 {
                         // right click
                         WorkspaceMsg::ClearTerminal(terminal_id)
                     } else {
-                        WorkspaceMsg::SelectTerminal(terminal_id)
+                        WorkspaceMsg::SelectTerminal(terminal_id, terminal_ref)
                     };
 
                 self.props.workspace.send_message(msg);
@@ -625,32 +651,34 @@ impl Component for Window {
 
 impl Window {
     fn view_inputs(&self) -> Html {
-        html! {
-            { for self.props.refs.inputs.iter().cloned().enumerate().map(|(index, terminal_ref)| {
-                let terminal_id = TerminalId::Input(InputId(self.props.id, index));
-
-                html! {
-                    <div class="module-window-terminal"
-                        ref={terminal_ref}
-                        onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
-                    >
-                    </div>
-                }
-            }) }
-        }
+        self.view_terminals(
+            self.props.refs.inputs.iter()
+                .cloned()
+                .enumerate()
+                .map(|(index, terminal_ref)|
+                    (TerminalId::Input(InputId(self.props.id, index)), terminal_ref)))
     }
 
     fn view_outputs(&self) -> Html {
-        html! {
-            { for self.props.refs.outputs.iter().cloned().enumerate().map(|(index, terminal_ref)| {
-                let terminal_id = TerminalId::Output(OutputId(self.props.id, index));
+        self.view_terminals(
+            self.props.refs.outputs.iter()
+                .cloned()
+                .enumerate()
+                .map(|(index, terminal_ref)|
+                    (TerminalId::Output(OutputId(self.props.id, index)), terminal_ref)))
+    }
 
+    fn view_terminals(&self, terminals: impl Iterator<Item = (TerminalId, TerminalRef)>) -> Html {
+        html! {
+            { for terminals.map(|(terminal_id, terminal_ref)| {
                 html! {
-                    <div class="module-window-terminal"
-                        ref={terminal_ref}
-                        onmousedown={self.link.callback(move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id))}
-                    >
-                    </div>
+                    <Terminal
+                        terminal={terminal_ref.clone()}
+                        onmousedown={self.link.callback({
+                            let terminal_ref = terminal_ref.clone();
+                            move |ev| WindowMsg::TerminalMouseDown(ev, terminal_id, terminal_ref.clone())
+                        })}
+                    />
                 }
             }) }
         }
@@ -661,7 +689,9 @@ impl Window {
             ModuleParams::SineGenerator(params) => {
                 html! { <SineGenerator id={self.props.id} module={self.link.clone()} params={params} /> }
             }
-            ModuleParams::Mixer2ch(_) => {
+            ModuleParams::Mixer2ch(()) |
+            ModuleParams::StereoPanner(()) |
+            ModuleParams::StereoSplitter(()) => {
                 html! {}
             }
             ModuleParams::OutputDevice(params) => {
@@ -680,6 +710,57 @@ impl Window {
             ModuleParams::Trigger(params) => {
                 html! { <Trigger id={self.props.id} module={self.link.clone()} params={params} /> }
             }
+        }
+    }
+}
+
+pub struct Terminal {
+    link: ComponentLink<Self>,
+    props: TerminalProps,
+    hover: bool,
+}
+
+#[derive(Properties, Clone, Debug)]
+pub struct TerminalProps {
+    terminal: TerminalRef,
+    onmousedown: Callback<MouseEvent>,
+}
+
+impl Component for Terminal {
+    type Properties = TerminalProps;
+    type Message = bool;
+
+    fn create(props: TerminalProps, link: ComponentLink<Self>) -> Self {
+        Terminal { link, props, hover: false }
+    }
+
+    fn change(&mut self, props: TerminalProps) -> ShouldRender {
+        self.props = props;
+        true
+    }
+
+    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        self.hover = msg;
+        true
+    }
+
+    fn view(&self) -> Html {
+        html! {
+            <div class="module-window-terminal"
+                ref={self.props.terminal.node.clone()}
+                onmousedown={self.props.onmousedown.clone()}
+                onmouseover={self.link.callback(|_| true)}
+                onmouseout={self.link.callback(|_| false)}
+            >
+                <svg width="16" height="16">
+                    { match self.props.terminal.line_type {
+                        LineType::Mono => html! {},
+                        LineType::Stereo => html! {
+                            <polygon points="0,16 16,16 16,0" fill={ if self.hover { "#f0b5b3" } else { "#e0a5a3" } } />
+                        },
+                    } }
+                </svg>
+            </div>
         }
     }
 }
