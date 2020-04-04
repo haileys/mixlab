@@ -107,6 +107,7 @@ pub enum ModuleParams {
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(GateState),
+    Envelope(EnvelopeParams),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -119,6 +120,7 @@ pub enum Indication {
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(()),
+    Envelope(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -155,6 +157,24 @@ pub struct AmplifierParams {
 pub enum GateState {
     Open,
     Closed
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct EnvelopeParams {
+    pub attack_ms: f32,
+    pub decay_ms: f32,
+    pub sustain_amplitude: f32,
+    pub release_ms: f32,
+}
+impl Default for EnvelopeParams {
+    fn default() -> EnvelopeParams {
+        EnvelopeParams {
+            attack_ms: 25.0,
+            decay_ms: 500.0,
+            sustain_amplitude: 0.8,
+            release_ms: 200.0,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
