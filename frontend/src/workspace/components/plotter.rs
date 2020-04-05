@@ -1,6 +1,5 @@
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
+use web_sys::HtmlCanvasElement;
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
-use wasm_bindgen::JsCast;
 
 use mixlab_protocol::{ModuleId, PlotterIndication};
 
@@ -15,7 +14,6 @@ pub struct PlotterProps {
 pub struct Plotter {
     props: PlotterProps,
     canvas: NodeRef,
-    canvas_ctx: Option<CanvasRenderingContext2d>,
 }
 
 impl Component for Plotter {
@@ -25,7 +23,6 @@ impl Component for Plotter {
     fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
         Plotter {
             props,
-            canvas_ctx: None,
             canvas: NodeRef::default(),
         }
     }
@@ -35,18 +32,6 @@ impl Component for Plotter {
     }
 
     fn mounted(&mut self) -> ShouldRender {
-        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
-            let canvas_ctx = canvas.get_context("2d")
-                .expect("canvas.get_context")
-                .expect("canvas.get_context");
-
-            let canvas_ctx = canvas_ctx
-                .dyn_into::<CanvasRenderingContext2d>()
-                .expect("dyn_ref::<CanvasRenderingContext2d>");
-
-            self.canvas_ctx = Some(canvas_ctx);
-        }
-
         true
     }
 
