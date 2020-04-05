@@ -35,7 +35,7 @@ impl Module for Plotter {
     }
 
     fn inputs(&self) -> &[LineType] {
-        &[LineType::Mono, LineType::Mono]
+        &[LineType::Stereo]
     }
 
     fn outputs(&self) -> &[LineType] {
