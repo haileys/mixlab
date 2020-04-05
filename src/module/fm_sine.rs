@@ -36,8 +36,8 @@ impl Module for FmSine {
         let freq_mid = self.params.freq_lo + freq_amp;
 
         for i in 0..len {
-            let co = (freq_mid + freq_amp * input[i * 2] as f64) * 2.0 * f64::consts::PI;
             let t = (t + i as u64) as f64 / SAMPLE_RATE as f64;
+            let co = (freq_mid + freq_amp * input[i] as f64) * 2.0 * f64::consts::PI;
             let x = f64::sin(co * t);
 
             for chan in 0..CHANNELS {
@@ -49,7 +49,7 @@ impl Module for FmSine {
     }
 
     fn inputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+        &[LineType::Mono]
     }
 
     fn outputs(&self) -> &[LineType] {
