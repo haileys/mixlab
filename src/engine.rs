@@ -482,37 +482,42 @@ impl Engine {
         // depth-first-search modules out via their inputs, starting from
         // terminal modules
 
-        let mut reverse_module_order = Vec::new();
-        let mut visited_modules = HashSet::new();
-        let mut module_stack = Vec::new();
+        let mut topsort = Topsort {
+            modules: &self.modules,
+            connections: &self.connections,
+            run_order: Vec::new(),
+            seen: HashSet::new(),
+        };
 
         for id in terminal_modules.into_iter() {
-            module_stack.push(id);
-            reverse_module_order.push(id);
+            traverse(id, &mut topsort);
         }
 
-        while let Some(module_id) = module_stack.pop() {
-            let module = &self.modules[&module_id];
+        struct Topsort<'a> {
+            modules: &'a HashMap<ModuleId, Module>,
+            connections: &'a HashMap<InputId, OutputId>,
+            run_order: Vec<ModuleId>,
+            seen: HashSet<ModuleId>,
+        }
 
-            // visit this module
-            visited_modules.insert(module_id);
+        fn traverse(module_id: ModuleId, state: &mut Topsort) {
+            if state.seen.contains(&module_id) {
+                return;
+            }
 
-            // traverse input edges
+            state.seen.insert(module_id);
+
+            let module = &state.modules[&module_id];
+
             for i in 0..module.inputs().len() {
                 let terminal_id = InputId(module_id, i);
 
-                if let Some(output_id) = self.connections.get(&terminal_id) {
-                    let output_module_id = output_id.module_id();
-
-                    // skip module if visited already
-                    if visited_modules.contains(&output_module_id) {
-                        continue;
-                    }
-
-                    module_stack.push(output_module_id);
-                    reverse_module_order.push(output_module_id);
+                if let Some(output_id) = state.connections.get(&terminal_id) {
+                    traverse(output_id.module_id(), state);
                 }
             }
+
+            state.run_order.push(module_id);
         }
 
         // run modules in dependency order according to BFS above
@@ -520,7 +525,7 @@ impl Engine {
         let mut buffers = HashMap::<OutputId, Vec<Sample>>::new();
         let mut indications = Vec::new();
 
-        for module_id in reverse_module_order.iter().rev() {
+        for module_id in topsort.run_order.iter() {
             let module = self.modules.get_mut(&module_id)
                 .expect("module get_mut");
 
