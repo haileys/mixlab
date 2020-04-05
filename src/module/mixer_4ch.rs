@@ -28,7 +28,7 @@ impl Module for Mixer4ch {
     fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         let len = outputs[0].len();
 
-        let mut channel_gain: [f32; 4] = [0.0; 4];
+        let mut channel_gain: [f64; 4] = [0.0; 4];
 
         for ch in 0..4 {
             let channel = &self.params.channels[ch];
@@ -44,11 +44,11 @@ impl Module for Mixer4ch {
                     let channel = &self.params.channels[ch];
 
                     // master
-                    outputs[0][i] += input[i] * channel_gain[ch];
+                    outputs[0][i] += (input[i] as f64 * channel_gain[ch]) as Sample;
 
                     // cue
                     if channel.cue {
-                        outputs[1][i] += input[i]
+                        outputs[1][i] += input[i];
                     }
                 }
             }

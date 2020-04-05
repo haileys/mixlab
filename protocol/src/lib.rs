@@ -129,7 +129,7 @@ pub enum Indication {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SineGeneratorParams {
-    pub freq: f32,
+    pub freq: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -155,14 +155,14 @@ pub enum OutputDeviceWarning {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FmSineParams {
-    pub freq_lo: f32,
-    pub freq_hi: f32,
+    pub freq_lo: f64,
+    pub freq_hi: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AmplifierParams {
-    pub amplitude: f32,
-    pub mod_depth: f32,
+    pub amplitude: f64,
+    pub mod_depth: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -173,10 +173,10 @@ pub enum GateState {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct EnvelopeParams {
-    pub attack_ms: f32,
-    pub decay_ms: f32,
-    pub sustain_amplitude: f32,
-    pub release_ms: f32,
+    pub attack_ms: f64,
+    pub decay_ms: f64,
+    pub sustain_amplitude: f64,
+    pub release_ms: f64,
 }
 
 impl Default for EnvelopeParams {
@@ -198,7 +198,7 @@ pub struct Mixer4chParams {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct MixerChannelParams {
     pub gain: Decibel,
-    pub fader: f32,
+    pub fader: f64,
     pub cue: bool,
 }
 
@@ -240,12 +240,12 @@ impl fmt::Display for Decibel {
 }
 
 impl Decibel {
-    pub fn from_linear(linear: f32) -> Self {
-        Decibel((linear.log10() * 20.0) as f64)
+    pub fn from_linear(linear: f64) -> Self {
+        Decibel(linear.log10() * 20.0)
     }
 
-    pub fn to_linear(self) -> f32 {
-        f64::powf(10.0, self.0 / 20.0) as f32
+    pub fn to_linear(self) -> f64 {
+        f64::powf(10.0, self.0 / 20.0)
     }
 }
 

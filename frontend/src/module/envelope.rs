@@ -105,7 +105,7 @@ impl Component for Envelope {
     }
 }
 
-fn extract_float_value(event: ChangeData) -> Option<f32> {
+fn extract_float_value(event: ChangeData) -> Option<f64> {
     match event {
         ChangeData::Value(float_str) => float_str.parse().ok(),
         _ => None
