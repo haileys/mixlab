@@ -710,7 +710,7 @@ impl Window {
             }
             ModuleParams::Plotter(_) => {
                 if let Some(Indication::Plotter(indic)) = &self.props.indication {
-                    html! { <Plotter id={self.props.id} indication={indic} height={300} width={600} /> }
+                    html! { <Plotter id={self.props.id} indication={indic} height={150} width={300} /> }
                 } else {
                     html! {}
                 }
