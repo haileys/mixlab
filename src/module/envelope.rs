@@ -9,15 +9,15 @@ type SampleSeq = u64;
 enum EnvelopeState {
     Initial,
     TriggerOn {on: SampleSeq},
-    TriggerOff {off: SampleSeq, off_amplitude: f32},
+    TriggerOff {off: SampleSeq, off_amplitude: f64},
 }
 
-type Ms = f32;
+type Ms = f64;
 fn sample_seq_duration_ms(first: SampleSeq, last: SampleSeq) -> Ms {
-    (last - first) as f32 / SAMPLE_RATE as f32 * 1000.0
+    (last - first) as f64 / SAMPLE_RATE as f64 * 1000.0
 }
 
-fn clamp(x: f32) -> f32 {
+fn clamp(x: f64) -> f64 {
     if x > 1.0 {
         1.0
     } else if x < 0.0 {
@@ -27,11 +27,11 @@ fn clamp(x: f32) -> f32 {
     }
 }
 
-fn invert(x: f32) -> f32 {
+fn invert(x: f64) -> f64 {
     1.0 - x
 }
 
-fn amplitude(params: &EnvelopeParams, state: &EnvelopeState, t: SampleSeq) -> f32 {
+fn amplitude(params: &EnvelopeParams, state: &EnvelopeState, t: SampleSeq) -> f64 {
     match state {
         EnvelopeState::Initial => 0.0,
         EnvelopeState::TriggerOn {on} => {
@@ -105,7 +105,7 @@ impl Module for Envelope {
                 }
             }
             // Then set output
-            output[i] = amplitude(&self.params, &self.state, sample_seq);
+            output[i] = amplitude(&self.params, &self.state, sample_seq) as f32;
         }
 
         None

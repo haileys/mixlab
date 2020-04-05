@@ -23,7 +23,7 @@ pub struct Fader {
 
 struct DragState {
     origin_y: i32,
-    fader_value: f32,
+    fader_value: f64,
 }
 
 enum MouseMode {
@@ -34,8 +34,8 @@ enum MouseMode {
 
 #[derive(Properties, Clone)]
 pub struct FaderProps {
-    pub value: f32,
-    pub onchange: Callback<f32>,
+    pub value: f64,
+    pub onchange: Callback<f64>,
 }
 
 pub enum FaderMsg {
@@ -46,7 +46,7 @@ pub enum FaderMsg {
 }
 
 impl Fader {
-    fn fader_value(&self) -> f32 {
+    fn fader_value(&self) -> f64 {
         match &self.mouse_mode {
             MouseMode::Normal | MouseMode::Hover =>
                 self.props.value,
@@ -55,8 +55,8 @@ impl Fader {
         }
     }
 
-    fn fader_handle_offset_top(&self) -> f32 {
-        FADER_SHAFT_HEIGHT as f32 * (1.0 - self.fader_value())
+    fn fader_handle_offset_top(&self) -> f64 {
+        FADER_SHAFT_HEIGHT as f64 * (1.0 - self.fader_value())
     }
 
     fn drag_event(&mut self, ev: DragEvent) -> ShouldRender {
@@ -65,7 +65,7 @@ impl Fader {
                 let origin_y = ev.offset_y;
 
                 let handle_y = self.fader_handle_offset_top();
-                let midpoint_y = handle_y + FADER_HANDLE_HEIGHT as f32 / 2.0;
+                let midpoint_y = handle_y + FADER_HANDLE_HEIGHT as f64 / 2.0;
 
                 let origin_y = origin_y - midpoint_y as i32;
 
@@ -81,8 +81,8 @@ impl Fader {
 
         let new_fader_y = ev.offset_y - origin_y;
 
-        let position = (new_fader_y - FADER_SHAFT_OFFSET_TOP as i32) as f32
-            / FADER_SHAFT_HEIGHT as f32;
+        let position = (new_fader_y - FADER_SHAFT_OFFSET_TOP as i32) as f64
+            / FADER_SHAFT_HEIGHT as f64;
 
         let fader_value = util::clamp(0.0, 1.0, 1.0 - position);
 
@@ -117,10 +117,10 @@ impl Component for Fader {
             FaderMsg::MouseMove(ev) => {
                 match self.mouse_mode {
                     MouseMode::Normal | MouseMode::Hover => {
-                        let y = ev.offset_y() as f32;
+                        let y = ev.offset_y() as f64;
                         let fader_y = self.fader_handle_offset_top();
 
-                        if y >= fader_y && y < fader_y + FADER_HANDLE_HEIGHT as f32 {
+                        if y >= fader_y && y < fader_y + FADER_HANDLE_HEIGHT as f64 {
                             self.mouse_mode = MouseMode::Hover;
                         } else {
                             self.mouse_mode = MouseMode::Normal;
@@ -186,7 +186,7 @@ impl Component for Fader {
             ctx.fill();
 
             // draw center line on fader handle
-            let line_y = (fader_y + FADER_HANDLE_HEIGHT as f32 / 2.0).floor() + 0.5;
+            let line_y = (fader_y + FADER_HANDLE_HEIGHT as f64 / 2.0).floor() + 0.5;
             ctx.set_stroke_style(&JsValue::from_str("#f0f0f5"));
             ctx.begin_path();
             ctx.move_to(0.0, line_y as f64);

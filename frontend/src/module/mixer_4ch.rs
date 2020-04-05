@@ -75,7 +75,7 @@ pub struct Channel {
 pub enum ChannelMsg {
     GainChanged(Decibel),
     CueClick,
-    FaderChanged(f32),
+    FaderChanged(f64),
 }
 
 #[derive(Properties, Clone)]

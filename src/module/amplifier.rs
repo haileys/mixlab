@@ -36,9 +36,9 @@ impl Module for Amplifier {
 
         for i in 0..len {
             // mod input is a mono channel and so half the length:
-            let mod_value = mod_input[i / 2];
+            let mod_value = mod_input[i / 2] as f64;
 
-            output[i] = input[i] * depth(mod_value, mod_depth) * amplitude;
+            output[i] = (input[i] as f64 * depth(mod_value, mod_depth) * amplitude) as Sample;
         }
 
         None
@@ -53,6 +53,6 @@ impl Module for Amplifier {
     }
 }
 
-pub fn depth(value: f32, depth: f32) -> f32 {
+pub fn depth(value: f64, depth: f64) -> f64 {
     1.0 - depth + depth * value
 }

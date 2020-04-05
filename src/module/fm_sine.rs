@@ -1,4 +1,4 @@
-use std::f32;
+use std::f64;
 
 use mixlab_protocol::{FmSineParams, LineType};
 
@@ -36,12 +36,12 @@ impl Module for FmSine {
         let freq_mid = self.params.freq_lo + freq_amp;
 
         for i in 0..len {
-            let co = (freq_mid + freq_amp * input[i * 2]) * 2.0 * f32::consts::PI;
-            let t = (t + i as u64) as Sample / SAMPLE_RATE as Sample;
-            let x = Sample::sin(co * t);
+            let co = (freq_mid + freq_amp * input[i * 2] as f64) * 2.0 * f64::consts::PI;
+            let t = (t + i as u64) as f64 / SAMPLE_RATE as f64;
+            let x = f64::sin(co * t);
 
             for chan in 0..CHANNELS {
-                outputs[0][i * CHANNELS + chan] = x;
+                outputs[0][i * CHANNELS + chan] = x as Sample;
             }
         }
 
