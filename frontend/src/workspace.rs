@@ -1,3 +1,7 @@
+mod components;
+
+use components::plotter::Plotter;
+
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
@@ -495,6 +499,7 @@ impl Workspace {
             ("Mixer (2 channel)", ModuleParams::Mixer2ch(())),
             ("Mixer (4 channel)", ModuleParams::Mixer4ch(Mixer4chParams::default())),
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None, left: None, right: None })),
+            ("Plotter", ModuleParams::Plotter(())),
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
             ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
             ("Trigger", ModuleParams::Trigger(GateState::Closed)),
@@ -699,6 +704,13 @@ impl Window {
             ModuleParams::OutputDevice(params) => {
                 if let Some(Indication::OutputDevice(indic)) = &self.props.indication {
                     html! { <OutputDevice id={self.props.id} module={self.link.clone()} params={params} indication={indic} /> }
+                } else {
+                    html! {}
+                }
+            }
+            ModuleParams::Plotter(_) => {
+                if let Some(Indication::Plotter(indic)) = &self.props.indication {
+                    html! { <Plotter id={self.props.id} indication={indic} height={300} width={600} /> }
                 } else {
                     html! {}
                 }
