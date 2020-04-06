@@ -24,6 +24,7 @@ try {
     $BuildMode = "--dev"
   }
 
+  $orig_RUSTFLAGS = $env:RUSTFLAGS
   $env:RUSTFLAGS = "--remap-path-prefix src=frontend/src"
 
   if ($null -eq (Get-Command "wasm-pack.exe" -ErrorAction SilentlyContinue))
@@ -34,4 +35,6 @@ try {
   wasm-pack.exe build "$BuildMode" --target no-modules
 } finally {
   Pop-Location
+  $env:RUSTFLAGS = $orig_RUSTFLAGS
+  $orig_RUSTFLAGS = $null
 }
