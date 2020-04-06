@@ -11,6 +11,7 @@ use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType, Outp
 
 use crate::engine::{Sample, CHANNELS, ZERO_BUFFER_STEREO};
 use crate::module::Module;
+use crate::util;
 
 pub struct OutputDevice {
     params: OutputDeviceParams,
@@ -102,18 +103,12 @@ impl Module for OutputDevice {
                 let stream = output_device.build_output_stream(
                         &config.config(),
                         {
-                            fn zero(slice: &mut [f32]) {
-                                for sample in slice.iter_mut() {
-                                    *sample = 0.0;
-                                }
-                            }
-
                             let lag_flag = self.lag_flag.clone();
                             let mut backoff_ticks = 0;
                             move |data: &mut [f32]| {
                                 if backoff_ticks > 0 {
                                     backoff_ticks -= 1;
-                                    zero(data);
+                                    util::zero(data);
                                     return;
                                 }
 
@@ -122,7 +117,7 @@ impl Module for OutputDevice {
                                 if bytes < data.len() {
                                     lag_flag.store(true, Ordering::Relaxed);
                                     backoff_ticks += 3;
-                                    zero(&mut data[bytes..])
+                                    util::zero(&mut data[bytes..])
                                 }
                             }
                         },
