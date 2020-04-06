@@ -23,7 +23,7 @@ impl Module for Plotter {
     }
 
     fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], _outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        if t % 100 == 0 {
+        if t % 10 == 1 {
             let inputs: Vec<_> = inputs.iter().map(|input| {
                 input.map(|x|x.to_vec())
             }).collect();
