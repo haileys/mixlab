@@ -42,7 +42,7 @@ impl Component for Plotter {
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
         self.props = props;
 
-        if let Some(input) = &self.props.indication.inputs[0] {
+        if let Some(input) = &self.props.indication.inputs.get(0) {
             let (channel_1, channel_2): (Vec<f32>, Vec<f32>) = input.into_iter().enumerate().partition_map(|(i, sample)| {
                 if i % 2 == 0 {
                     Either::Left(sample)
