@@ -1,4 +1,4 @@
-use mixlab_protocol::{IcecastInputParams, LineType};
+use mixlab_protocol::{IcecastInputParams, LineType, Terminal};
 
 use crate::engine::Sample;
 use crate::icecast::registry::SourceRecv;
@@ -10,6 +10,8 @@ use crate::util;
 pub struct IcecastInput {
     params: IcecastInputParams,
     recv: Option<SourceRecv>,
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
 }
 
 impl ModuleT for IcecastInput {
@@ -25,6 +27,8 @@ impl ModuleT for IcecastInput {
         let module = IcecastInput {
             params,
             recv,
+            inputs: vec![],
+            outputs: vec![LineType::Stereo.unlabeled()],
         };
 
         (module, ())
@@ -65,11 +69,11 @@ impl ModuleT for IcecastInput {
         None
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self)-> &[LineType] {
-        &[LineType::Stereo]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }

@@ -7,7 +7,7 @@ use std::time::{Instant, Duration};
 use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use ringbuf::{RingBuffer, Producer};
 
-use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType, OutputDeviceWarning};
+use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType, Terminal, OutputDeviceWarning};
 
 use crate::engine::{Sample, CHANNELS, ZERO_BUFFER_STEREO};
 use crate::module::ModuleT;
@@ -22,6 +22,8 @@ pub struct OutputDevice {
     last_lag: Option<Instant>,
     lag_flag: Arc<AtomicBool>,
     indication: OutputDeviceIndication,
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
 }
 
 struct OutputStream {
@@ -74,6 +76,8 @@ impl ModuleT for OutputDevice {
             last_clip: None,
             last_lag: None,
             lag_flag: Arc::new(AtomicBool::new(false)),
+            inputs: vec![LineType::Stereo.unlabeled()],
+            outputs: vec![],
             indication: indication.clone(),
         };
 
@@ -237,12 +241,12 @@ impl ModuleT for OutputDevice {
         }
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self) -> &[LineType] {
-        &[]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }
 

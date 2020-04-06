@@ -1,15 +1,24 @@
 use crate::engine::{Sample, ZERO_BUFFER_STEREO};
-use crate::module::{ModuleT, LineType};
+use crate::module::{ModuleT, LineType, Terminal};
 
 #[derive(Debug)]
-pub struct StereoSplitter;
+pub struct StereoSplitter {
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
+}
 
 impl ModuleT for StereoSplitter {
     type Params = ();
     type Indication = ();
 
     fn create(_: Self::Params) -> (Self, Self::Indication) {
-        (StereoSplitter, ())
+        (Self {
+            inputs: vec![LineType::Stereo.unlabeled()],
+            outputs: vec![
+                LineType::Mono.labeled("L"),
+                LineType::Mono.labeled("R")
+            ],
+        }, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -35,11 +44,11 @@ impl ModuleT for StereoSplitter {
         None
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self) -> &[LineType] {
-        &[LineType::Mono, LineType::Mono]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }

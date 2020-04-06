@@ -1,4 +1,4 @@
-use mixlab_protocol::{GateState, LineType};
+use mixlab_protocol::{GateState, LineType, Terminal};
 
 use crate::engine::Sample;
 use crate::module::ModuleT;
@@ -6,6 +6,8 @@ use crate::module::ModuleT;
 #[derive(Debug)]
 pub struct Trigger {
     params: GateState,
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
 }
 
 impl ModuleT for Trigger {
@@ -13,7 +15,11 @@ impl ModuleT for Trigger {
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
-        (Trigger { params }, ())
+        (Self {
+            params,
+            inputs: vec![],
+            outputs: vec![LineType::Mono.unlabeled()]
+        }, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -40,11 +46,11 @@ impl ModuleT for Trigger {
         None
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self) -> &[LineType] {
-        &[LineType::Mono]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }

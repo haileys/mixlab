@@ -1,17 +1,26 @@
 use crate::engine::Sample;
 use crate::module::ModuleT;
 
-use mixlab_protocol::{PlotterIndication, LineType};
+use mixlab_protocol::{PlotterIndication, LineType, Terminal};
 
 #[derive(Debug)]
-pub struct Plotter;
+pub struct Plotter {
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
+}
 
 impl ModuleT for Plotter {
     type Params = ();
     type Indication = PlotterIndication;
 
     fn create(_: Self::Params) -> (Self, Self::Indication) {
-        (Plotter, PlotterIndication { inputs: vec![vec![], vec![]] })
+        (
+            Self {
+                inputs: vec![LineType::Stereo.unlabeled()],
+                outputs: vec![],
+            },
+            Self::Indication { inputs: vec![vec![], vec![]] }
+        )
     }
 
     fn params(&self) -> Self::Params {
@@ -41,11 +50,11 @@ impl ModuleT for Plotter {
         }
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self) -> &[LineType] {
-        &[]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }

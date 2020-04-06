@@ -450,7 +450,7 @@ impl Component for Workspace {
 }
 
 impl Workspace {
-    pub fn register_terminals(&mut self, id: ModuleId, inputs: &[LineType], outputs: &[LineType]) {
+    pub fn register_terminals(&mut self, id: ModuleId, inputs: &[mixlab_protocol::Terminal], outputs: &[mixlab_protocol::Terminal]) {
         let refs = WindowRef {
             module: NodeRef::default(),
             inputs: make_terminal_refs(inputs),
@@ -459,12 +459,13 @@ impl Workspace {
 
         self.window_refs.insert(id, refs);
 
-        fn make_terminal_refs(line_types: &[LineType]) -> Vec<TerminalRef> {
-            line_types.iter()
+        fn make_terminal_refs(terminals: &[mixlab_protocol::Terminal]) -> Vec<TerminalRef> {
+            terminals.iter()
                 .cloned()
-                .map(|line_type| TerminalRef {
+                .map(|terminal| TerminalRef {
                     node: NodeRef::default(),
-                    line_type,
+                    label: terminal.label().map(String::from),
+                    line_type: terminal.line_type(),
                 })
                 .collect()
         }
@@ -563,6 +564,7 @@ pub struct WindowRef {
 
 #[derive(Clone, Debug)]
 pub struct TerminalRef {
+    label: Option<String>,
     node: NodeRef,
     line_type: LineType,
 }
@@ -774,6 +776,7 @@ impl Component for Terminal {
                 onmouseover={self.link.callback(|_| true)}
                 onmouseout={self.link.callback(|_| false)}
             >
+                {format!("{}", &self.props.terminal.label.as_ref().unwrap_or(&"".to_string()))}
                 <svg width="16" height="16">
                     { match self.props.terminal.line_type {
                         LineType::Mono => html! {},
