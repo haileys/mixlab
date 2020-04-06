@@ -17,6 +17,7 @@ use crate::module::fm_sine::FmSine;
 use crate::module::mixer_2ch::Mixer2ch;
 use crate::module::mixer_4ch::Mixer4ch;
 use crate::module::output_device::OutputDevice;
+use crate::module::plotter::Plotter;
 use crate::module::sine_generator::SineGenerator;
 use crate::module::stereo_panner::StereoPanner;
 use crate::module::stereo_splitter::StereoSplitter;
@@ -42,6 +43,7 @@ enum Module {
     Mixer2ch(Mixer2ch),
     Mixer4ch(Mixer4ch),
     OutputDevice(OutputDevice),
+    Plotter(Plotter),
     SineGenerator(SineGenerator),
     StereoPanner(StereoPanner),
     StereoSplitter(StereoSplitter),
@@ -69,6 +71,7 @@ impl Module {
             Mixer2ch,
             Mixer4ch,
             OutputDevice,
+            Plotter,
             SineGenerator,
             StereoPanner,
             StereoSplitter,
@@ -93,6 +96,7 @@ impl Module {
             Mixer2ch,
             Mixer4ch,
             OutputDevice,
+            Plotter,
             SineGenerator,
             StereoPanner,
             StereoSplitter,
@@ -149,6 +153,7 @@ impl Module {
             Mixer2ch,
             Mixer4ch,
             OutputDevice,
+            Plotter,
             SineGenerator,
             StereoPanner,
             StereoSplitter,
@@ -172,6 +177,7 @@ impl Module {
             Mixer2ch,
             Mixer4ch,
             OutputDevice,
+            Plotter,
             SineGenerator,
             StereoPanner,
             StereoSplitter,
@@ -195,6 +201,7 @@ impl Module {
             Mixer2ch,
             Mixer4ch,
             OutputDevice,
+            Plotter,
             SineGenerator,
             StereoPanner,
             StereoSplitter,
