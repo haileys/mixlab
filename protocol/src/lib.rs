@@ -1,6 +1,8 @@
 use std::fmt;
 
-use serde_derive::{Serialize, Deserialize};
+use serde_derive::{Deserialize, Serialize};
+
+pub type Sample = f32;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
@@ -105,6 +107,7 @@ pub enum ModuleParams {
     FmSine(FmSineParams),
     Mixer2ch(()),
     OutputDevice(OutputDeviceParams),
+    Plotter(()),
     SineGenerator(SineGeneratorParams),
     StereoPanner(()),
     StereoSplitter(()),
@@ -119,6 +122,7 @@ pub enum Indication {
     FmSine(()),
     Mixer2ch(()),
     OutputDevice(OutputDeviceIndication),
+    Plotter(PlotterIndication),
     SineGenerator(()),
     StereoPanner(()),
     StereoSplitter(()),
@@ -151,6 +155,11 @@ pub struct OutputDeviceIndication {
 pub enum OutputDeviceWarning {
     Active,
     Recent,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PlotterIndication {
+    pub inputs: Vec<Option<Vec<Sample>>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

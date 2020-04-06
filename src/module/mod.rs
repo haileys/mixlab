@@ -4,6 +4,7 @@ pub mod fm_sine;
 pub mod mixer_2ch;
 pub mod mixer_4ch;
 pub mod output_device;
+pub mod plotter;
 pub mod sine_generator;
 pub mod stereo_panner;
 pub mod stereo_splitter;
