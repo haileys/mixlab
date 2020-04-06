@@ -11,7 +11,7 @@ impl Module for Plotter {
     type Indication = PlotterIndication;
 
     fn create(_: Self::Params) -> (Self, Self::Indication) {
-        (Plotter, PlotterIndication { inputs: Vec::new() })
+        (Plotter, PlotterIndication { inputs: vec![None] })
     }
 
     fn params(&self) -> Self::Params {
