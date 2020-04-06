@@ -15,19 +15,23 @@ Param(
   $Release
 )
 
-Set-Location -Path (Join-Path -Path (Get-Location) -ChildPath "frontend")
+try {
+  Push-Location -Path (Join-Path -Path (Get-Location) -ChildPath "frontend")
 
-if ($Release) {
-  $BuildMode = "--release"
-} else {
-  $BuildMode = "--dev"
+  if ($Release) {
+    $BuildMode = "--release"
+  } else {
+    $BuildMode = "--dev"
+  }
+
+  $env:RUSTFLAGS = "--remap-path-prefix src=frontend/src"
+
+  if ($null -eq (Get-Command "wasm-pack.exe" -ErrorAction SilentlyContinue))
+  {
+    Write-Host "wasm-pack is not installed... please install it from https://rustwasm.github.io/wasm-pack/installer/"
+  }
+
+  wasm-pack.exe build "$BuildMode" --target no-modules
+} finally {
+  Pop-Location
 }
-
-$env:RUSTFLAGS = "--remap-path-prefix src=frontend/src"
-
-if ($null -eq (Get-Command "wasm-pack.exe" -ErrorAction SilentlyContinue)) 
-{ 
-   Write-Host "wasm-pack is not installed... please install it from https://rustwasm.github.io/wasm-pack/installer/"
-}
-
-wasm-pack.exe build "$BuildMode" --target no-modules
