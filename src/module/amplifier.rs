@@ -1,11 +1,13 @@
 use crate::engine::{Sample, ZERO_BUFFER_STEREO, ONE_BUFFER_MONO};
-use crate::module::{ModuleT, LineType};
+use crate::module::{ModuleT, LineType, Terminal};
 
 use mixlab_protocol::AmplifierParams;
 
 #[derive(Debug)]
 pub struct Amplifier {
-    params: AmplifierParams
+    params: AmplifierParams,
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
 }
 
 impl ModuleT for Amplifier {
@@ -13,7 +15,11 @@ impl ModuleT for Amplifier {
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
-        (Amplifier {params}, ())
+        (Self {
+            params,
+            inputs: vec![LineType::Stereo.unlabeled(), LineType::Mono.unlabeled()],
+            outputs: vec![LineType::Stereo.unlabeled()]
+        }, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -44,12 +50,12 @@ impl ModuleT for Amplifier {
         None
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[LineType::Stereo, LineType::Mono]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }
 

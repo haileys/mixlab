@@ -1,15 +1,21 @@
 use crate::engine::{Sample, ZERO_BUFFER_MONO};
-use crate::module::{ModuleT, LineType};
+use crate::module::{ModuleT, LineType, Terminal};
 
 #[derive(Debug)]
-pub struct StereoPanner;
+pub struct StereoPanner {
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
+}
 
 impl ModuleT for StereoPanner {
     type Params = ();
     type Indication = ();
 
     fn create(_: Self::Params) -> (Self, Self::Indication) {
-        (StereoPanner, ())
+        (Self {
+            inputs: vec![LineType::Mono.labeled("L"), LineType::Mono.labeled("R")],
+            outputs: vec![LineType::Stereo.unlabeled()],
+        }, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -33,11 +39,11 @@ impl ModuleT for StereoPanner {
         None
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[LineType::Mono, LineType::Mono]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }
