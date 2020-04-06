@@ -14,6 +14,7 @@ use crate::util::Sequence;
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
 use crate::module::fm_sine::FmSine;
+use crate::module::icecast_input::IcecastInput;
 use crate::module::mixer_2ch::Mixer2ch;
 use crate::module::mixer_4ch::Mixer4ch;
 use crate::module::output_device::OutputDevice;
@@ -40,6 +41,7 @@ enum Module {
     Amplifier(Amplifier),
     Envelope(Envelope),
     FmSine(FmSine),
+    IcecastInput(IcecastInput),
     Mixer2ch(Mixer2ch),
     Mixer4ch(Mixer4ch),
     OutputDevice(OutputDevice),
@@ -67,7 +69,9 @@ impl Module {
 
         gen! {
             Amplifier,
+            Envelope,
             FmSine,
+            IcecastInput,
             Mixer2ch,
             Mixer4ch,
             OutputDevice,
@@ -76,7 +80,6 @@ impl Module {
             StereoPanner,
             StereoSplitter,
             Trigger,
-            Envelope,
         }
     }
 
@@ -93,6 +96,7 @@ impl Module {
             Amplifier,
             Envelope,
             FmSine,
+            IcecastInput,
             Mixer2ch,
             Mixer4ch,
             OutputDevice,
@@ -125,6 +129,7 @@ impl Module {
             Amplifier,
             Envelope,
             FmSine,
+            IcecastInput,
             Mixer2ch,
             Mixer4ch,
             OutputDevice,
@@ -150,6 +155,7 @@ impl Module {
             Amplifier,
             Envelope,
             FmSine,
+            IcecastInput,
             Mixer2ch,
             Mixer4ch,
             OutputDevice,
@@ -174,6 +180,7 @@ impl Module {
             Amplifier,
             Envelope,
             FmSine,
+            IcecastInput,
             Mixer2ch,
             Mixer4ch,
             OutputDevice,
@@ -198,6 +205,7 @@ impl Module {
             Amplifier,
             Envelope,
             FmSine,
+            IcecastInput,
             Mixer2ch,
             Mixer4ch,
             OutputDevice,

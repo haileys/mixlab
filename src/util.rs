@@ -11,3 +11,9 @@ impl Sequence {
         seq
     }
 }
+
+pub fn zero(slice: &mut [f32]) {
+    for sample in slice.iter_mut() {
+        *sample = 0.0;
+    }
+}
