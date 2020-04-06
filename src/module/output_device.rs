@@ -1,9 +1,11 @@
+use crate::engine::SAMPLE_RATE;
 use std::f32;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Instant, Duration};
 
+use cpal::SampleFormat;
 use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use ringbuf::{RingBuffer, Producer};
 
@@ -94,8 +96,18 @@ impl Module for OutputDevice {
                 });
 
             if let Some(output_device) = output_device {
-                let config = output_device.default_output_config()
-                    .expect("default_output_format");
+                let sample_rate = cpal::SampleRate(SAMPLE_RATE as u32);
+
+                let supported_configs = output_device
+                    .supported_output_configs()
+                    .expect("device.configs");
+
+                let config = supported_configs
+                    .filter(|config_range| config_range.sample_format() == SampleFormat::F32)
+                    .filter(|config_range| config_range.min_sample_rate() <= sample_rate)
+                    .filter(|config_range| config_range.max_sample_rate() >= sample_rate)
+                    .find_map(|config_range| Some(config_range.with_sample_rate(sample_rate)))
+                    .expect("device.config");
 
                 let (tx, mut rx) = RingBuffer::<f32>::new(65536).split();
 
