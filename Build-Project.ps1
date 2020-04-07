@@ -2,10 +2,16 @@
 <#
 .SYNOPSIS
   Windows build script for mixlab
+.PARAMETER Build
+    Builds project
+.PARAMETER Check
+    Checks project
+.PARAMETER Run
+    Runs project
 .PARAMETER Release
-    Builds in release mode
+    Builds/runs/checks in release mode
 .EXAMPLE
-  Build-Frontend -Release
+  Build-Frontend -Build -Release
 #>
 
 Param(
