@@ -33,6 +33,7 @@ try {
   }
 
   wasm-pack.exe build "$BuildMode" --target no-modules
+  Exit $LASTEXITCODE
 } finally {
   Pop-Location
   $env:RUSTFLAGS = $orig_RUSTFLAGS
