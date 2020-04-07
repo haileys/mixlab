@@ -11,11 +11,12 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, Mixer4chParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, Mixer4chParams, IcecastInputParams};
 
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
 use crate::module::fm_sine::FmSine;
+use crate::module::icecast_input::IcecastInput;
 use crate::module::mixer_4ch::Mixer4ch;
 use crate::module::output_device::OutputDevice;
 use crate::module::sine_generator::SineGenerator;
@@ -506,6 +507,7 @@ impl Workspace {
             ("Envelope", ModuleParams::Envelope(EnvelopeParams::default())),
             ("Stereo Panner", ModuleParams::StereoPanner(())),
             ("Stereo Splitter", ModuleParams::StereoSplitter(())),
+            ("Icecast Input", ModuleParams::IcecastInput(IcecastInputParams::default())),
         ];
 
         html! {
@@ -729,6 +731,9 @@ impl Window {
             }
             ModuleParams::Mixer4ch(params) => {
                 html! { <Mixer4ch id={self.props.id} module={self.link.clone()} params={params} /> }
+            }
+            ModuleParams::IcecastInput(params) => {
+                html! { <IcecastInput id={self.props.id} module={self.link.clone()} params={params} /> }
             }
         }
     }

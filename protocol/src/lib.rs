@@ -114,21 +114,23 @@ pub enum ModuleParams {
     Trigger(GateState),
     Envelope(EnvelopeParams),
     Mixer4ch(Mixer4chParams),
+    IcecastInput(IcecastInputParams),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Indication {
     Amplifier(()),
+    Envelope(()),
     FmSine(()),
+    IcecastInput(()),
     Mixer2ch(()),
+    Mixer4ch(()),
     OutputDevice(OutputDeviceIndication),
     Plotter(PlotterIndication),
     SineGenerator(()),
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(()),
-    Envelope(()),
-    Mixer4ch(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -209,6 +211,17 @@ pub struct MixerChannelParams {
     pub gain: Decibel,
     pub fader: f64,
     pub cue: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct IcecastInputParams {
+    pub mountpoint: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct IcecastSource {
+    pub codec: String,
+    pub kbps: usize,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
