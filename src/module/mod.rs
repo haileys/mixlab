@@ -56,10 +56,10 @@ pub enum Module {
     Trigger(Trigger),
 }
 
-impl Module {
-    pub fn create(params: ModuleParams) -> (Self, Indication) {
-        macro_rules! gen {
-            ($( $module:ident , )*) => {
+macro_rules! gen_modules {
+    ($( $module:ident , )*) => {
+        impl Module {
+            pub fn create(params: ModuleParams) -> (Self, Indication) {
                 match params {
                     $(
                         ModuleParams::$module(params) => {
@@ -69,52 +69,14 @@ impl Module {
                     )*
                 }
             }
-        }
 
-        gen! {
-            Amplifier,
-            Envelope,
-            FmSine,
-            IcecastInput,
-            Mixer2ch,
-            Mixer4ch,
-            OutputDevice,
-            Plotter,
-            SineGenerator,
-            StereoPanner,
-            StereoSplitter,
-            Trigger,
-        }
-    }
-
-    pub fn params(&self) -> ModuleParams {
-        macro_rules! gen {
-            ($( $module:ident , )*) => {
+            pub fn params(&self) -> ModuleParams {
                 match self {
                     $(Module::$module(m) => ModuleParams::$module(m.params()),)*
                 }
             }
-        }
 
-        gen! {
-            Amplifier,
-            Envelope,
-            FmSine,
-            IcecastInput,
-            Mixer2ch,
-            Mixer4ch,
-            OutputDevice,
-            Plotter,
-            SineGenerator,
-            StereoPanner,
-            StereoSplitter,
-            Trigger,
-        }
-    }
-
-    pub fn update(&mut self, new_params: ModuleParams) -> Option<Indication> {
-        macro_rules! gen {
-            ($( $module:ident , )*) => {
+            pub fn update(&mut self, new_params: ModuleParams) -> Option<Indication> {
                 match (self, new_params) {
                     $(
                         (Module::$module(m), ModuleParams::$module(ref new_params)) =>
@@ -127,97 +89,41 @@ impl Module {
                     }
                 }
             }
-        }
 
-        gen! {
-            Amplifier,
-            Envelope,
-            FmSine,
-            IcecastInput,
-            Mixer2ch,
-            Mixer4ch,
-            OutputDevice,
-            SineGenerator,
-            StereoPanner,
-            StereoSplitter,
-            Trigger,
-        }
-    }
-
-    pub fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Indication> {
-        macro_rules! gen {
-            ($( $module:ident , )*) => {
+            pub fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Indication> {
                 match self {
                     $(
                         Module::$module(m) => m.run_tick(t, inputs, outputs).map(Indication::$module),
                     )*
                 }
             }
-        }
 
-        gen! {
-            Amplifier,
-            Envelope,
-            FmSine,
-            IcecastInput,
-            Mixer2ch,
-            Mixer4ch,
-            OutputDevice,
-            Plotter,
-            SineGenerator,
-            StereoPanner,
-            StereoSplitter,
-            Trigger,
-        }
-    }
-
-    pub fn inputs(&self) -> &[LineType] {
-        macro_rules! gen {
-            ($( $module:ident , )*) => {
+            pub fn inputs(&self) -> &[LineType] {
                 match self {
                     $(Module::$module(m) => m.inputs(),)*
                 }
             }
-        }
 
-        gen! {
-            Amplifier,
-            Envelope,
-            FmSine,
-            IcecastInput,
-            Mixer2ch,
-            Mixer4ch,
-            OutputDevice,
-            Plotter,
-            SineGenerator,
-            StereoPanner,
-            StereoSplitter,
-            Trigger,
-        }
-    }
-
-    pub fn outputs(&self) -> &[LineType] {
-        macro_rules! gen {
-            ($( $module:ident , )*) => {
+            pub fn outputs(&self) -> &[LineType] {
                 match self {
                     $(Module::$module(m) => m.outputs(),)*
                 }
             }
         }
-
-        gen! {
-            Amplifier,
-            Envelope,
-            FmSine,
-            IcecastInput,
-            Mixer2ch,
-            Mixer4ch,
-            OutputDevice,
-            Plotter,
-            SineGenerator,
-            StereoPanner,
-            StereoSplitter,
-            Trigger,
-        }
     }
+}
+
+gen_modules!{
+    Amplifier,
+    Envelope,
+    FmSine,
+    IcecastInput,
+    Mixer2ch,
+    Mixer4ch,
+    OutputDevice,
+    Plotter,
+    SineGenerator,
+    StereoPanner,
+    StereoSplitter,
+    Trigger,
 }
