@@ -10,7 +10,7 @@ use ringbuf::{RingBuffer, Producer};
 use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType, OutputDeviceWarning};
 
 use crate::engine::{Sample, CHANNELS, ZERO_BUFFER_STEREO};
-use crate::module::Module;
+use crate::module::ModuleT;
 use crate::util;
 
 pub struct OutputDevice {
@@ -38,7 +38,7 @@ impl Debug for OutputDevice {
     }
 }
 
-impl Module for OutputDevice {
+impl ModuleT for OutputDevice {
     type Params = OutputDeviceParams;
     type Indication = OutputDeviceIndication;
 

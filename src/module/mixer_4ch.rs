@@ -1,14 +1,14 @@
 use mixlab_protocol::{Mixer4chParams, LineType};
 
 use crate::engine::Sample;
-use crate::module::Module;
+use crate::module::ModuleT;
 
 #[derive(Debug)]
 pub struct Mixer4ch {
     params: Mixer4chParams,
 }
 
-impl Module for Mixer4ch {
+impl ModuleT for Mixer4ch {
     type Params = Mixer4chParams;
     type Indication = ();
 

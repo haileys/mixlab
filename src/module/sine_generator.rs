@@ -3,14 +3,14 @@ use std::f64;
 use mixlab_protocol::{SineGeneratorParams, LineType};
 
 use crate::engine::{Sample, SAMPLE_RATE};
-use crate::module::Module;
+use crate::module::ModuleT;
 
 #[derive(Debug)]
 pub struct SineGenerator {
     params: SineGeneratorParams,
 }
 
-impl Module for SineGenerator {
+impl ModuleT for SineGenerator {
     type Params = SineGeneratorParams;
     type Indication = ();
 

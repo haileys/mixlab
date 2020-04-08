@@ -1,10 +1,10 @@
 use crate::engine::{Sample, ZERO_BUFFER_MONO};
-use crate::module::{Module, LineType};
+use crate::module::{ModuleT, LineType};
 
 #[derive(Debug)]
 pub struct StereoPanner;
 
-impl Module for StereoPanner {
+impl ModuleT for StereoPanner {
     type Params = ();
     type Indication = ();
 

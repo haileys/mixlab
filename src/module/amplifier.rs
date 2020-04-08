@@ -1,5 +1,5 @@
 use crate::engine::{Sample, ZERO_BUFFER_STEREO, ONE_BUFFER_MONO};
-use crate::module::{Module, LineType};
+use crate::module::{ModuleT, LineType};
 
 use mixlab_protocol::AmplifierParams;
 
@@ -8,7 +8,7 @@ pub struct Amplifier {
     params: AmplifierParams
 }
 
-impl Module for Amplifier {
+impl ModuleT for Amplifier {
     type Params = AmplifierParams;
     type Indication = ();
 

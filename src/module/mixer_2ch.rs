@@ -1,12 +1,12 @@
 use mixlab_protocol::LineType;
 
 use crate::engine::{Sample, ZERO_BUFFER_STEREO};
-use crate::module::Module;
+use crate::module::ModuleT;
 
 #[derive(Debug)]
 pub struct Mixer2ch;
 
-impl Module for Mixer2ch {
+impl ModuleT for Mixer2ch {
     type Params = ();
     type Indication = ();
 
