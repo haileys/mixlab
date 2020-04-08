@@ -1,31 +1,5 @@
 use mixlab_protocol::{ModuleParams, Indication, LineType};
 
-pub mod amplifier;
-pub mod envelope;
-pub mod fm_sine;
-pub mod icecast_input;
-pub mod mixer_2ch;
-pub mod mixer_4ch;
-pub mod output_device;
-pub mod plotter;
-pub mod sine_generator;
-pub mod stereo_panner;
-pub mod stereo_splitter;
-pub mod trigger;
-
-use amplifier::Amplifier;
-use envelope::Envelope;
-use fm_sine::FmSine;
-use icecast_input::IcecastInput;
-use mixer_2ch::Mixer2ch;
-use mixer_4ch::Mixer4ch;
-use output_device::OutputDevice;
-use plotter::Plotter;
-use sine_generator::SineGenerator;
-use stereo_panner::StereoPanner;
-use stereo_splitter::StereoSplitter;
-use trigger::Trigger;
-
 use crate::engine::Sample;
 
 pub trait ModuleT: Sized {
@@ -40,24 +14,16 @@ pub trait ModuleT: Sized {
     fn outputs(&self) -> &[LineType];
 }
 
-#[derive(Debug)]
-pub enum Module {
-    Amplifier(Amplifier),
-    Envelope(Envelope),
-    FmSine(FmSine),
-    IcecastInput(IcecastInput),
-    Mixer2ch(Mixer2ch),
-    Mixer4ch(Mixer4ch),
-    OutputDevice(OutputDevice),
-    Plotter(Plotter),
-    SineGenerator(SineGenerator),
-    StereoPanner(StereoPanner),
-    StereoSplitter(StereoSplitter),
-    Trigger(Trigger),
-}
-
 macro_rules! gen_modules {
-    ($( $module:ident , )*) => {
+    ($( $mod_name:ident::$module:ident , )*) => {
+        $( pub mod $mod_name; )*
+        $( use $mod_name::$module; )*
+
+        #[derive(Debug)]
+        pub enum Module {
+            $( $module($module), )*
+        }
+
         impl Module {
             pub fn create(params: ModuleParams) -> (Self, Indication) {
                 match params {
@@ -114,16 +80,16 @@ macro_rules! gen_modules {
 }
 
 gen_modules!{
-    Amplifier,
-    Envelope,
-    FmSine,
-    IcecastInput,
-    Mixer2ch,
-    Mixer4ch,
-    OutputDevice,
-    Plotter,
-    SineGenerator,
-    StereoPanner,
-    StereoSplitter,
-    Trigger,
+    amplifier::Amplifier,
+    envelope::Envelope,
+    fm_sine::FmSine,
+    icecast_input::IcecastInput,
+    mixer_2ch::Mixer2ch,
+    mixer_4ch::Mixer4ch,
+    output_device::OutputDevice,
+    plotter::Plotter,
+    sine_generator::SineGenerator,
+    stereo_panner::StereoPanner,
+    stereo_splitter::StereoSplitter,
+    trigger::Trigger,
 }
