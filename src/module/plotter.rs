@@ -11,7 +11,7 @@ impl ModuleT for Plotter {
     type Indication = PlotterIndication;
 
     fn create(_: Self::Params) -> (Self, Self::Indication) {
-        (Plotter, PlotterIndication { inputs: vec![None] })
+        (Plotter, PlotterIndication { inputs: vec![vec![], vec![]] })
     }
 
     fn params(&self) -> Self::Params {
@@ -24,11 +24,18 @@ impl ModuleT for Plotter {
 
     fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], _outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         if t % 10 == 1 {
-            let inputs: Vec<_> = inputs.iter().map(|input| {
-                input.map(|x|x.to_vec())
-            }).collect();
+            inputs[0].map(|input| {
+                let samples = input.len() / 2;
+                let mut left = Vec::with_capacity(samples);
+                let mut right = Vec::with_capacity(samples);
 
-            Some(PlotterIndication { inputs })
+                for i in 0..samples {
+                    left.push(input[i * 2]);
+                    right.push(input[i * 2 + 1]);
+                }
+
+                PlotterIndication { inputs: vec![left, right] }
+            })
         } else {
             None
         }

@@ -1,4 +1,3 @@
-use itertools::{Itertools, Either};
 use plotters::prelude::*;
 use web_sys::HtmlCanvasElement;
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
@@ -13,10 +12,13 @@ pub struct PlotterProps {
     pub width: usize,
 }
 
+struct Plot {
+    canvas: NodeRef,
+}
+
 pub struct Plotter {
     props: PlotterProps,
-    canvas_1: NodeRef,
-    canvas_2: NodeRef,
+    plots: Vec<Plot>,
 }
 
 impl Component for Plotter {
@@ -26,8 +28,10 @@ impl Component for Plotter {
     fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
         Plotter {
             props,
-            canvas_1: NodeRef::default(),
-            canvas_2: NodeRef::default(),
+            plots: vec![
+                Plot { canvas: NodeRef::default() },
+                Plot { canvas: NodeRef::default() },
+            ],
         }
     }
 
@@ -42,21 +46,11 @@ impl Component for Plotter {
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
         self.props = props;
 
-        if let Some(input) = &self.props.indication.inputs[0] {
-            let (channel_1, channel_2): (Vec<f32>, Vec<f32>) = input.into_iter().enumerate().partition_map(|(i, sample)| {
-                if i % 2 == 0 {
-                    Either::Left(sample)
-                } else {
-                    Either::Right(sample)
+        for (index, input) in self.props.indication.inputs.iter().enumerate() {
+            if let Some(plot) = self.plots.get(index) {
+                if let Some(canvas) = plot.canvas.cast::<HtmlCanvasElement>() {
+                    render_plot(canvas, input);
                 }
-            });
-
-            if let Some(canvas) = self.canvas_1.cast::<HtmlCanvasElement>() {
-                plot(canvas, &channel_1);
-
-            }
-            if let Some(canvas) = self.canvas_2.cast::<HtmlCanvasElement>() {
-                plot(canvas, &channel_2);
             }
         }
 
@@ -65,15 +59,14 @@ impl Component for Plotter {
 
     fn view(&self) -> Html {
         html! {
-            <>
-                <canvas ref={self.canvas_1.clone()} width={self.props.width} height={self.props.height}></canvas>
-                <canvas ref={self.canvas_2.clone()} width={self.props.width} height={self.props.height}></canvas>
-            </>
+            { for self.plots.iter().map(|plot| {
+                html! { <canvas ref={plot.canvas.clone()} width={self.props.width} height={self.props.height} /> }
+            })}
         }
     }
 }
 
-fn plot(canvas: HtmlCanvasElement, channel: &[f32]) {
+fn render_plot(canvas: HtmlCanvasElement, channel: &[f32]) {
     let backend = CanvasBackend::with_canvas_object(canvas).unwrap();
     let root = backend.into_drawing_area();
     root.fill(&WHITE).unwrap();

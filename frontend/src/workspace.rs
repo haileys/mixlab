@@ -1,7 +1,3 @@
-mod components;
-
-use components::plotter::Plotter;
-
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
@@ -19,6 +15,7 @@ use crate::module::fm_sine::FmSine;
 use crate::module::icecast_input::IcecastInput;
 use crate::module::mixer_4ch::Mixer4ch;
 use crate::module::output_device::OutputDevice;
+use crate::module::plotter::Plotter;
 use crate::module::sine_generator::SineGenerator;
 use crate::module::trigger::Trigger;
 use crate::util::{callback_ex, stop_propagation, prevent_default};
