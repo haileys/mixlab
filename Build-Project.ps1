@@ -56,7 +56,6 @@ if ($Check) {
 } else {
   Enter-Frontend wasm-pack.exe build $WasmBuildMode "--target" no-modules
   if ($LastExitCode -eq 0) {
-    Write-Host test
     if ($Build) {
       & cargo build $BuildMode
     } elseif ($Run) {
