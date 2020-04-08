@@ -1,12 +1,12 @@
 use crate::engine::Sample;
-use crate::module::Module;
+use crate::module::ModuleT;
 
 use mixlab_protocol::{PlotterIndication, LineType};
 
 #[derive(Debug)]
 pub struct Plotter;
 
-impl Module for Plotter {
+impl ModuleT for Plotter {
     type Params = ();
     type Indication = PlotterIndication;
 

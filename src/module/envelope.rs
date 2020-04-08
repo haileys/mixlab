@@ -1,5 +1,5 @@
 use crate::engine::{Sample, ZERO_BUFFER_MONO, SAMPLE_RATE};
-use crate::module::{Module, LineType};
+use crate::module::{ModuleT, LineType};
 
 use mixlab_protocol::EnvelopeParams;
 
@@ -63,7 +63,7 @@ pub struct Envelope {
     state: EnvelopeState
 }
 
-impl Module for Envelope {
+impl ModuleT for Envelope {
     type Params = EnvelopeParams;
     type Indication = ();
 

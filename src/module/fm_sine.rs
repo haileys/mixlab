@@ -3,14 +3,14 @@ use std::f64;
 use mixlab_protocol::{FmSineParams, LineType};
 
 use crate::engine::{Sample, SAMPLE_RATE, CHANNELS, ZERO_BUFFER_STEREO};
-use crate::module::Module;
+use crate::module::ModuleT;
 
 #[derive(Debug)]
 pub struct FmSine {
     params: FmSineParams,
 }
 
-impl Module for FmSine {
+impl ModuleT for FmSine {
     type Params = FmSineParams;
     type Indication = ();
 

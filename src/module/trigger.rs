@@ -1,14 +1,14 @@
 use mixlab_protocol::{GateState, LineType};
 
 use crate::engine::Sample;
-use crate::module::Module;
+use crate::module::ModuleT;
 
 #[derive(Debug)]
 pub struct Trigger {
     params: GateState,
 }
 
-impl Module for Trigger {
+impl ModuleT for Trigger {
     type Params = GateState;
     type Indication = ();
 

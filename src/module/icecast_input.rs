@@ -3,7 +3,7 @@ use mixlab_protocol::{IcecastInputParams, LineType};
 use crate::engine::Sample;
 use crate::icecast::registry::SourceRecv;
 use crate::icecast;
-use crate::module::Module;
+use crate::module::ModuleT;
 use crate::util;
 
 #[derive(Debug)]
@@ -12,7 +12,7 @@ pub struct IcecastInput {
     recv: Option<SourceRecv>,
 }
 
-impl Module for IcecastInput {
+impl ModuleT for IcecastInput {
     type Params = IcecastInputParams;
     type Indication = ();
 

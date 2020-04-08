@@ -1,10 +1,10 @@
 use crate::engine::{Sample, ZERO_BUFFER_STEREO};
-use crate::module::{Module, LineType};
+use crate::module::{ModuleT, LineType};
 
 #[derive(Debug)]
 pub struct StereoSplitter;
 
-impl Module for StereoSplitter {
+impl ModuleT for StereoSplitter {
     type Params = ();
     type Indication = ();
 
