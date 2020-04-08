@@ -161,7 +161,7 @@ pub enum OutputDeviceWarning {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PlotterIndication {
-    pub inputs: Vec<Option<Vec<Sample>>>,
+    pub inputs: Vec<Vec<Sample>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
