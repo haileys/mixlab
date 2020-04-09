@@ -23,7 +23,6 @@ struct State {
 }
 
 pub struct ScrollTarget {
-    link: ComponentLink<Self>,
     props: ScrollProps,
     container: NodeRef,
     state: State,
@@ -33,9 +32,8 @@ impl Component for ScrollTarget {
     type Properties = ScrollProps;
     type Message = ();
 
-    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
+    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
         ScrollTarget {
-            link,
             props,
             container: NodeRef::default(),
             state: State { wheel_listener: None }
