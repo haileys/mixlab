@@ -101,7 +101,35 @@ body {
     width:16px;
     height:16px;
     cursor:pointer;
+    position: relative;
 }
+
+.module-window-terminal .terminal-label {
+    position: absolute;
+    font-variant: small-caps;
+    font-size: 11px;
+    top: 5px;
+    background-color: white;
+    display: none;
+}
+
+.module-window-terminal:hover .terminal-label {
+    display: initial;
+}
+
+.module-window-terminal-input .terminal-label {
+    top: 5px;
+    left: 18px;
+    transform: rotate(-45deg);
+    transform-origin: top left;
+}
+
+.module-window-terminal-output .terminal-label {
+    transform: rotate(45deg);
+    top: 5px;
+    right: 18px;
+    transform-origin: top right;
+}}
 
 .module-window-terminal:hover {
     background-color:#f0f0f0;
