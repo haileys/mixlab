@@ -1,20 +1,14 @@
 use crate::engine::{Sample, ZERO_BUFFER_MONO, SAMPLE_RATE};
 use crate::module::{ModuleT, LineType};
+use crate::util::{SampleSeq, sample_seq_duration_ms};
 
 use mixlab_protocol::EnvelopeParams;
-
-type SampleSeq = u64;
 
 #[derive(Debug)]
 enum EnvelopeState {
     Initial,
     TriggerOn {on: SampleSeq},
     TriggerOff {off: SampleSeq, off_amplitude: f64},
-}
-
-type Ms = f64;
-fn sample_seq_duration_ms(first: SampleSeq, last: SampleSeq) -> Ms {
-    (last - first) as f64 / SAMPLE_RATE as f64 * 1000.0
 }
 
 fn clamp(x: f64) -> f64 {
@@ -35,7 +29,7 @@ fn amplitude(params: &EnvelopeParams, state: &EnvelopeState, t: SampleSeq) -> f6
     match state {
         EnvelopeState::Initial => 0.0,
         EnvelopeState::TriggerOn {on} => {
-            let ms_since_on = sample_seq_duration_ms(*on, t);
+            let ms_since_on = sample_seq_duration_ms(SAMPLE_RATE, *on, t);
 
             if ms_since_on < params.attack_ms {
                 // Currently in attack phase
@@ -49,7 +43,7 @@ fn amplitude(params: &EnvelopeParams, state: &EnvelopeState, t: SampleSeq) -> f6
             }
         }
         EnvelopeState::TriggerOff {off, off_amplitude} => {
-            let ms_since_off = sample_seq_duration_ms(*off, t);
+            let ms_since_off = sample_seq_duration_ms(SAMPLE_RATE, *off, t);
             let release_amplitude = invert(clamp(1.0 / params.release_ms * ms_since_off));
 
             off_amplitude * release_amplitude
