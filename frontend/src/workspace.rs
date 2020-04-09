@@ -734,7 +734,7 @@ impl Window {
             ModuleParams::IcecastInput(params) => {
                 html! { <IcecastInput id={self.props.id} module={self.link.clone()} params={params} /> }
             }
-            ModuleParams::Clock(_params) => {
+            ModuleParams::Clock(params) => {
                 html! { <Clock id={self.props.id} module={self.link.clone()} params={params} /> }
             }
         }
