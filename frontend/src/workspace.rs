@@ -7,9 +7,10 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, Mixer4chParams, IcecastInputParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, Mixer4chParams, IcecastInputParams, ClockParams};
 
 use crate::module::amplifier::Amplifier;
+use crate::module::clock::Clock;
 use crate::module::envelope::Envelope;
 use crate::module::fm_sine::FmSine;
 use crate::module::icecast_input::IcecastInput;
@@ -502,6 +503,7 @@ impl Workspace {
             ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
             ("Trigger", ModuleParams::Trigger(GateState::Closed)),
             ("Envelope", ModuleParams::Envelope(EnvelopeParams::default())),
+            ("Clock", ModuleParams::Clock(ClockParams::default())),
             ("Stereo Panner", ModuleParams::StereoPanner(())),
             ("Stereo Splitter", ModuleParams::StereoSplitter(())),
             ("Icecast Input", ModuleParams::IcecastInput(IcecastInputParams::default())),
@@ -731,6 +733,9 @@ impl Window {
             }
             ModuleParams::IcecastInput(params) => {
                 html! { <IcecastInput id={self.props.id} module={self.link.clone()} params={params} /> }
+            }
+            ModuleParams::Clock(params) => {
+                html! { <Clock id={self.props.id} module={self.link.clone()} params={params} /> }
             }
         }
     }

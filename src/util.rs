@@ -17,3 +17,10 @@ pub fn zero(slice: &mut [f32]) {
         *sample = 0.0;
     }
 }
+
+
+pub type SampleSeq = u64;
+pub type Ms = f64;
+pub fn sample_seq_duration_ms(sample_rate: usize, first: SampleSeq, last: SampleSeq) -> Ms {
+    (last - first) as f64 / sample_rate as f64 * 1000.0
+}

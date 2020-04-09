@@ -1,4 +1,5 @@
 pub mod amplifier;
+pub mod clock;
 pub mod envelope;
 pub mod fm_sine;
 pub mod icecast_input;

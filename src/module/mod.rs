@@ -81,6 +81,7 @@ macro_rules! gen_modules {
 
 gen_modules!{
     amplifier::Amplifier,
+    clock::Clock,
     envelope::Envelope,
     fm_sine::FmSine,
     icecast_input::IcecastInput,
