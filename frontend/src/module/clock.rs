@@ -46,10 +46,11 @@ impl Component for Clock {
                     max={512}
                     onchange={self.props.module.callback(move |ev| {
                         let bpm = extract_callback_float_value(ev).unwrap_or(0.0);
-                        let params = EnvelopeParams { bpm, ..bpm_params };
-                        WindowMsg::UpdateParams(ModuleParams::Envelope(params))
+                        let params = ClockParams { bpm, ..bpm_params };
+                        WindowMsg::UpdateParams(ModuleParams::Clock(params))
                     })}
                     value={self.props.params.bpm}
+                />
             </>
         }
     }
