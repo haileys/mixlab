@@ -34,7 +34,7 @@ impl Component for Clock {
     }
 
     fn view(&self) -> Html {
-        let bpm_id = format!("w{}-attack", self.props.id.0);
+        let bpm_id = format!("{}-bpm", self.props.id.0);
         let bpm_params = self.props.params.clone();
 
         html! {
