@@ -105,7 +105,6 @@ pub enum LineType {
 pub enum ModuleParams {
     Amplifier(AmplifierParams),
     FmSine(FmSineParams),
-    Mixer2ch(()),
     OutputDevice(OutputDeviceParams),
     Plotter(()),
     SineGenerator(SineGeneratorParams),
@@ -113,7 +112,7 @@ pub enum ModuleParams {
     StereoSplitter(()),
     Trigger(GateState),
     Envelope(EnvelopeParams),
-    Mixer4ch(Mixer4chParams),
+    Mixer(MixerParams),
     IcecastInput(IcecastInputParams),
 }
 
@@ -123,8 +122,7 @@ pub enum Indication {
     Envelope(()),
     FmSine(()),
     IcecastInput(()),
-    Mixer2ch(()),
-    Mixer4ch(()),
+    Mixer(()),
     OutputDevice(OutputDeviceIndication),
     Plotter(PlotterIndication),
     SineGenerator(()),
@@ -201,9 +199,23 @@ impl Default for EnvelopeParams {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct Mixer4chParams {
-    pub channels: [MixerChannelParams; 4]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MixerParams {
+    pub channels: Vec<MixerChannelParams>
+}
+
+impl MixerParams {
+    pub fn with_channels(n: usize) -> MixerParams {
+        MixerParams {
+            channels: vec![MixerChannelParams::default(); n]
+        }
+    }
+}
+
+impl Default for MixerParams {
+    fn default() -> Self {
+        Self::with_channels(4)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
