@@ -104,6 +104,7 @@ pub enum LineType {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModuleParams {
     Amplifier(AmplifierParams),
+    Clock(ClockParams),
     FmSine(FmSineParams),
     Mixer2ch(()),
     OutputDevice(OutputDeviceParams),
@@ -120,6 +121,7 @@ pub enum ModuleParams {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Indication {
     Amplifier(()),
+    Clock(()),
     Envelope(()),
     FmSine(()),
     IcecastInput(()),
@@ -216,6 +218,16 @@ pub struct MixerChannelParams {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct IcecastInputParams {
     pub mountpoint: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ClockParams {
+    pub bpm: f64,
+}
+impl Default for ClockParams {
+    fn default() -> ClockParams {
+        ClockParams { bpm: 128.0 }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

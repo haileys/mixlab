@@ -1,4 +1,5 @@
 use yew::{Component, ComponentLink, Callback};
+use yew::events::ChangeData;
 use web_sys::Event;
 
 pub fn stop_propagation<In>() -> Callback<In>
@@ -41,5 +42,12 @@ pub fn clamp<T: PartialOrd>(min: T, max: T, val: T) -> T {
         max
     } else {
         val
+    }
+}
+
+pub fn extract_callback_float_value(event: ChangeData) -> Option<f64> {
+    match event {
+        ChangeData::Value(float_str) => float_str.parse().ok(),
+        _ => None
     }
 }
