@@ -1,19 +1,25 @@
-use mixlab_protocol::{Mixer4chParams, LineType};
+use mixlab_protocol::{MixerParams, LineType};
 
 use crate::engine::Sample;
 use crate::module::ModuleT;
 
 #[derive(Debug)]
-pub struct Mixer4ch {
-    params: Mixer4chParams,
+pub struct Mixer {
+    params: MixerParams,
+    inputs: Vec<LineType>,
 }
 
-impl ModuleT for Mixer4ch {
-    type Params = Mixer4chParams;
+impl ModuleT for Mixer {
+    type Params = MixerParams;
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
-        (Mixer4ch { params }, ())
+        let mixer = Mixer {
+            inputs: params.channels.iter().map(|_| LineType::Stereo ).collect(),
+            params,
+        };
+
+        (mixer, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -21,34 +27,35 @@ impl ModuleT for Mixer4ch {
     }
 
     fn update(&mut self, params: Self::Params) -> Option<Self::Indication> {
+        self.inputs = params.channels.iter().map(|_| LineType::Stereo ).collect();
         self.params = params;
         None
     }
 
     fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
+        const MASTER: usize = 0;
+        const CUE: usize = 1;
+
         let len = outputs[0].len();
 
-        let mut channel_gain: [f64; 4] = [0.0; 4];
+        let mut channel_gain = vec![0.0; self.params.channels.len()];
 
-        for ch in 0..4 {
-            let channel = &self.params.channels[ch];
+        for (ch, channel) in self.params.channels.iter().enumerate() {
             channel_gain[ch] = channel.fader * channel.gain.to_linear();
-        }
 
-        for i in 0..len {
-            outputs[0][i] = 0.0;
-            outputs[1][i] = 0.0;
+            for i in 0..len {
+                if ch == 0 {
+                    outputs[MASTER][i] = 0.0;
+                    outputs[CUE][i] = 0.0;
+                }
 
-            for ch in 0..4 {
                 if let Some(input) = &inputs[ch] {
                     let channel = &self.params.channels[ch];
 
-                    // master
-                    outputs[0][i] += (input[i] as f64 * channel_gain[ch]) as Sample;
+                    outputs[MASTER][i] += (input[i] as f64 * channel_gain[ch]) as Sample;
 
-                    // cue
                     if channel.cue {
-                        outputs[1][i] += input[i];
+                        outputs[CUE][i] += input[i];
                     }
                 }
             }
@@ -58,12 +65,7 @@ impl ModuleT for Mixer4ch {
     }
 
     fn inputs(&self) -> &[LineType] {
-        &[
-            LineType::Stereo,
-            LineType::Stereo,
-            LineType::Stereo,
-            LineType::Stereo,
-        ]
+        &self.inputs
     }
 
     fn outputs(&self) -> &[LineType] {
