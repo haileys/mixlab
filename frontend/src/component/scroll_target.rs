@@ -18,11 +18,15 @@ pub enum Scroll {
     Down(f64),
 }
 
+struct State {
+    pub wheel_listener: Option<EventListener>,
+}
+
 pub struct ScrollTarget {
     link: ComponentLink<Self>,
     props: ScrollProps,
     container: NodeRef,
-    // state: Option<ScrollState>,
+    state: State,
 }
 
 impl Component for ScrollTarget {
@@ -34,6 +38,7 @@ impl Component for ScrollTarget {
             link,
             props,
             container: NodeRef::default(),
+            state: State { wheel_listener: None }
         }
     }
 
@@ -76,9 +81,7 @@ impl Component for ScrollTarget {
                 }
             );
 
-            // TODO: maybe store this in the state. Unclear when this is dropped
-            // if forgotten.
-            wheel.forget();
+            self.state.wheel_listener = Some(wheel);
         }
 
         false
