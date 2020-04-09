@@ -453,19 +453,20 @@ impl Workspace {
     pub fn register_terminals(&mut self, id: ModuleId, inputs: &[mixlab_protocol::Terminal], outputs: &[mixlab_protocol::Terminal]) {
         let refs = WindowRef {
             module: NodeRef::default(),
-            inputs: make_terminal_refs(inputs),
-            outputs: make_terminal_refs(outputs),
+            inputs: make_terminal_refs(inputs, TerminalType::Input),
+            outputs: make_terminal_refs(outputs, TerminalType::Output),
         };
 
         self.window_refs.insert(id, refs);
 
-        fn make_terminal_refs(terminals: &[mixlab_protocol::Terminal]) -> Vec<TerminalRef> {
+        fn make_terminal_refs(terminals: &[mixlab_protocol::Terminal], terminal_type: TerminalType) -> Vec<TerminalRef> {
             terminals.iter()
                 .cloned()
                 .map(|terminal| TerminalRef {
                     node: NodeRef::default(),
                     label: terminal.label().map(String::from),
                     line_type: terminal.line_type(),
+                    terminal_type,
                 })
                 .collect()
         }
@@ -562,11 +563,27 @@ pub struct WindowRef {
     outputs: Vec<TerminalRef>,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum TerminalType {
+    Input,
+    Output
+}
+
+impl TerminalType {
+    fn to_css_name(&self) -> &str {
+        match self {
+            TerminalType::Input => "input",
+            TerminalType::Output => "output",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TerminalRef {
     label: Option<String>,
     node: NodeRef,
     line_type: LineType,
+    terminal_type: TerminalType,
 }
 
 impl Component for Window {
@@ -769,14 +786,22 @@ impl Component for Terminal {
     }
 
     fn view(&self) -> Html {
+        let class = format!(
+            "module-window-terminal module-window-terminal-{}",
+            self.props.terminal.terminal_type.to_css_name()
+        );
         html! {
-            <div class="module-window-terminal"
+            <div
+                class={class}
                 ref={self.props.terminal.node.clone()}
                 onmousedown={self.props.onmousedown.clone()}
                 onmouseover={self.link.callback(|_| true)}
                 onmouseout={self.link.callback(|_| false)}
             >
-                {format!("{}", &self.props.terminal.label.as_ref().unwrap_or(&"".to_string()))}
+                <div class="terminal-label">
+                    {format!("{}", &self.props.terminal.label.as_ref().unwrap_or(&"".to_string()))}
+                </div>
+
                 <svg width="16" height="16">
                     { match self.props.terminal.line_type {
                         LineType::Mono => html! {},
