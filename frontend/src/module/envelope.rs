@@ -1,8 +1,8 @@
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
-use yew::events::ChangeData;
 
 use mixlab_protocol::{ModuleId, ModuleParams, EnvelopeParams};
 
+use crate::util::extract_callback_float_value;
 use crate::workspace::{Window, WindowMsg};
 
 #[derive(Properties, Clone, Debug)]
@@ -55,7 +55,7 @@ impl Component for Envelope {
                     max={500}
                     step={1}
                     onchange={self.props.module.callback(move |ev| {
-                        let attack_ms = extract_float_value(ev).unwrap_or(0.0);
+                        let attack_ms = extract_callback_float_value(ev).unwrap_or(0.0);
                         let params = EnvelopeParams { attack_ms, ..attack_params };
                         WindowMsg::UpdateParams(ModuleParams::Envelope(params))
                     })}
@@ -68,7 +68,7 @@ impl Component for Envelope {
                     max={1000}
                     step={1}
                     onchange={self.props.module.callback(move |ev| {
-                        let decay_ms = extract_float_value(ev).unwrap_or(0.0);
+                        let decay_ms = extract_callback_float_value(ev).unwrap_or(0.0);
                         let params = EnvelopeParams { decay_ms, ..decay_params };
                         WindowMsg::UpdateParams(ModuleParams::Envelope(params))
                     })}
@@ -81,7 +81,7 @@ impl Component for Envelope {
                     max={1}
                     step={0.01}
                     onchange={self.props.module.callback(move |ev| {
-                        let sustain_amplitude = extract_float_value(ev).unwrap_or(0.0);
+                        let sustain_amplitude = extract_callback_float_value(ev).unwrap_or(0.0);
                         let params = EnvelopeParams { sustain_amplitude, ..sustain_params };
                         WindowMsg::UpdateParams(ModuleParams::Envelope(params))
                     })}
@@ -94,7 +94,7 @@ impl Component for Envelope {
                     max={5000}
                     step={1}
                     onchange={self.props.module.callback(move |ev| {
-                        let release_ms = extract_float_value(ev).unwrap_or(0.0);
+                        let release_ms = extract_callback_float_value(ev).unwrap_or(0.0);
                         let params = EnvelopeParams { release_ms, ..release_params };
                         WindowMsg::UpdateParams(ModuleParams::Envelope(params))
                     })}
@@ -102,12 +102,5 @@ impl Component for Envelope {
                 />
             </>
         }
-    }
-}
-
-fn extract_float_value(event: ChangeData) -> Option<f64> {
-    match event {
-        ChangeData::Value(float_str) => float_str.parse().ok(),
-        _ => None
     }
 }
