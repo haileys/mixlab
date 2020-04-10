@@ -7,6 +7,7 @@ use crate::module::ModuleT;
 pub struct Mixer {
     params: MixerParams,
     inputs: Vec<LineType>,
+    channel_gain: Vec<f64>,
 }
 
 impl ModuleT for Mixer {
@@ -16,6 +17,7 @@ impl ModuleT for Mixer {
     fn create(params: Self::Params) -> (Self, Self::Indication) {
         let mixer = Mixer {
             inputs: params.channels.iter().map(|_| LineType::Stereo ).collect(),
+            channel_gain: vec![0.0; params.channels.len()],
             params,
         };
 
@@ -28,6 +30,7 @@ impl ModuleT for Mixer {
 
     fn update(&mut self, params: Self::Params) -> Option<Self::Indication> {
         self.inputs = params.channels.iter().map(|_| LineType::Stereo ).collect();
+        self.channel_gain = vec![0.0; params.channels.len()];
         self.params = params;
         None
     }
@@ -38,10 +41,8 @@ impl ModuleT for Mixer {
 
         let len = outputs[0].len();
 
-        let mut channel_gain = vec![0.0; self.params.channels.len()];
-
         for (ch, channel) in self.params.channels.iter().enumerate() {
-            channel_gain[ch] = channel.fader * channel.gain.to_linear();
+            self.channel_gain[ch] = channel.fader * channel.gain.to_linear();
 
             for i in 0..len {
                 if ch == 0 {
@@ -52,7 +53,7 @@ impl ModuleT for Mixer {
                 if let Some(input) = &inputs[ch] {
                     let channel = &self.params.channels[ch];
 
-                    outputs[MASTER][i] += (input[i] as f64 * channel_gain[ch]) as Sample;
+                    outputs[MASTER][i] += (input[i] as f64 * self.channel_gain[ch]) as Sample;
 
                     if channel.cue {
                         outputs[CUE][i] += input[i];
