@@ -492,8 +492,6 @@ impl Workspace {
             _ => return html! {},
         };
 
-        crate::log!("{:?}", MixerParams::default());
-
         let items = &[
             ("Sine Generator", ModuleParams::SineGenerator(SineGeneratorParams { freq: 100.0 })),
             ("Mixer (2 channel)", ModuleParams::Mixer(MixerParams::with_channels(2))),
