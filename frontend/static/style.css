@@ -139,7 +139,14 @@ body {
     display:flex;
     flex-flow:column nowrap;
     padding:12px;
-    gap:4px;
+}
+
+.module-window-params > * {
+    margin-bottom:4px;
+}
+
+.module-window-params > *:last-child {
+    margin-bottom:0px;
 }
 
 .context-menu {
@@ -172,7 +179,14 @@ body {
 .mixer-channels {
     display:flex;
     flex-flow:row nowrap;
-    gap:24px;
+}
+
+.mixer-channels > * {
+    margin-right:24px;
+}
+
+.mixer-channels > *:last-child {
+    margin-right:0px;
 }
 
 .mixer-channel {
@@ -184,7 +198,14 @@ body {
     display:flex;
     flex-flow:column nowrap;
     align-items:center;
-    gap:12px;
+}
+
+.mixer-channel > * {
+    margin-bottom:12px;
+}
+
+.mixer-channel > *:last-child {
+    margin-bottom:0px;
 }
 
 .mixer-channel-cue-btn {
@@ -218,7 +239,14 @@ body {
     display:flex;
     flex-flow:row nowrap;
     justify-content:center;
-    gap:12px;
+}
+
+.output-device-status-bar > * {
+    margin-right:12px;
+}
+
+.output-device-status-bar > *:last-child {
+    margin-right:0px;
 }
 
 .output-device-status {
