@@ -7,13 +7,13 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, Mixer4chParams, IcecastInputParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams};
 
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
 use crate::module::fm_sine::FmSine;
 use crate::module::icecast_input::IcecastInput;
-use crate::module::mixer_4ch::Mixer4ch;
+use crate::module::mixer::Mixer;
 use crate::module::output_device::OutputDevice;
 use crate::module::plotter::Plotter;
 use crate::module::sine_generator::SineGenerator;
@@ -496,8 +496,9 @@ impl Workspace {
 
         let items = &[
             ("Sine Generator", ModuleParams::SineGenerator(SineGeneratorParams { freq: 100.0 })),
-            ("Mixer (2 channel)", ModuleParams::Mixer2ch(())),
-            ("Mixer (4 channel)", ModuleParams::Mixer4ch(Mixer4chParams::default())),
+            ("Mixer (2 channel)", ModuleParams::Mixer(MixerParams::with_channels(2))),
+            ("Mixer (4 channel)", ModuleParams::Mixer(MixerParams::with_channels(4))),
+            ("Mixer (8 channel)", ModuleParams::Mixer(MixerParams::with_channels(8))),
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None, left: None, right: None })),
             ("Plotter", ModuleParams::Plotter(())),
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
@@ -714,7 +715,6 @@ impl Window {
             ModuleParams::SineGenerator(params) => {
                 html! { <SineGenerator id={self.props.id} module={self.link.clone()} params={params} /> }
             }
-            ModuleParams::Mixer2ch(()) |
             ModuleParams::StereoPanner(()) |
             ModuleParams::StereoSplitter(()) => {
                 html! {}
@@ -745,8 +745,8 @@ impl Window {
             ModuleParams::Envelope(params) => {
                 html! { <Envelope id={self.props.id} module={self.link.clone()} params={params} /> }
             }
-            ModuleParams::Mixer4ch(params) => {
-                html! { <Mixer4ch id={self.props.id} module={self.link.clone()} params={params} /> }
+            ModuleParams::Mixer(params) => {
+                html! { <Mixer id={self.props.id} module={self.link.clone()} params={params} /> }
             }
             ModuleParams::IcecastInput(params) => {
                 html! { <IcecastInput id={self.props.id} module={self.link.clone()} params={params} /> }
