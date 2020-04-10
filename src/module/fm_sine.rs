@@ -1,6 +1,6 @@
 use std::f64;
 
-use mixlab_protocol::{FmSineParams, LineType};
+use mixlab_protocol::{FmSineParams, LineType, Terminal};
 
 use crate::engine::{Sample, SAMPLE_RATE, CHANNELS, ZERO_BUFFER_STEREO};
 use crate::module::ModuleT;
@@ -8,6 +8,8 @@ use crate::module::ModuleT;
 #[derive(Debug)]
 pub struct FmSine {
     params: FmSineParams,
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
 }
 
 impl ModuleT for FmSine {
@@ -15,7 +17,11 @@ impl ModuleT for FmSine {
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
-        (FmSine { params }, ())
+        (Self {
+            params,
+            inputs: vec![LineType::Mono.unlabeled()],
+            outputs: vec![LineType::Stereo.unlabeled()],
+        }, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -48,11 +54,11 @@ impl ModuleT for FmSine {
         None
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[LineType::Mono]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }

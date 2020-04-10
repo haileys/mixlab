@@ -1,4 +1,4 @@
-use mixlab_protocol::{Mixer4chParams, LineType};
+use mixlab_protocol::{Mixer4chParams, LineType, Terminal};
 
 use crate::engine::Sample;
 use crate::module::ModuleT;
@@ -6,6 +6,8 @@ use crate::module::ModuleT;
 #[derive(Debug)]
 pub struct Mixer4ch {
     params: Mixer4chParams,
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
 }
 
 impl ModuleT for Mixer4ch {
@@ -13,7 +15,19 @@ impl ModuleT for Mixer4ch {
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
-        (Mixer4ch { params }, ())
+        (Self {
+            params,
+            inputs: vec![
+                LineType::Stereo.labeled("1"),
+                LineType::Stereo.labeled("2"),
+                LineType::Stereo.labeled("3"),
+                LineType::Stereo.labeled("4"),
+            ],
+            outputs: vec![
+                LineType::Stereo.labeled("Master"),
+                LineType::Stereo.labeled("Cue"),
+            ],
+        }, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -57,16 +71,11 @@ impl ModuleT for Mixer4ch {
         None
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[
-            LineType::Stereo,
-            LineType::Stereo,
-            LineType::Stereo,
-            LineType::Stereo,
-        ]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self) -> &[LineType] {
-        &[LineType::Stereo, LineType::Stereo]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }

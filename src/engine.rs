@@ -1,3 +1,4 @@
+use crate::module::Module;
 use std::collections::{HashMap, HashSet};
 use std::f32;
 use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError};
@@ -8,7 +9,6 @@ use tokio::sync::{oneshot, broadcast};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication, LineType};
 
-use crate::module::Module;
 use crate::util::Sequence;
 
 pub type Sample = f32;
@@ -275,10 +275,10 @@ impl Engine {
             engine.modules.get(&terminal.module_id()).and_then(|module| {
                 match terminal {
                     TerminalId::Input(input) => {
-                        module.inputs().get(input.index()).cloned()
+                        module.inputs().get(input.index()).map(|terminal| terminal.line_type())
                     }
                     TerminalId::Output(output) => {
-                        module.outputs().get(output.index()).cloned()
+                        module.outputs().get(output.index()).map(|terminal| terminal.line_type())
                     }
                 }
             })
@@ -363,12 +363,12 @@ impl Engine {
                     .map(|(i, ty)| (InputId(*module_id, i), ty))
                     .map(|(input, ty)|
                         connections.get(&input).map(|output|
-                            &buffers[output][0..line_type_sample_count(ty)]))
+                            &buffers[output][0..line_type_sample_count(ty.line_type())]))
                     .collect::<Vec<Option<&[Sample]>>>();
 
                 let mut output_refs = output_buffers.iter_mut()
                     .zip(module.outputs())
-                    .map(|(vec, ty)| &mut vec[0..line_type_sample_count(ty)])
+                    .map(|(vec, ty)| &mut vec[0..line_type_sample_count(ty.line_type())])
                     .collect::<Vec<_>>();
 
                 let t = tick * SAMPLES_PER_TICK as u64;
@@ -390,7 +390,7 @@ impl Engine {
     }
 }
 
-fn line_type_sample_count(line_type: &LineType) -> usize {
+fn line_type_sample_count(line_type: LineType) -> usize {
     match line_type {
         LineType::Mono => SAMPLES_PER_TICK,
         LineType::Stereo => SAMPLES_PER_TICK * 2,
