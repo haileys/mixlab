@@ -212,12 +212,6 @@ impl MixerParams {
     }
 }
 
-impl Default for MixerParams {
-    fn default() -> Self {
-        Self::with_channels(4)
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct MixerChannelParams {
     pub gain: Decibel,
