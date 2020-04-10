@@ -2,6 +2,7 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callba
 
 use mixlab_protocol::{ModuleId, MixerParams, MixerChannelParams, ModuleParams, Decibel};
 
+use crate::component::midi_target::MidiRangeTarget;
 use crate::control::{Fader, Rotary};
 use crate::workspace::{Window, WindowMsg};
 
@@ -143,10 +144,12 @@ impl Component for Channel {
                 <div class={cue_style} onclick={self.link.callback(|_| ChannelMsg::CueClick)}>
                     {"CUE"}
                 </div>
-                <Fader
-                    value={self.props.params.fader}
-                    onchange={self.link.callback(ChannelMsg::FaderChanged)}
-                />
+                <MidiRangeTarget onchange={self.link.callback(ChannelMsg::FaderChanged)}>
+                    <Fader
+                        value={self.props.params.fader}
+                        onchange={self.link.callback(ChannelMsg::FaderChanged)}
+                    />
+                </MidiRangeTarget>
             </div>
         }
     }

@@ -501,6 +501,7 @@ impl Workspace {
 pub struct Window {
     link: ComponentLink<Self>,
     props: WindowProps,
+    midi_mode: bool,
 }
 
 #[derive(Debug)]
@@ -509,6 +510,7 @@ pub enum WindowMsg {
     TerminalMouseDown(MouseEvent, TerminalId, TerminalRef),
     Delete,
     UpdateParams(ModuleParams),
+    SetMidiMode(bool),
 }
 
 #[derive(Properties, Clone, Debug)]
@@ -560,6 +562,7 @@ impl Component for Window {
         Window {
             link,
             props,
+            midi_mode: false,
         }
     }
 
@@ -568,6 +571,8 @@ impl Component for Window {
             WindowMsg::DragStart(ev) => {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DragStart(self.props.id, ev));
+
+                false
             }
             WindowMsg::TerminalMouseDown(ev, terminal_id, terminal_ref) => {
                 let msg =
@@ -579,17 +584,26 @@ impl Component for Window {
                     };
 
                 self.props.workspace.send_message(msg);
+
+                false
             }
             WindowMsg::Delete => {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DeleteWindow(self.props.id));
+
+                false
             }
             WindowMsg::UpdateParams(params) => {
                 self.props.workspace.send_message(
                     WorkspaceMsg::UpdateModuleParams(self.props.id, params));
+
+                false
+            }
+            WindowMsg::SetMidiMode(new_midi_mode) => {
+                self.midi_mode = new_midi_mode;
+                true
             }
         }
-        false
     }
 
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
@@ -603,8 +617,14 @@ impl Component for Window {
             self.props.geometry.position.y,
             self.props.geometry.z_index);
 
+        let class = if self.midi_mode {
+            "module-window midi-mode-enabled"
+        } else {
+            "module-window"
+        };
+
         html! {
-            <div class="module-window"
+            <div class={class}
                 style={window_style}
                 ref={self.props.refs.module.clone()}
                 onmousedown={stop_propagation()}
@@ -616,7 +636,8 @@ impl Component for Window {
                     <div class="module-window-title-label">
                         {&self.props.name}
                     </div>
-                    <div class="module-window-title-delete" onmousedown={self.link.callback(|_| WindowMsg::Delete)}>
+                    {self.view_custom_title_buttons()}
+                    <div class="module-window-title-button module-window-title-delete" onmousedown={self.link.callback(|_| WindowMsg::Delete)}>
                         {"×"}
                     </div>
                 </div>
@@ -637,6 +658,26 @@ impl Component for Window {
 }
 
 impl Window {
+    fn view_custom_title_buttons(&self) -> Html {
+        match &self.props.module {
+            ModuleParams::Mixer(..) => {
+                let class = if self.midi_mode {
+                    "module-window-title-button module-window-title-midi-btn module-window-title-midi-btn-active"
+                } else {
+                    "module-window-title-button module-window-title-midi-btn"
+                };
+
+                let new_midi_mode = !self.midi_mode;
+
+                html! {
+                    <div class={class} onmousedown={self.link.callback(move |_| WindowMsg::SetMidiMode(new_midi_mode))}>
+                        {"MIDI"}
+                    </div>
+                }
+            }
+            _ => html! {},
+        }
+    }
     fn view_inputs(&self) -> Html {
         self.view_terminals(
             self.props.refs.inputs.iter()
