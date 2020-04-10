@@ -1,17 +1,28 @@
-use mixlab_protocol::LineType;
+use mixlab_protocol::{LineType, Terminal};
 
 use crate::engine::{Sample, ZERO_BUFFER_STEREO};
 use crate::module::ModuleT;
 
 #[derive(Debug)]
-pub struct Mixer2ch;
+pub struct Mixer2ch {
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
+}
 
 impl ModuleT for Mixer2ch {
     type Params = ();
     type Indication = ();
 
     fn create(_: Self::Params) -> (Self, Self::Indication) {
-        (Mixer2ch, ())
+        (Self {
+            inputs: vec![
+                LineType::Stereo.labeled("1"),
+                LineType::Stereo.labeled("2"),
+            ],
+            outputs: vec![
+                LineType::Stereo.labeled("Master"),
+            ],
+        }, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -35,11 +46,11 @@ impl ModuleT for Mixer2ch {
         None
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[LineType::Stereo, LineType::Stereo]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self) -> &[LineType] {
-        &[LineType::Stereo]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }

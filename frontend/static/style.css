@@ -101,6 +101,30 @@ body {
     width:16px;
     height:16px;
     cursor:pointer;
+    position: relative;
+}
+
+.module-window-terminal .terminal-label {
+    position: absolute;
+    font-variant: small-caps;
+    font-size: 11px;
+    background-color: #f0f0f5bb;
+    padding: 1px 3px;
+    /* display: none; */
+}
+
+.module-window-terminal:hover .terminal-label {
+    display: initial;
+}
+
+.module-window-terminal-input .terminal-label {
+    top: 2px;
+    right: 17px;
+}
+
+.module-window-terminal-output .terminal-label {
+    top: 2px;
+    left: 17px;
 }
 
 .module-window-terminal:hover {

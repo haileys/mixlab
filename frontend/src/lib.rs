@@ -17,7 +17,7 @@ use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
 
-use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, Indication, LineType};
+use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, Indication, Terminal};
 
 use workspace::Workspace;
 
@@ -40,8 +40,8 @@ pub struct State {
     geometry: HashMap<ModuleId, WindowGeometry>,
     connections: HashMap<InputId, OutputId>,
     indications: HashMap<ModuleId, Indication>,
-    inputs: HashMap<ModuleId, Vec<LineType>>,
-    outputs: HashMap<ModuleId, Vec<LineType>>,
+    inputs: HashMap<ModuleId, Vec<Terminal>>,
+    outputs: HashMap<ModuleId, Vec<Terminal>>,
 }
 
 impl From<WorkspaceState> for State {

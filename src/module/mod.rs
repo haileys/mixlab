@@ -1,4 +1,4 @@
-use mixlab_protocol::{ModuleParams, Indication, LineType};
+use mixlab_protocol::{ModuleParams, Indication, Terminal, LineType};
 
 use crate::engine::Sample;
 
@@ -10,8 +10,8 @@ pub trait ModuleT: Sized {
     fn params(&self) -> Self::Params;
     fn update(&mut self, new_params: Self::Params) -> Option<Self::Indication>;
     fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication>;
-    fn inputs(&self) -> &[LineType];
-    fn outputs(&self) -> &[LineType];
+    fn inputs(&self) -> &[Terminal];
+    fn outputs(&self) -> &[Terminal];
 }
 
 macro_rules! gen_modules {
@@ -64,13 +64,13 @@ macro_rules! gen_modules {
                 }
             }
 
-            pub fn inputs(&self) -> &[LineType] {
+            pub fn inputs(&self) -> &[Terminal] {
                 match self {
                     $(Module::$module(m) => m.inputs(),)*
                 }
             }
 
-            pub fn outputs(&self) -> &[LineType] {
+            pub fn outputs(&self) -> &[Terminal] {
                 match self {
                     $(Module::$module(m) => m.outputs(),)*
                 }

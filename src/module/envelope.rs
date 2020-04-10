@@ -1,5 +1,5 @@
 use crate::engine::{Sample, ZERO_BUFFER_MONO, SAMPLE_RATE};
-use crate::module::{ModuleT, LineType};
+use crate::module::{ModuleT, LineType, Terminal};
 
 use mixlab_protocol::EnvelopeParams;
 
@@ -60,7 +60,9 @@ fn amplitude(params: &EnvelopeParams, state: &EnvelopeState, t: SampleSeq) -> f6
 #[derive(Debug)]
 pub struct Envelope {
     params: EnvelopeParams,
-    state: EnvelopeState
+    state: EnvelopeState,
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
 }
 
 impl ModuleT for Envelope {
@@ -68,7 +70,12 @@ impl ModuleT for Envelope {
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
-        (Envelope {params, state: EnvelopeState::Initial}, ())
+        (Self {
+            params,
+            state: EnvelopeState::Initial,
+            inputs: vec![LineType::Mono.unlabeled()],
+            outputs: vec![LineType::Mono.unlabeled()],
+        }, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -111,11 +118,11 @@ impl ModuleT for Envelope {
         None
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[LineType::Mono]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self) -> &[LineType] {
-        &[LineType::Mono]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }

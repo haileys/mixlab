@@ -16,8 +16,8 @@ pub struct WorkspaceState {
     pub geometry: Vec<(ModuleId, WindowGeometry)>,
     pub indications: Vec<(ModuleId, Indication)>,
     pub connections: Vec<(InputId, OutputId)>,
-    pub inputs: Vec<(ModuleId, Vec<LineType>)>,
-    pub outputs: Vec<(ModuleId, Vec<LineType>)>,
+    pub inputs: Vec<(ModuleId, Vec<Terminal>)>,
+    pub outputs: Vec<(ModuleId, Vec<Terminal>)>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -40,8 +40,8 @@ pub enum ModelOp {
         params: ModuleParams,
         geometry: WindowGeometry,
         indication: Indication,
-        inputs: Vec<LineType>,
-        outputs: Vec<LineType>,
+        inputs: Vec<Terminal>,
+        outputs: Vec<Terminal>,
     },
     UpdateModuleParams(ModuleId, ModuleParams),
     UpdateWindowGeometry(ModuleId, WindowGeometry),
@@ -95,10 +95,33 @@ impl OutputId {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Terminal(Option<String>, LineType);
+
+impl Terminal {
+    pub fn label(&self) -> Option<&str> {
+        self.0.as_ref().map(String::as_str)
+    }
+
+    pub fn line_type(&self) -> LineType {
+        self.1
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineType {
     Mono,
     Stereo,
+}
+
+impl LineType {
+    pub fn labeled(self, label: &str) -> Terminal {
+        Terminal(Some(label.to_string()), self)
+    }
+
+    pub fn unlabeled(self) -> Terminal {
+        Terminal(None, self)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -1,6 +1,6 @@
 use std::f64;
 
-use mixlab_protocol::{SineGeneratorParams, LineType};
+use mixlab_protocol::{SineGeneratorParams, LineType, Terminal};
 
 use crate::engine::{Sample, SAMPLE_RATE};
 use crate::module::ModuleT;
@@ -8,6 +8,8 @@ use crate::module::ModuleT;
 #[derive(Debug)]
 pub struct SineGenerator {
     params: SineGeneratorParams,
+    inputs: Vec<Terminal>,
+    outputs: Vec<Terminal>,
 }
 
 impl ModuleT for SineGenerator {
@@ -15,7 +17,11 @@ impl ModuleT for SineGenerator {
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
-        (SineGenerator { params }, ())
+        (Self {
+            params,
+            inputs: vec![],
+            outputs: vec![LineType::Mono.unlabeled()],
+        }, ())
     }
 
     fn params(&self) -> Self::Params {
@@ -40,11 +46,11 @@ impl ModuleT for SineGenerator {
         None
     }
 
-    fn inputs(&self) -> &[LineType] {
-        &[]
+    fn inputs(&self) -> &[Terminal] {
+        &self.inputs
     }
 
-    fn outputs(&self)-> &[LineType] {
-        &[LineType::Mono]
+    fn outputs(&self)-> &[Terminal] {
+        &self.outputs
     }
 }
