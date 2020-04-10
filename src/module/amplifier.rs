@@ -17,7 +17,10 @@ impl ModuleT for Amplifier {
     fn create(params: Self::Params) -> (Self, Self::Indication) {
         (Self {
             params,
-            inputs: vec![LineType::Stereo.unlabeled(), LineType::Mono.unlabeled()],
+            inputs: vec![
+                LineType::Stereo.labeled("Input"),
+                LineType::Mono.labeled("Control")
+            ],
             outputs: vec![LineType::Stereo.unlabeled()]
         }, ())
     }
