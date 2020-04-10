@@ -108,8 +108,8 @@ body {
     position: absolute;
     font-variant: small-caps;
     font-size: 11px;
-    top: 5px;
-    background-color: #f0f0f5;
+    background-color: #f0f0f5bb;
+    padding: 1px 3px;
     /* display: none; */
 }
 
@@ -119,12 +119,12 @@ body {
 
 .module-window-terminal-input .terminal-label {
     top: 2px;
-    right: 20px;
+    right: 17px;
 }
 
 .module-window-terminal-output .terminal-label {
     top: 2px;
-    left: 20px;
+    left: 17px;
 }
 
 .module-window-terminal:hover {
