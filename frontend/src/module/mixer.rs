@@ -1,32 +1,32 @@
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback};
 
-use mixlab_protocol::{ModuleId, Mixer4chParams, MixerChannelParams, ModuleParams, Decibel};
+use mixlab_protocol::{ModuleId, MixerParams, MixerChannelParams, ModuleParams, Decibel};
 
 use crate::control::{Fader, Rotary};
 use crate::workspace::{Window, WindowMsg};
 
-pub struct Mixer4ch {
+pub struct Mixer {
     link: ComponentLink<Self>,
-    props: Mixer4chProps,
+    props: MixerProps,
 }
 
 #[derive(Properties, Clone)]
-pub struct Mixer4chProps {
+pub struct MixerProps {
     pub id: ModuleId,
     pub module: ComponentLink<Window>,
-    pub params: Mixer4chParams,
+    pub params: MixerParams,
 }
 
-pub enum Mixer4chMsg {
+pub enum MixerMsg {
     ChannelChanged(usize, MixerChannelParams),
 }
 
-impl Component for Mixer4ch {
-    type Properties = Mixer4chProps;
-    type Message = Mixer4chMsg;
+impl Component for Mixer {
+    type Properties = MixerProps;
+    type Message = MixerMsg;
 
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        Mixer4ch { link, props }
+        Mixer { link, props }
     }
 
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
@@ -36,12 +36,12 @@ impl Component for Mixer4ch {
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
-            Mixer4chMsg::ChannelChanged(idx, chan) => {
+            MixerMsg::ChannelChanged(idx, chan) => {
                 let mut params = self.props.params.clone();
                 params.channels[idx] = chan;
                 self.props.module.send_message(
                     WindowMsg::UpdateParams(
-                        ModuleParams::Mixer4ch(params)));
+                        ModuleParams::Mixer(params)));
                 false
             }
         }
@@ -57,7 +57,7 @@ impl Component for Mixer4ch {
                             <Channel
                                 params={channel}
                                 onchange={self.link.callback(move |params|
-                                    Mixer4chMsg::ChannelChanged(idx, params))}
+                                    MixerMsg::ChannelChanged(idx, params))}
                             />
                         }
                     })
