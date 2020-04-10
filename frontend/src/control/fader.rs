@@ -3,6 +3,7 @@ use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};
 
 use crate::component::drag_target::{DragTarget, DragEvent};
+use crate::component::scroll_target::{Scroll, ScrollTarget};
 use crate::util;
 
 const FADER_WIDTH: usize = 64;
@@ -43,6 +44,7 @@ pub enum FaderMsg {
     DragStart(DragEvent),
     Drag(DragEvent),
     DragEnd(DragEvent),
+    Scroll(Scroll)
 }
 
 impl Fader {
@@ -142,6 +144,16 @@ impl Component for Fader {
                 self.mouse_mode = MouseMode::Normal;
                 true
             }
+            FaderMsg::Scroll(dir) => {
+                let delta = match dir {
+                    Scroll::Up(delta) => delta,
+                    Scroll::Down(delta) => delta * -1.0,
+                };
+                let factor = 0.0001;
+                let fader_value = util::clamp(0.0, 1.0, self.props.value + delta * factor);
+                self.props.onchange.emit(fader_value);
+                true
+            }
         }
     }
 
@@ -196,24 +208,29 @@ impl Component for Fader {
 
         let canvas_style = match self.mouse_mode {
             MouseMode::Normal => "",
-            MouseMode::Hover | MouseMode::Drag { .. } => "cursor:pointer;"
+            MouseMode::Hover => "cursor:grab;",
+            MouseMode::Drag { .. } => "cursor:grabbing;"
         };
 
         html! {
             <div class="control-fader">
-                <DragTarget
-                    on_drag_start={self.link.callback(FaderMsg::DragStart)}
-                    on_drag={self.link.callback(FaderMsg::Drag)}
-                    on_drag_end={self.link.callback(FaderMsg::DragEnd)}
+                <ScrollTarget
+                    on_scroll={self.link.callback(FaderMsg::Scroll)}
                 >
-                    <canvas
-                        width={FADER_WIDTH}
-                        height={FADER_HEIGHT}
-                        ref={self.canvas.clone()}
-                        style={canvas_style}
-                        onmousemove={self.link.callback(FaderMsg::MouseMove)}
-                    />
-                </DragTarget>
+                    <DragTarget
+                        on_drag_start={self.link.callback(FaderMsg::DragStart)}
+                        on_drag={self.link.callback(FaderMsg::Drag)}
+                        on_drag_end={self.link.callback(FaderMsg::DragEnd)}
+                    >
+                        <canvas
+                            width={FADER_WIDTH}
+                            height={FADER_HEIGHT}
+                            ref={self.canvas.clone()}
+                            style={canvas_style}
+                            onmousemove={self.link.callback(FaderMsg::MouseMove)}
+                        />
+                    </DragTarget>
+                </ScrollTarget>
             </div>
         }
     }
