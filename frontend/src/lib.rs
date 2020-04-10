@@ -3,6 +3,7 @@
 mod component;
 mod control;
 mod module;
+mod service;
 mod util;
 mod workspace;
 

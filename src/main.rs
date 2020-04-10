@@ -98,9 +98,9 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
                 let msg = bincode::deserialize::<ClientMessage>(msg.as_bytes())
                     .expect("bincode::deserialize");
 
-                println!("{:?}", msg);
-                let result = engine.update(msg);
-                println!(" => {:?}", result);
+                if let Err(e) = engine.update(msg) {
+                    println!("Engine update failed: {:?}", e);
+                }
             }
             Event::EngineOp(Err(broadcast::RecvError::Lagged(skipped))) => {
                 println!("disconnecting client: lagged {} messages behind", skipped);

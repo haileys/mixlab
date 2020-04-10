@@ -87,9 +87,12 @@ dependencies = [
  "bincode",
  "console_error_panic_hook",
  "gloo-events",
+ "js-sys",
+ "lazy_static",
  "mixlab-protocol",
  "plotters",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "yew",
 ]
