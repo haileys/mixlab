@@ -6,6 +6,7 @@ use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};
 
 use crate::component::drag_target::{DragTarget, DragEvent};
+use crate::component::scroll_target::{Scroll, ScrollTarget};
 use crate::util;
 
 const ROTARY_WIDTH: usize = 48;
@@ -43,6 +44,7 @@ pub enum RotaryMsg {
     DragStart(DragEvent),
     Drag(DragEvent),
     DragEnd(DragEvent),
+    Scroll(Scroll),
 }
 
 enum MouseMode {
@@ -112,6 +114,19 @@ impl<T: Into<f64> + From<f64> + Clone + Copy + Display + 'static> Component for 
                 } else {
                     false
                 }
+            }
+            RotaryMsg::Scroll(dir) => {
+                let delta = match dir {
+                    Scroll::Up(delta) => delta,
+                    Scroll::Down(delta) => delta * -1.0,
+                };
+                let factor = 0.0001;
+                let new_frac = util::clamp(0.0, 1.0, factor * delta + self.props.value_frac());
+                let value = T::from(
+                    self.props.min.into() + new_frac * (self.props.max.into() - self.props.min.into())
+                );
+                self.props.onchange.emit(value);
+                true
             }
         }
     }
@@ -198,18 +213,22 @@ impl<T: Into<f64> + From<f64> + Clone + Copy + Display + 'static> Component for 
 
         html! {
             <div class="control-rotary">
-                <DragTarget
-                    on_drag_start={self.link.callback(RotaryMsg::DragStart)}
-                    on_drag={self.link.callback(RotaryMsg::Drag)}
-                    on_drag_end={self.link.callback(RotaryMsg::DragEnd)}
+                <ScrollTarget
+                    on_scroll={self.link.callback(RotaryMsg::Scroll)}
                 >
-                    <canvas
-                        width={ROTARY_WIDTH}
-                        height={ROTARY_HEIGHT}
-                        ref={self.canvas.clone()}
-                    />
-                </DragTarget>
-                <div class="control-rotary-label">{format!("{}", label_value)}</div>
+                    <DragTarget
+                        on_drag_start={self.link.callback(RotaryMsg::DragStart)}
+                        on_drag={self.link.callback(RotaryMsg::Drag)}
+                        on_drag_end={self.link.callback(RotaryMsg::DragEnd)}
+                    >
+                        <canvas
+                            width={ROTARY_WIDTH}
+                            height={ROTARY_HEIGHT}
+                            ref={self.canvas.clone()}
+                        />
+                    </DragTarget>
+                    <div class="control-rotary-label">{format!("{}", label_value)}</div>
+                </ScrollTarget>
             </div>
 
         }
