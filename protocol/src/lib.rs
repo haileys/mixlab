@@ -130,7 +130,7 @@ pub enum ModuleParams {
     FmSine(FmSineParams),
     OutputDevice(OutputDeviceParams),
     Plotter(()),
-    SineGenerator(SineGeneratorParams),
+    Oscillator(OscillatorParams),
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(GateState),
@@ -148,14 +148,14 @@ pub enum Indication {
     Mixer(()),
     OutputDevice(OutputDeviceIndication),
     Plotter(PlotterIndication),
-    SineGenerator(()),
+    Oscillator(()),
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SineGeneratorParams {
+pub struct OscillatorParams {
     pub freq: f64,
 }
 

@@ -1,19 +1,19 @@
 use std::f64;
 
-use mixlab_protocol::{SineGeneratorParams, LineType, Terminal};
+use mixlab_protocol::{OscillatorParams, LineType, Terminal};
 
 use crate::engine::{Sample, SAMPLE_RATE};
 use crate::module::ModuleT;
 
 #[derive(Debug)]
-pub struct SineGenerator {
-    params: SineGeneratorParams,
+pub struct Oscillator {
+    params: OscillatorParams,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
 }
 
-impl ModuleT for SineGenerator {
-    type Params = SineGeneratorParams;
+impl ModuleT for Oscillator {
+    type Params = OscillatorParams;
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
