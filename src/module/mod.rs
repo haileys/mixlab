@@ -87,7 +87,7 @@ gen_modules!{
     mixer::Mixer,
     output_device::OutputDevice,
     plotter::Plotter,
-    sine_generator::SineGenerator,
+    oscillator::Oscillator,
     stereo_panner::StereoPanner,
     stereo_splitter::StereoSplitter,
     trigger::Trigger,

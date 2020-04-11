@@ -5,5 +5,5 @@ pub mod icecast_input;
 pub mod mixer;
 pub mod output_device;
 pub mod plotter;
-pub mod sine_generator;
+pub mod oscillator;
 pub mod trigger;

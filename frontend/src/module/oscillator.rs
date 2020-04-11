@@ -1,23 +1,23 @@
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, ModuleParams, SineGeneratorParams};
+use mixlab_protocol::{ModuleId, ModuleParams, OscillatorParams};
 
 use crate::workspace::{Window, WindowMsg};
 
 #[derive(Properties, Clone, Debug)]
-pub struct SineGeneratorProps {
+pub struct OscillatorProps {
     pub id: ModuleId,
     pub module: ComponentLink<Window>,
-    pub params: SineGeneratorParams,
+    pub params: OscillatorParams,
 }
 
-pub struct SineGenerator {
-    props: SineGeneratorProps,
+pub struct Oscillator {
+    props: OscillatorProps,
 }
 
-impl Component for SineGenerator {
-    type Properties = SineGeneratorProps;
+impl Component for Oscillator {
+    type Properties = OscillatorProps;
     type Message = ();
 
     fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
@@ -34,7 +34,7 @@ impl Component for SineGenerator {
     }
 
     fn view(&self) -> Html {
-        let freq_id = format!("w{}-sine-freq", self.props.id.0);
+        let freq_id = format!("w{}-oscillator-freq", self.props.id.0);
         let params = self.props.params.clone();
 
         html! {
@@ -45,9 +45,9 @@ impl Component for SineGenerator {
                     onchange={self.props.module.callback(move |ev| {
                         if let ChangeData::Value(freq_str) = ev {
                             let freq = freq_str.parse().unwrap_or(0.0);
-                            let params = SineGeneratorParams { freq, ..params };
+                            let params = OscillatorParams { freq, ..params };
                             WindowMsg::UpdateParams(
-                                ModuleParams::SineGenerator(params))
+                                ModuleParams::Oscillator(params))
                         } else {
                             unreachable!()
                         }
