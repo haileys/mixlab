@@ -1,3 +1,5 @@
+use std::mem;
+
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d, MouseEvent};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};
@@ -109,9 +111,11 @@ impl Component for Fader {
         }
     }
 
-    fn change(&mut self, props: Self::Properties) -> ShouldRender {
-        self.props = props;
-        true
+    fn change(&mut self, mut props: Self::Properties) -> ShouldRender {
+        mem::swap(&mut self.props, &mut props);
+
+        // only re-render if value has changed:
+        self.props.value != props.value
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {

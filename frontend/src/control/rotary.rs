@@ -1,5 +1,6 @@
 use std::f64;
 use std::fmt::Display;
+use std::mem;
 
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{HtmlCanvasElement, CanvasRenderingContext2d};
@@ -13,7 +14,7 @@ const ROTARY_WIDTH: usize = 48;
 const ROTARY_HEIGHT: usize = 48;
 const ROTARY_ADJUST_HEIGHT: usize = 200;
 
-pub struct Rotary<T: Into<f64> + From<f64> + Clone + Copy + Display + 'static> {
+pub struct Rotary<T: Into<f64> + From<f64> + Clone + Copy + Display + PartialEq + 'static> {
     link: ComponentLink<Self>,
     props: RotaryProps<T>,
     canvas: NodeRef,
@@ -68,7 +69,7 @@ impl DragState {
     }
 }
 
-impl<T: Into<f64> + From<f64> + Clone + Copy + Display + 'static> Component for Rotary<T> {
+impl<T: Into<f64> + From<f64> + Clone + Copy + Display + PartialEq + 'static> Component for Rotary<T> {
     type Properties = RotaryProps<T>;
     type Message = RotaryMsg;
 
@@ -82,9 +83,13 @@ impl<T: Into<f64> + From<f64> + Clone + Copy + Display + 'static> Component for 
         }
     }
 
-    fn change(&mut self, props: Self::Properties) -> ShouldRender {
-        self.props = props;
-        true
+    fn change(&mut self, mut props: Self::Properties) -> ShouldRender {
+        mem::swap(&mut self.props, &mut props);
+
+        // only re-render if any UI influencing prop has changed
+        let old = (props.min, props.max, props.value);
+        let new = (self.props.min, self.props.max, self.props.value);
+        old != new
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
