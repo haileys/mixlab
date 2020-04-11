@@ -1,7 +1,10 @@
+use std::fmt::{self, Display};
+
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 use yew::events::ChangeData;
+use yew::components::Select;
 
-use mixlab_protocol::{ModuleId, ModuleParams, OscillatorParams};
+use mixlab_protocol::{ModuleId, ModuleParams, OscillatorParams, Waveform};
 
 use crate::workspace::{Window, WindowMsg};
 
@@ -34,26 +37,68 @@ impl Component for Oscillator {
     }
 
     fn view(&self) -> Html {
-        let freq_id = format!("w{}-oscillator-freq", self.props.id.0);
+        #[derive(PartialEq, Clone)]
+        struct SelectableWaveform(Waveform);
+
+        impl Display for SelectableWaveform {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                let SelectableWaveform(waveform) = self;
+                let name = match waveform {
+                    Waveform::Sine => "Sine",
+                    Waveform::On => "High",
+                    Waveform::Off => "Zero",
+                };
+                write!(f, "{}", name)
+            }
+        }
+
+        let waveforms: Vec<SelectableWaveform> = vec![
+            SelectableWaveform(Waveform::Sine),
+            SelectableWaveform(Waveform::On),
+            SelectableWaveform(Waveform::Off),
+        ];
+
         let params = self.props.params.clone();
 
         html! {
             <>
-                <label for={&freq_id}>{"Frequency"}</label>
-                <input type="number"
-                    id={&freq_id}
-                    onchange={self.props.module.callback(move |ev| {
-                        if let ChangeData::Value(freq_str) = ev {
-                            let freq = freq_str.parse().unwrap_or(0.0);
-                            let params = OscillatorParams { freq, ..params };
-                            WindowMsg::UpdateParams(
-                                ModuleParams::Oscillator(params))
-                        } else {
-                            unreachable!()
-                        }
-                    })}
-                    value={self.props.params.freq}
-                />
+                <label>
+                    <div>{"Waveform"}</div>
+                    <Select<SelectableWaveform>
+                        selected={SelectableWaveform(params.waveform.clone())}
+                        options={waveforms}
+                        onchange={self.props.module.callback({
+                            let params = self.props.params.clone();
+                            move |waveform| {
+                                if let SelectableWaveform(waveform) = waveform {
+                                    WindowMsg::UpdateParams(
+                                        ModuleParams::Oscillator(OscillatorParams {
+                                            waveform,
+                                            ..params.clone()
+                                        }))
+                                } else {
+                                    unreachable!()
+                                }
+                            }
+                        })}
+                    />
+                </label>
+                <label>
+                    <div>{"Frequency"}</div>
+                    <input type="number"
+                        onchange={self.props.module.callback(move |ev| {
+                            if let ChangeData::Value(freq_str) = ev {
+                                let freq = freq_str.parse().unwrap_or(0.0);
+                                let params = OscillatorParams { freq, ..params };
+                                WindowMsg::UpdateParams(
+                                    ModuleParams::Oscillator(params))
+                            } else {
+                                unreachable!()
+                            }
+                        })}
+                        value={self.props.params.freq}
+                    />
+                </label>
             </>
         }
     }

@@ -154,9 +154,18 @@ pub enum Indication {
     Trigger(()),
 }
 
+
+#[derive(Serialize, Deserialize, Clone, Debug, Copy, PartialEq)]
+pub enum Waveform {
+    On,
+    Off,
+    Sine,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OscillatorParams {
     pub freq: f64,
+    pub waveform: Waveform,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
