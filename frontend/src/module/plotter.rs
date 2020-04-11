@@ -8,8 +8,6 @@ use mixlab_protocol::{ModuleId, PlotterIndication};
 pub struct PlotterProps {
     pub id: ModuleId,
     pub indication: PlotterIndication,
-    pub height: usize,
-    pub width: usize,
 }
 
 struct Plot {
@@ -58,9 +56,12 @@ impl Component for Plotter {
     }
 
     fn view(&self) -> Html {
+        let chart_height = 150;
+        let chart_width = 300;
+
         html! {
             { for self.plots.iter().map(|plot| {
-                html! { <canvas ref={plot.canvas.clone()} width={self.props.width} height={self.props.height} /> }
+                html! { <canvas ref={plot.canvas.clone()} width={chart_width} height={chart_height} /> }
             })}
         }
     }
@@ -72,10 +73,16 @@ fn render_plot(canvas: HtmlCanvasElement, channel: &[f32]) {
     root.fill(&WHITE).unwrap();
 
     let mut chart = ChartBuilder::on(&root)
-        .x_label_area_size(30)
-        .y_label_area_size(30)
-        .build_ranged(0f32..440., -1f32..1f32).unwrap();
-    chart.configure_mesh().x_labels(3).y_labels(3).draw().unwrap();
+        .x_label_area_size(20)
+        .y_label_area_size(45)
+        .build_ranged(0f32..440., -1.01f32..1.1f32).unwrap();
+    chart.configure_mesh()
+        .x_labels(4)
+        .x_label_formatter(&|x| format!("{:.1}ms", *x as f64 / 44.1))
+        .y_labels(5)
+        .y_desc("Amplitude")
+        .draw()
+        .unwrap();
 
     let series = channel
         .iter()
