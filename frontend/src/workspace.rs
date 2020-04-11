@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams};
 
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
@@ -16,7 +16,7 @@ use crate::module::icecast_input::IcecastInput;
 use crate::module::mixer::Mixer;
 use crate::module::output_device::OutputDevice;
 use crate::module::plotter::Plotter;
-use crate::module::sine_generator::SineGenerator;
+use crate::module::oscillator::Oscillator;
 use crate::module::trigger::Trigger;
 use crate::util::{callback_ex, stop_propagation, prevent_default, Sequence};
 use crate::{App, AppMsg, State};
@@ -463,7 +463,7 @@ impl Workspace {
         };
 
         let items = &[
-            ("Sine Generator", ModuleParams::SineGenerator(SineGeneratorParams { freq: 100.0 })),
+            ("Oscillator", ModuleParams::Oscillator(OscillatorParams { freq: 100.0, waveform: Waveform::Sine })),
             ("Mixer (2 channel)", ModuleParams::Mixer(MixerParams::with_channels(2))),
             ("Mixer (4 channel)", ModuleParams::Mixer(MixerParams::with_channels(4))),
             ("Mixer (8 channel)", ModuleParams::Mixer(MixerParams::with_channels(8))),
@@ -680,8 +680,8 @@ impl Window {
 
     fn view_params(&self) -> Html {
         match &self.props.module {
-            ModuleParams::SineGenerator(params) => {
-                html! { <SineGenerator id={self.props.id} module={self.link.clone()} params={params} /> }
+            ModuleParams::Oscillator(params) => {
+                html! { <Oscillator id={self.props.id} module={self.link.clone()} params={params} /> }
             }
             ModuleParams::StereoPanner(()) |
             ModuleParams::StereoSplitter(()) => {
