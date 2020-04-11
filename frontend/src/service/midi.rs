@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, BTreeMap};
+use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::usize;
 
@@ -17,17 +18,30 @@ struct MidiBroker {
     listeners: HashMap<MidiInputId, EventListener>,
     configuring: Option<ConfigureKind>,
     id_seq: Sequence,
-    range_subscribers: BTreeMap<(MidiRangeId, usize), Callback<u8>>,
+    range_subscribers: BTreeMap<(MidiRangeId, SubscriptionId), Callback<u8>>,
 }
 
 #[derive(Clone)]
 pub struct MidiBrokerRef(Rc<RefCell<MidiBroker>>);
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct MidiRangeId(MidiInputId, u8);
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct MidiNoteId(MidiInputId, u8);
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
+struct SubscriptionId(NonZeroUsize);
+
+impl SubscriptionId {
+    fn min() -> SubscriptionId {
+        SubscriptionId(NonZeroUsize::new(1).unwrap())
+    }
+
+    fn max() -> SubscriptionId {
+        SubscriptionId(NonZeroUsize::new(usize::MAX).unwrap())
+    }
+}
 
 type MidiInputId = Rc<String>;
 
@@ -47,7 +61,7 @@ impl MidiBrokerRef {
     pub fn subscribe_range(&self, range_id: MidiRangeId, callback: Callback<u8>) -> RangeSubscription {
         let key = {
             let mut broker = self.0.borrow_mut();
-            let subscription_id = broker.id_seq.next();
+            let subscription_id = SubscriptionId(broker.id_seq.next());
             let key = (range_id, subscription_id);
             broker.range_subscribers.insert(key.clone(), callback);
             key
@@ -67,8 +81,8 @@ impl MidiBrokerRef {
             let range_id = MidiRangeId(input_id, data[1] & 0x7f);
             let value = data[2] & 0x7f;
 
-            let min_key = (range_id.clone(), usize::MIN);
-            let max_key = (range_id.clone(), usize::MAX);
+            let min_key = (range_id.clone(), SubscriptionId::min());
+            let max_key = (range_id.clone(), SubscriptionId::max());
 
             let mut subscribers = Vec::new();
             let mut configuring = None;
@@ -131,7 +145,7 @@ impl MidiBroker {
 
 pub struct RangeSubscription {
     broker: MidiBrokerRef,
-    key: (MidiRangeId, usize),
+    key: (MidiRangeId, SubscriptionId),
 }
 
 impl Drop for RangeSubscription {
