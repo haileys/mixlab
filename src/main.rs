@@ -28,7 +28,7 @@ fn content(content_type: &str, reply: impl Reply) -> impl Reply {
 // #[get("/")]
 fn index() -> impl Reply {
     #[cfg(not(debug_assertions))]
-    static index_html: &str = include_str!("../frontend/static/index.html");
+    let index_html: &str = include_str!("../frontend/static/index.html");
     #[cfg(debug_assertions)]
     let index_html = std::fs::read_to_string("frontend/static/index.html").expect("frontend built");
     content("text/html; charset=utf-8", index_html)
@@ -37,7 +37,7 @@ fn index() -> impl Reply {
 // #[get("/style.css")]
 fn style() -> impl Reply {
     #[cfg(not(debug_assertions))]
-    static style_css: &str = include_str!("../frontend/static/style.css");
+    let style_css: &str = include_str!("../frontend/static/style.css");
     #[cfg(debug_assertions)]
     let style_css = std::fs::read_to_string("frontend/static/style.css").expect("frontend built");
     content("text/css; charset=utf-8", style_css)
@@ -46,7 +46,7 @@ fn style() -> impl Reply {
 // #[get("/app.js")]
 fn js() -> impl Reply {
     #[cfg(not(debug_assertions))]
-    static app_js: &str = include_str!("../frontend/pkg/frontend.js");
+    let app_js: &str = include_str!("../frontend/pkg/frontend.js");
     #[cfg(debug_assertions)]
     let app_js = std::fs::read_to_string("frontend/pkg/frontend.js").expect("frontend built");
     content("text/javascript; charset=utf-8", app_js)
@@ -55,7 +55,7 @@ fn js() -> impl Reply {
 // #[get("/app.wasm")]
 fn wasm() -> impl Reply {
     #[cfg(not(debug_assertions))]
-    static app_wasm: &[u8] = include_bytes!("../frontend/pkg/frontend_bg.wasm");
+    let app_wasm: &[u8] = include_bytes!("../frontend/pkg/frontend_bg.wasm");
     #[cfg(debug_assertions)]
     let app_wasm = std::fs::read("frontend/pkg/frontend_bg.wasm").expect("frontend built");
     content("application/wasm", app_wasm)
