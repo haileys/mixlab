@@ -138,7 +138,7 @@ pub enum ModuleParams {
     FmSine(FmSineParams),
     OutputDevice(OutputDeviceParams),
     Plotter(()),
-    SineGenerator(SineGeneratorParams),
+    Oscillator(OscillatorParams),
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(GateState),
@@ -156,15 +156,27 @@ pub enum Indication {
     Mixer(()),
     OutputDevice(OutputDeviceIndication),
     Plotter(PlotterIndication),
-    SineGenerator(()),
+    Oscillator(()),
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(()),
 }
 
+
+#[derive(Serialize, Deserialize, Clone, Debug, Copy, PartialEq)]
+pub enum Waveform {
+    On,
+    Off,
+    Sine,
+    Square,
+    Triangle,
+    Saw,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SineGeneratorParams {
+pub struct OscillatorParams {
     pub freq: f64,
+    pub waveform: Waveform,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
