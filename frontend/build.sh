@@ -2,10 +2,12 @@
 
 cd "$(dirname "$0")"
 
-if [[ "$1" == "--release" ]]; then
-    BUILD_MODE="--release"
-else
+if [[ "$#" == 0 ]]; then
     BUILD_MODE="--dev"
+else
+    BUILD_MODE="$1"
 fi
+
+echo $BUILD_MODE
 
 wasm-pack build "$BUILD_MODE" --target no-modules
