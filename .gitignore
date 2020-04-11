@@ -1,4 +1,4 @@
-/target
-/frontend/target
+target
+target
 /frontend/pkg/
 /frontend/wasm-pack.log

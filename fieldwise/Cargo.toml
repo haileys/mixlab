@@ -1,10 +1,7 @@
 [package]
-name = "mixlab-protocol"
+name = "fieldwise"
 version = "0.0.0"
 authors = ["Charlie Somerville <charlie@charlie.bz>"]
 edition = "2018"
 
 [dependencies]
-fieldwise = { path = "../fieldwise" }
-serde = "1.0"
-serde_derive = "1.0"

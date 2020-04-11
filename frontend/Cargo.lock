@@ -283,6 +283,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "fieldwise"
+version = "0.0.0"
+
+[[package]]
 name = "float-ord"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -658,6 +662,7 @@ dependencies = [
 name = "mixlab-protocol"
 version = "0.0.0"
 dependencies = [
+ "fieldwise",
  "serde",
  "serde_derive",
 ]
