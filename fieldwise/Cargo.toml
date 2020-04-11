@@ -4,4 +4,5 @@ version = "0.0.0"
 authors = ["Charlie Somerville <charlie@charlie.bz>"]
 edition = "2018"
 
-[dependencies]
+[dev-dependencies]
+fieldwise_derive = { path = "../fieldwise_derive" }
