@@ -34,7 +34,7 @@ impl ModuleT for Clock {
             let elapsed_ms = sample_seq_duration_ms(SAMPLE_RATE, 0, t + i as u64);
             let beats_per_second = 60.0 / self.params.bpm;
             let current_beat_elapsed_seconds = (elapsed_ms / 1000.0) % beats_per_second;
-            let current_beat_elapsed_percent = 1.0 / beats_per_second * current_beat_elapsed_seconds;
+            let current_beat_elapsed_percent = current_beat_elapsed_seconds / beats_per_second;
 
             // For the first 25% of the beat, output high, otherwise, output low
             if current_beat_elapsed_percent < 0.25 {
