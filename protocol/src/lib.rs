@@ -211,7 +211,7 @@ pub struct FmSineParams {
     pub freq_hi: f64,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct AmplifierParams {
     pub amplitude: f64,
     pub mod_depth: f64,
