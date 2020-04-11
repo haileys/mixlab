@@ -6,9 +6,8 @@ impl Sequence {
     }
 
     pub fn next(&mut self) -> usize {
-        let seq = self.0;
         self.0 += 1;
-        seq
+        self.0
     }
 }
 
