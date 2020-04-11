@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams};
 
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
@@ -495,7 +495,7 @@ impl Workspace {
         };
 
         let items = &[
-            ("Oscillator", ModuleParams::Oscillator(OscillatorParams { freq: 100.0 })),
+            ("Oscillator", ModuleParams::Oscillator(OscillatorParams { freq: 100.0, waveform: Waveform::Sine })),
             ("Mixer (2 channel)", ModuleParams::Mixer(MixerParams::with_channels(2))),
             ("Mixer (4 channel)", ModuleParams::Mixer(MixerParams::with_channels(4))),
             ("Mixer (8 channel)", ModuleParams::Mixer(MixerParams::with_channels(8))),

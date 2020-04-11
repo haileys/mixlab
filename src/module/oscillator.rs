@@ -1,6 +1,6 @@
 use std::f64;
 
-use mixlab_protocol::{OscillatorParams, LineType, Terminal};
+use mixlab_protocol::{OscillatorParams, Waveform, LineType, Terminal};
 
 use crate::engine::{Sample, SAMPLE_RATE};
 use crate::module::ModuleT;
@@ -44,11 +44,16 @@ impl ModuleT for Oscillator {
         let co = self.params.freq as f64 * 2.0 * f64::consts::PI;
 
         for i in 0..len {
-            let t = (t + i as u64) as f64 / SAMPLE_RATE as f64;
-            let x = f64::sin(co * t) as f32;
-            outputs[MONO][i] = x;
-            outputs[STEREO][i * 2 + 0] = x;
-            outputs[STEREO][i * 2 + 1] = x;
+            let t0 = (t + i as u64) as f64 / SAMPLE_RATE as f64;
+            let sample: f32 = match &self.params.waveform {
+                Waveform::Sine => f64::sin(co * t0),
+                Waveform::On => 1.0,
+                Waveform::Off => 0.0,
+            } as f32;
+
+            outputs[MONO][i] = sample;
+            outputs[STEREO][i * 2 + 0] = sample;
+            outputs[STEREO][i * 2 + 1] = sample;
         }
 
         None
