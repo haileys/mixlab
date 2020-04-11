@@ -1,49 +1,25 @@
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
+use yew::{html, ComponentLink, Html};
 use yew::events::ChangeData;
 
 use mixlab_protocol::{ModuleId, ModuleParams, FmSineParams};
 
 use crate::workspace::{Window, WindowMsg};
+use crate::component::pure_module::{Pure, PureModule};
 
-#[derive(Properties, Clone, Debug)]
-pub struct FmSineProps {
-    pub id: ModuleId,
-    pub module: ComponentLink<Window>,
-    pub params: FmSineParams,
-}
+pub type FmSine = Pure<FmSineParams>;
 
-pub struct FmSine {
-    props: FmSineProps,
-}
-
-impl Component for FmSine {
-    type Properties = FmSineProps;
-    type Message = ();
-
-    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
-        Self { props }
-    }
-
-    fn update(&mut self, _msg: Self::Message) -> ShouldRender {
-        false
-    }
-
-    fn change(&mut self, props: Self::Properties) -> ShouldRender {
-        self.props = props;
-        true
-    }
-
-    fn view(&self) -> Html {
-        let freq_lo_id = format!("w{}-fmsine-freqlo", self.props.id.0);
-        let freq_hi_id = format!("w{}-fmsine-freqhi", self.props.id.0);
-        let params = self.props.params.clone();
+impl PureModule for FmSineParams {
+    fn view(&self, id: ModuleId, module: ComponentLink<Window>) -> Html {
+        let freq_lo_id = format!("w{}-fmsine-freqlo", id.0);
+        let freq_hi_id = format!("w{}-fmsine-freqhi", id.0);
+        let params = self.clone();
 
         html! {
             <>
                 <label for={&freq_lo_id}>{"Freq Lo"}</label>
                 <input type="number"
                     id={&freq_lo_id}
-                    onchange={self.props.module.callback({
+                    onchange={module.callback({
                         let params = params.clone();
                         move |ev| {
                             if let ChangeData::Value(freq_str) = ev {
@@ -56,13 +32,13 @@ impl Component for FmSine {
                             }
                         }
                     })}
-                    value={self.props.params.freq_lo}
+                    value={self.freq_lo}
                 />
 
                 <label for={&freq_hi_id}>{"Freq Hi"}</label>
                 <input type="number"
                     id={&freq_hi_id}
-                    onchange={self.props.module.callback({
+                    onchange={module.callback({
                         let params = params.clone();
                         move |ev| {
                             if let ChangeData::Value(freq_str) = ev {
@@ -75,7 +51,7 @@ impl Component for FmSine {
                             }
                         }
                     })}
-                    value={self.props.params.freq_hi}
+                    value={self.freq_hi}
                 />
             </>
         }
