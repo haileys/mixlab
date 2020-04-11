@@ -1,3 +1,11 @@
+pub trait Fieldwise {
+    type Root;
+    type Fields;
+
+    fn root() -> Self::Root;
+    fn fieldwise() -> Self::Fields;
+}
+
 pub trait Path {
     type Root: Path;
     type Item;
@@ -20,3 +28,14 @@ impl<A: Path<Item = Ap::Item>, B: Path<Root = Ap>, Ap: Path + 'static> Path for 
         self.1.access_mut(self.0.access_mut(root)?)
     }
 }
+
+// macro_rules! _path {
+
+// }
+
+// #[macro_export]
+// macro_rules! path {
+//     ( <$root_type:ty> . $field:ident ) => {
+//         <$root_type as $crate::Fieldwise>::fieldwise().$field()
+//     }
+// }
