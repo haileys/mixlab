@@ -8,7 +8,7 @@ pub type Sample = f32;
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     WorkspaceState(WorkspaceState),
-    ModelOp(LogPosition, ModelOp),
+    ModelOp(Option<ClientSequence>, ModelOp),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -22,7 +22,16 @@ pub struct WorkspaceState {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum ClientMessage {
+pub struct ClientMessage {
+    pub sequence: ClientSequence,
+    pub op: ClientOp,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ClientSequence(pub NonZeroUsize);
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ClientOp {
     CreateModule(ModuleParams, WindowGeometry),
     UpdateModuleParams(ModuleId, ModuleParams),
     UpdateWindowGeometry(ModuleId, WindowGeometry),
@@ -30,9 +39,6 @@ pub enum ClientMessage {
     CreateConnection(InputId, OutputId),
     DeleteConnection(InputId),
 }
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
-pub struct LogPosition(pub usize);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModelOp {

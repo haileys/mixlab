@@ -17,15 +17,17 @@ use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
 
-use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, Indication, Terminal};
+use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, Indication, Terminal, ClientOp, ClientSequence};
 
+use util::Sequence;
 use workspace::Workspace;
 
 pub struct App {
     link: ComponentLink<Self>,
     websocket: WebSocketTask,
     state: Option<Rc<RefCell<State>>>,
-    state_seq: usize,
+    client_seq: Sequence,
+    server_seq: Option<ClientSequence>,
     root_element: Element,
     viewport_width: usize,
     viewport_height: usize,
@@ -62,7 +64,7 @@ pub enum AppMsg {
     NoOp,
     WindowResize,
     ServerMessage(ServerMessage),
-    ClientUpdate(ClientMessage),
+    ClientUpdate(ClientOp),
 }
 
 impl Component for App {
@@ -112,7 +114,8 @@ impl Component for App {
             link,
             websocket,
             state: None,
-            state_seq: 0,
+            client_seq: Sequence::new(),
+            server_seq: None,
             root_element,
             viewport_width,
             viewport_height,
@@ -134,7 +137,7 @@ impl Component for App {
                         self.state = Some(Rc::new(RefCell::new(state.into())));
                         true
                     }
-                    ServerMessage::ModelOp(_, op) => {
+                    ServerMessage::ModelOp(seq, op) => {
                         let mut state = self.state.as_ref()
                             .expect("server should always send a WorkspaceState before a ModelOp")
                             .borrow_mut();
@@ -177,12 +180,38 @@ impl Component for App {
                             }
                         }
 
-                        self.state_seq += 1;
-                        true
+                        // only re-render according to server state if all of
+                        // our changes have successfully round-tripped
+                        if let Some(seq) = seq {
+                            if Some(seq) <= self.server_seq {
+                                panic!("sequence number repeat, desync");
+                            }
+
+                            self.server_seq = Some(seq);
+                        }
+
+                        let client_seq = self.client_seq.last().map(ClientSequence);
+
+                        log!("server_seq: {:?}, client_seq: {:?}", self.server_seq, client_seq);
+
+                        if self.server_seq == client_seq {
+                            // server is up to date, re-render
+                            true
+                        } else if self.server_seq < client_seq {
+                            // server is behind, skip render
+                            false
+                        } else {
+                            panic!("server_seq > client_seq, desync")
+                        }
                     }
                 }
             }
-            AppMsg::ClientUpdate(msg) => {
+            AppMsg::ClientUpdate(op) => {
+                let msg = ClientMessage {
+                    sequence: ClientSequence(self.client_seq.next()),
+                    op: op,
+                };
+
                 let packet = bincode::serialize(&msg)
                     .expect("bincode::serialize");
 
@@ -200,7 +229,6 @@ impl Component for App {
                     <Workspace
                         app={self.link.clone()}
                         state={state}
-                        state_seq={self.state_seq}
                         width={self.viewport_width}
                         height={self.viewport_height}
                     />

@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientMessage, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, SineGeneratorParams, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams};
 
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
@@ -33,7 +33,6 @@ pub struct Workspace {
 pub struct WorkspaceProps {
     pub app: ComponentLink<App>,
     pub state: Rc<RefCell<State>>,
-    pub state_seq: usize,
     pub width: usize,
     pub height: usize,
 }
@@ -92,8 +91,6 @@ impl Component for Workspace {
     }
 
     fn change(&mut self, new_props: Self::Properties) -> ShouldRender {
-        let mut should_render = false;
-
         let mut deleted_windows = self.window_refs.keys().copied().collect::<HashSet<_>>();
 
         {
@@ -110,32 +107,17 @@ impl Component for Workspace {
                     if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
                         self.register_terminals(*id, inputs, outputs);
                     }
-
-                    should_render = true;
                 }
             }
         }
 
         for deleted_window in deleted_windows {
             self.window_refs.remove(&deleted_window);
-            should_render = true;
-        }
-
-        if self.props.state_seq != new_props.state_seq {
-            should_render = true;
-        }
-
-        if self.props.width != new_props.width {
-            should_render = true;
-        }
-
-        if self.props.height != new_props.height {
-            should_render = true;
         }
 
         self.props = new_props;
 
-        should_render
+        true
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
@@ -149,7 +131,7 @@ impl Component for Workspace {
                         origin: Coords { x: ev.page_x(), y: ev.page_y() },
                     });
 
-                    geom.z_index = self.gen_z_index.next();
+                    geom.z_index = self.gen_z_index.next().get();
 
                     true
                 } else {
@@ -199,7 +181,7 @@ impl Component for Workspace {
                         if let Some(geometry) = state.geometry.get(&drag.module) {
                             self.props.app.send_message(
                                 AppMsg::ClientUpdate(
-                                    ClientMessage::UpdateWindowGeometry(drag.module, geometry.clone())));
+                                    ClientOp::UpdateWindowGeometry(drag.module, geometry.clone())));
                         }
 
                         self.mouse = MouseMode::Normal;
@@ -241,7 +223,7 @@ impl Component for Workspace {
 
                                     self.props.app.send_message(
                                         AppMsg::ClientUpdate(
-                                            ClientMessage::CreateConnection(input, output)));
+                                            ClientOp::CreateConnection(input, output)));
 
                                     true
                                 } else {
@@ -268,7 +250,7 @@ impl Component for Workspace {
 
                         self.props.app.send_message(
                             AppMsg::ClientUpdate(
-                                ClientMessage::DeleteConnection(input)));
+                                ClientOp::DeleteConnection(input)));
                     }
                     TerminalId::Output(output) => {
                         let mut msgs = Vec::new();
@@ -278,7 +260,7 @@ impl Component for Workspace {
                         for (in_, out_) in &state.connections {
                             if *out_ == output {
                                 msgs.push(AppMsg::ClientUpdate(
-                                    ClientMessage::DeleteConnection(*in_)));
+                                    ClientOp::DeleteConnection(*in_)));
                             }
                         }
 
@@ -301,7 +283,7 @@ impl Component for Workspace {
 
                 self.props.app.send_message(
                     AppMsg::ClientUpdate(
-                        ClientMessage::DeleteModule(module)));
+                        ClientOp::DeleteModule(module)));
 
                 true
             }
@@ -316,7 +298,7 @@ impl Component for Workspace {
 
                         self.props.app.send_message(
                             AppMsg::ClientUpdate(
-                                ClientMessage::UpdateModuleParams(module, params)));
+                                ClientOp::UpdateModuleParams(module, params)));
 
                         true
                     } else {
@@ -331,12 +313,12 @@ impl Component for Workspace {
 
                 let geometry = WindowGeometry {
                     position: coords,
-                    z_index: self.gen_z_index.next(),
+                    z_index: self.gen_z_index.next().get(),
                 };
 
                 self.props.app.send_message(
                     AppMsg::ClientUpdate(
-                        ClientMessage::CreateModule(module, geometry)));
+                        ClientOp::CreateModule(module, geometry)));
 
                 true
             }
