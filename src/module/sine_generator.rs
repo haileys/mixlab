@@ -20,7 +20,10 @@ impl ModuleT for SineGenerator {
         (Self {
             params,
             inputs: vec![],
-            outputs: vec![LineType::Mono.unlabeled()],
+            outputs: vec![
+                LineType::Mono.labeled("Mono"),
+                LineType::Stereo.labeled("Stereo"),
+            ],
         }, ())
     }
 
@@ -34,13 +37,18 @@ impl ModuleT for SineGenerator {
     }
 
     fn run_tick(&mut self, t: u64, _inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let len = outputs[0].len();
+        const MONO: usize = 0;
+        const STEREO: usize = 1;
+
+        let len = outputs[MONO].len();
         let co = self.params.freq as f64 * 2.0 * f64::consts::PI;
 
         for i in 0..len {
             let t = (t + i as u64) as f64 / SAMPLE_RATE as f64;
-            let x = f64::sin(co * t);
-            outputs[0][i] = x as f32;
+            let x = f64::sin(co * t) as f32;
+            outputs[MONO][i] = x;
+            outputs[STEREO][i * 2 + 0] = x;
+            outputs[STEREO][i * 2 + 1] = x;
         }
 
         None
