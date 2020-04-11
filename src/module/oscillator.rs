@@ -46,18 +46,21 @@ impl ModuleT for Oscillator {
         None
     }
 
+
     fn run_tick(&mut self, t: u64, _inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         const MONO: usize = 0;
         const STEREO: usize = 1;
 
         let len = outputs[MONO].len();
-        let co = self.params.freq as f64 * 2.0 * f64::consts::PI;
+        let f = self.params.freq as f64;
+        let co = f * 2.0 * f64::consts::PI;
 
         for i in 0..len {
             let t0 = (t + i as u64) as f64 / SAMPLE_RATE as f64;
             let sample: f32 = match &self.params.waveform {
                 Waveform::Sine => f64::sin(co * t0),
                 Waveform::Square => sign(f64::sin(co * t0)),
+                Waveform::Saw => 2.0 * (t0 * f - (0.5 + t0 * f).floor()),
                 Waveform::On => 1.0,
                 Waveform::Off => 0.0,
             } as f32;

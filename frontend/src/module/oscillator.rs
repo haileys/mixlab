@@ -46,6 +46,7 @@ impl Component for Oscillator {
                 let name = match waveform {
                     Waveform::Sine => "Sine",
                     Waveform::Square => "Square",
+                    Waveform::Saw => "Sawtooth",
                     Waveform::On => "High",
                     Waveform::Off => "Zero",
                 };
@@ -56,6 +57,7 @@ impl Component for Oscillator {
         let waveforms: Vec<SelectableWaveform> = vec![
             SelectableWaveform(Waveform::Sine),
             SelectableWaveform(Waveform::Square),
+            SelectableWaveform(Waveform::Saw),
             SelectableWaveform(Waveform::On),
             SelectableWaveform(Waveform::Off),
         ];
