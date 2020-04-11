@@ -17,7 +17,7 @@ use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
 
-use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ModelOp, Indication, Terminal, ClientOp, ClientSequence};
+use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ServerUpdate, Indication, Terminal, ClientOp, ClientSequence};
 
 use util::Sequence;
 use workspace::Workspace;
@@ -137,70 +137,64 @@ impl Component for App {
                         self.state = Some(Rc::new(RefCell::new(state.into())));
                         true
                     }
-                    ServerMessage::ModelOp(seq, op) => {
+                    ServerMessage::Sync(seq) => {
+                        if Some(seq) <= self.server_seq {
+                            panic!("sequence number repeat, desync");
+                        }
+
+                        self.server_seq = Some(seq);
+
+                        // re-render if this Sync message caused us to consider
+                        // ourselves synced - there may be prior updates
+                        // waiting for render
+                        self.synced()
+                    }
+                    ServerMessage::Update(op) => {
                         let mut state = self.state.as_ref()
                             .expect("server should always send a WorkspaceState before a ModelOp")
                             .borrow_mut();
 
                         match op {
-                            ModelOp::CreateModule { id, params, geometry, indication, inputs, outputs } => {
+                            ServerUpdate::CreateModule { id, params, geometry, indication, inputs, outputs } => {
                                 state.modules.insert(id, params);
                                 state.geometry.insert(id, geometry);
                                 state.indications.insert(id, indication);
                                 state.inputs.insert(id, inputs);
                                 state.outputs.insert(id, outputs);
                             }
-                            ModelOp::UpdateModuleParams(id, new_params) => {
+                            ServerUpdate::UpdateModuleParams(id, new_params) => {
                                 if let Some(params) = state.modules.get_mut(&id) {
                                     *params = new_params;
                                 }
                             }
-                            ModelOp::UpdateWindowGeometry(id, new_geometry) => {
+                            ServerUpdate::UpdateWindowGeometry(id, new_geometry) => {
                                 if let Some(geometry) = state.geometry.get_mut(&id) {
                                     *geometry = new_geometry;
                                 }
                             }
-                            ModelOp::UpdateModuleIndication(id, new_indication) => {
+                            ServerUpdate::UpdateModuleIndication(id, new_indication) => {
                                 if let Some(indication) = state.indications.get_mut(&id) {
                                     *indication = new_indication;
                                 }
                             }
-                            ModelOp::DeleteModule(id) => {
+                            ServerUpdate::DeleteModule(id) => {
                                 state.modules.remove(&id);
                                 state.geometry.remove(&id);
                                 state.indications.remove(&id);
                                 state.inputs.remove(&id);
                                 state.outputs.remove(&id);
                             }
-                            ModelOp::CreateConnection(input, output) => {
+                            ServerUpdate::CreateConnection(input, output) => {
                                 state.connections.insert(input, output);
                             }
-                            ModelOp::DeleteConnection(input) => {
+                            ServerUpdate::DeleteConnection(input) => {
                                 state.connections.remove(&input);
                             }
                         }
 
                         // only re-render according to server state if all of
                         // our changes have successfully round-tripped
-                        if let Some(seq) = seq {
-                            if Some(seq) <= self.server_seq {
-                                panic!("sequence number repeat, desync");
-                            }
-
-                            self.server_seq = Some(seq);
-                        }
-
-                        let client_seq = self.client_seq.last().map(ClientSequence);
-
-                        if self.server_seq == client_seq {
-                            // server is up to date, re-render
-                            true
-                        } else if self.server_seq < client_seq {
-                            // server is behind, skip render
-                            false
-                        } else {
-                            panic!("server_seq > client_seq, desync")
-                        }
+                        self.synced()
                     }
                 }
             }
@@ -233,6 +227,25 @@ impl Component for App {
                 }
             }
             None => html! {}
+        }
+    }
+}
+
+impl App {
+    fn synced(&self) -> bool {
+        // only re-render according to server state if all of
+        // our changes have successfully round-tripped
+
+        let client_seq = self.client_seq.last().map(ClientSequence);
+
+        if self.server_seq == client_seq {
+            // server is up to date, re-render
+            true
+        } else if self.server_seq < client_seq {
+            // server is behind, skip render
+            false
+        } else {
+            panic!("server_seq > client_seq, desync")
         }
     }
 }
