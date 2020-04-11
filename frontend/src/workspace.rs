@@ -789,7 +789,7 @@ pub struct Connections {
     props: ConnectionsProps,
 }
 
-#[derive(Properties, Clone)]
+#[derive(Properties, Clone, PartialEq, Eq)]
 pub struct ConnectionsProps {
     width: usize,
     height: usize,
@@ -831,7 +831,6 @@ impl Component for Connections {
 
         html! {
             <canvas
-                /*onmousedown={self.link.callback(|ev| ConnectionsMsg::MouseDown(ev))}*/
                 class="workspace-connections"
                 width={self.props.width}
                 height={self.props.height}
@@ -844,9 +843,10 @@ impl Component for Connections {
         false
     }
 
-    fn change(&mut self, props: Self::Properties) -> ShouldRender {
-        self.props = props;
-        true
+    fn change(&mut self, mut props: Self::Properties) -> ShouldRender {
+        mem::swap(&mut self.props, &mut props);
+
+        props != self.props
     }
 
     fn mounted(&mut self) -> ShouldRender {
@@ -864,8 +864,6 @@ impl Component for Connections {
 
         true
     }
-
-    // fn draw_connections(&self, )
 }
 
 fn plan_line_points(start: Coords, end: Coords) -> Vec<Coords> {
