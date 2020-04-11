@@ -25,7 +25,7 @@ fn derive_struct(info: &DeriveInfo, data: DataStruct) -> TokenStream2 {
     let fields = match data.fields {
         Fields::Named(fields) => fields.named,
         Fields::Unnamed(fields) => fields.unnamed,
-        _ => panic!(),
+        Fields::Unit => syn::punctuated::Punctuated::new(),
     };
 
     let field_lenses = fields.iter().enumerate().map(|(index, field)| {
