@@ -16,10 +16,10 @@ use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
-use engine::EngineHandle;
+use engine::{EngineHandle, OpClock};
 use icecast::http::Disambiguation;
 
-use mixlab_protocol::{ClientMessage, ServerMessage, ModelOp, LogPosition};
+use mixlab_protocol::{ClientMessage, ServerMessage, ModelOp};
 
 fn content(content_type: &str, reply: impl Reply) -> impl Reply {
     reply::with_header(reply, "content-type", content_type)
@@ -76,7 +76,7 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
 
     enum Event {
         ClientMessage(Result<ws::Message, warp::Error>),
-        ModelOp(Result<(LogPosition, ModelOp), broadcast::RecvError>),
+        ModelOp(Result<(Option<OpClock>, ModelOp), broadcast::RecvError>),
     }
 
     let mut events = stream::select(
@@ -110,8 +110,17 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
                 // TODO we should tell the user that the engine has stopped
                 unimplemented!()
             }
-            Event::ModelOp(Ok((pos, op))) => {
-                let msg = bincode::serialize(&ServerMessage::ModelOp(pos, op))
+            Event::ModelOp(Ok((clock, op))) => {
+                // sequence is only applicable if it belongs to this session:
+                let client_seq = clock.and_then(|clock| {
+                    if clock.0 == engine.session_id() {
+                        Some(clock.1)
+                    } else {
+                        None
+                    }
+                });
+
+                let msg = bincode::serialize(&ServerMessage::ModelOp(client_seq, op))
                     .expect("bincode::serialize");
 
                 match tx.send(ws::Message::binary(msg)).await {
