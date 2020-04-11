@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use yew::{Component, ComponentLink, Callback};
 use web_sys::Event;
 
@@ -41,5 +43,24 @@ pub fn clamp<T: PartialOrd>(min: T, max: T, val: T) -> T {
         max
     } else {
         val
+    }
+}
+
+pub struct Sequence(usize);
+
+impl Sequence {
+    pub fn new() -> Self {
+        Sequence(0)
+    }
+
+    /// Returns the last sequence number generated:
+    pub fn last(&self) -> Option<NonZeroUsize> {
+        NonZeroUsize::new(self.0)
+    }
+
+    /// Generates a new sequence number
+    pub fn next(&mut self) -> NonZeroUsize {
+        self.0 += 1;
+        NonZeroUsize::new(self.0).unwrap()
     }
 }

@@ -1,4 +1,5 @@
 use std::fmt;
+use std::num::NonZeroUsize;
 
 use serde_derive::{Deserialize, Serialize};
 
@@ -7,7 +8,8 @@ pub type Sample = f32;
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     WorkspaceState(WorkspaceState),
-    ModelOp(LogPosition, ModelOp),
+    Update(ServerUpdate),
+    Sync(ClientSequence),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -21,7 +23,16 @@ pub struct WorkspaceState {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum ClientMessage {
+pub struct ClientMessage {
+    pub sequence: ClientSequence,
+    pub op: ClientOp,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ClientSequence(pub NonZeroUsize);
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ClientOp {
     CreateModule(ModuleParams, WindowGeometry),
     UpdateModuleParams(ModuleId, ModuleParams),
     UpdateWindowGeometry(ModuleId, WindowGeometry),
@@ -30,11 +41,8 @@ pub enum ClientMessage {
     DeleteConnection(InputId),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
-pub struct LogPosition(pub usize);
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ModelOp {
+pub enum ServerUpdate {
     CreateModule {
         id: ModuleId,
         params: ModuleParams,
@@ -52,7 +60,7 @@ pub enum ModelOp {
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct ModuleId(pub usize);
+pub struct ModuleId(pub NonZeroUsize);
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum TerminalId {
