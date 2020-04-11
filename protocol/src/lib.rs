@@ -8,7 +8,8 @@ pub type Sample = f32;
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ServerMessage {
     WorkspaceState(WorkspaceState),
-    ModelOp(Option<ClientSequence>, ModelOp),
+    Update(ServerUpdate),
+    Sync(ClientSequence),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -41,7 +42,7 @@ pub enum ClientOp {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ModelOp {
+pub enum ServerUpdate {
     CreateModule {
         id: ModuleId,
         params: ModuleParams,
