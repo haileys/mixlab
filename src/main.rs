@@ -16,10 +16,10 @@ use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
-use engine::EngineHandle;
+use engine::{EngineHandle, EngineOp};
 use icecast::http::Disambiguation;
 
-use mixlab_protocol::{ClientMessage, ServerMessage, ModelOp, LogPosition};
+use mixlab_protocol::{ClientMessage, ServerMessage};
 
 fn content(content_type: &str, reply: impl Reply) -> impl Reply {
     reply::with_header(reply, "content-type", content_type)
@@ -64,7 +64,7 @@ fn wasm() -> impl Reply {
 async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
     let (mut tx, rx) = websocket.split();
 
-    let (state, model_ops, engine) = engine.connect().await
+    let (state, engine_ops, engine) = engine.connect().await
         .expect("engine.connect");
 
     let state_msg = bincode::serialize(&ServerMessage::WorkspaceState(state))
@@ -76,12 +76,12 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
 
     enum Event {
         ClientMessage(Result<ws::Message, warp::Error>),
-        ModelOp(Result<(LogPosition, ModelOp), broadcast::RecvError>),
+        EngineOp(Result<EngineOp, broadcast::RecvError>),
     }
 
     let mut events = stream::select(
         rx.map(Event::ClientMessage),
-        model_ops.map(Event::ModelOp),
+        engine_ops.map(Event::EngineOp),
     );
 
     while let Some(event) = events.next().await {
@@ -102,23 +102,37 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
                 let result = engine.update(msg);
                 println!(" => {:?}", result);
             }
-            Event::ModelOp(Err(broadcast::RecvError::Lagged(skipped))) => {
+            Event::EngineOp(Err(broadcast::RecvError::Lagged(skipped))) => {
                 println!("disconnecting client: lagged {} messages behind", skipped);
                 return;
             }
-            Event::ModelOp(Err(broadcast::RecvError::Closed)) => {
+            Event::EngineOp(Err(broadcast::RecvError::Closed)) => {
                 // TODO we should tell the user that the engine has stopped
                 unimplemented!()
             }
-            Event::ModelOp(Ok((pos, op))) => {
-                let msg = bincode::serialize(&ServerMessage::ModelOp(pos, op))
-                    .expect("bincode::serialize");
+            Event::EngineOp(Ok(op)) => {
+                // sequence is only applicable if it belongs to this session:
+                let msg = match op {
+                    EngineOp::ServerUpdate(update) => Some(ServerMessage::Update(update)),
+                    EngineOp::Sync(clock) => {
+                        if clock.0 == engine.session_id() {
+                            Some(ServerMessage::Sync(clock.1))
+                        } else {
+                            None
+                        }
+                    }
+                };
 
-                match tx.send(ws::Message::binary(msg)).await {
-                    Ok(()) => {}
-                    Err(_) => {
-                        // client disconnected
-                        return;
+                if let Some(msg) = msg {
+                    let msg = bincode::serialize(&msg)
+                        .expect("bincode::serialize");
+
+                    match tx.send(ws::Message::binary(msg)).await {
+                        Ok(()) => {}
+                        Err(_) => {
+                            // client disconnected
+                            return;
+                        }
                     }
                 }
             }
