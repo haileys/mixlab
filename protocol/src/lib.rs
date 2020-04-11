@@ -161,6 +161,7 @@ pub enum Waveform {
     Off,
     Sine,
     Square,
+    Triangle,
     Saw,
 }
 

@@ -22,6 +22,20 @@ fn sign(n: f64) -> f64 {
     }
 }
 
+fn sine(n: f64) -> f64 {
+   f64::sin(n * 2.0 * f64::consts::PI)
+}
+
+// https://en.wikipedia.org/wiki/Sawtooth_wave
+fn saw(n: f64) -> f64 {
+    2.0 * (n - (0.5 + n).floor())
+}
+
+// https://en.wikipedia.org/wiki/Triangle_wave#Definitions
+fn triangle(n: f64) -> f64 {
+    2.0 * saw(n).abs() - 1.0
+}
+
 impl ModuleT for Oscillator {
     type Params = OscillatorParams;
     type Indication = ();
@@ -52,15 +66,16 @@ impl ModuleT for Oscillator {
         const STEREO: usize = 1;
 
         let len = outputs[MONO].len();
-        let f = self.params.freq as f64;
-        let co = f * 2.0 * f64::consts::PI;
 
         for i in 0..len {
             let t0 = (t + i as u64) as f64 / SAMPLE_RATE as f64;
+            let n = t0 * self.params.freq as f64;
+
             let sample: f32 = match &self.params.waveform {
-                Waveform::Sine => f64::sin(co * t0),
-                Waveform::Square => sign(f64::sin(co * t0)),
-                Waveform::Saw => 2.0 * (t0 * f - (0.5 + t0 * f).floor()),
+                Waveform::Sine => sine(n),
+                Waveform::Square => sign(sine(n)),
+                Waveform::Saw => saw(n),
+                Waveform::Triangle => triangle(n),
                 Waveform::On => 1.0,
                 Waveform::Off => 0.0,
             } as f32;
