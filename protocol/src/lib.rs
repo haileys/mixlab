@@ -1,4 +1,5 @@
 use std::fmt;
+use std::num::NonZeroUsize;
 
 use serde_derive::{Deserialize, Serialize};
 
@@ -52,7 +53,7 @@ pub enum ModelOp {
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct ModuleId(pub usize);
+pub struct ModuleId(pub NonZeroUsize);
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub enum TerminalId {

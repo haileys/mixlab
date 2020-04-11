@@ -1,6 +1,7 @@
 use crate::module::Module;
 use std::collections::{HashMap, HashSet};
 use std::f32;
+use std::num::NonZeroUsize;
 use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError};
 use std::thread;
 use std::time::{Instant, Duration};

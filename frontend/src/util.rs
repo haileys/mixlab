@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use yew::{Component, ComponentLink, Callback};
 use web_sys::Event;
 
@@ -52,17 +54,13 @@ impl Sequence {
     }
 
     /// Returns the last sequence number generated:
-    pub fn last(&self) -> Option<usize> {
-        if self.0 == 0 {
-            None
-        } else {
-            Some(self.0)
-        }
+    pub fn last(&self) -> Option<NonZeroUsize> {
+        NonZeroUsize::new(self.0)
     }
 
     /// Generates a new sequence number
-    pub fn next(&mut self) -> usize {
+    pub fn next(&mut self) -> NonZeroUsize {
         self.0 += 1;
-        self.0
+        NonZeroUsize::new(self.0).unwrap()
     }
 }
