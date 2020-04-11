@@ -301,7 +301,7 @@ impl Coords {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default, PartialEq)]
 pub struct Decibel(pub f64);
 
 impl fmt::Display for Decibel {
