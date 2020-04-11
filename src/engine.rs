@@ -1,17 +1,37 @@
-use crate::module::Module;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::f32;
+use std::num::NonZeroUsize;
 use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError};
 use std::thread;
 use std::time::{Instant, Duration};
 
 use tokio::sync::{oneshot, broadcast};
 
-use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ModelOp, LogPosition, Indication, LineType};
+use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ServerUpdate, Indication, LineType, ClientSequence, ClientOp};
 
+use crate::module::Module;
 use crate::util::Sequence;
 
 pub type Sample = f32;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SessionId(NonZeroUsize);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// NOTE! This is not Ord because log positions with different session IDs have
+// no relative ordering
+pub struct OpClock(pub SessionId, pub ClientSequence);
+
+impl PartialOrd for OpClock {
+    fn partial_cmp(&self, other: &OpClock) -> Option<Ordering> {
+        if self.0 == other.0 {
+            Some(self.1.cmp(&other.1))
+        } else {
+            None
+        }
+    }
+}
 
 pub const CHANNELS: usize = 2;
 pub const SAMPLE_RATE: usize = 44100;
@@ -24,8 +44,8 @@ pub static ZERO_BUFFER_MONO: [Sample; SAMPLES_PER_TICK] = [0.0; SAMPLES_PER_TICK
 pub static ONE_BUFFER_MONO: [Sample; SAMPLES_PER_TICK] = [1.0; SAMPLES_PER_TICK];
 
 pub enum EngineMessage {
-    ConnectSession(oneshot::Sender<(WorkspaceState, EngineOps)>),
-    ClientMessage(ClientMessage),
+    ConnectSession(oneshot::Sender<(SessionId, WorkspaceState, EngineOps)>),
+    ClientMessage(SessionId, ClientMessage),
 }
 
 pub struct EngineHandle {
@@ -33,6 +53,7 @@ pub struct EngineHandle {
 }
 
 pub struct EngineSession {
+    session_id: SessionId,
     cmd_tx: SyncSender<EngineMessage>,
 }
 
@@ -44,7 +65,7 @@ pub fn start() -> EngineHandle {
         let mut engine = Engine {
             cmd_rx,
             log_tx,
-            log_seq: Sequence::new(),
+            session_seq: Sequence::new(),
             modules: HashMap::new(),
             geometry: HashMap::new(),
             module_seq: Sequence::new(),
@@ -73,7 +94,13 @@ impl<T> From<TrySendError<T>> for EngineError {
     }
 }
 
-pub type EngineOps = broadcast::Receiver<(LogPosition, ModelOp)>;
+pub type EngineOps = broadcast::Receiver<EngineOp>;
+
+#[derive(Debug, Clone)]
+pub enum EngineOp {
+    Sync(OpClock),
+    ServerUpdate(ServerUpdate),
+}
 
 impl EngineHandle {
     pub async fn connect(&self) -> Result<(WorkspaceState, EngineOps, EngineSession), EngineError> {
@@ -81,16 +108,23 @@ impl EngineHandle {
 
         let (tx, rx) = oneshot::channel();
         cmd_tx.try_send(EngineMessage::ConnectSession(tx))?;
-        let (state, log_rx) = rx.await.map_err(|_| EngineError::Stopped)?;
+        let (session_id, state, log_rx) = rx.await.map_err(|_| EngineError::Stopped)?;
 
-        Ok((state, log_rx, EngineSession { cmd_tx }))
+        Ok((state, log_rx, EngineSession {
+            cmd_tx,
+            session_id,
+        }))
     }
 }
 
 impl EngineSession {
+    pub fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
     /// TODO - maybe pass log position in here and detect conflicts?
     pub fn update(&self, msg: ClientMessage) -> Result<(), EngineError> {
-        self.send_message(EngineMessage::ClientMessage(msg))
+        self.send_message(EngineMessage::ClientMessage(self.session_id, msg))
     }
 
     fn send_message(&self, msg: EngineMessage) -> Result<(), EngineError> {
@@ -100,8 +134,8 @@ impl EngineSession {
 
 pub struct Engine {
     cmd_rx: Receiver<EngineMessage>,
-    log_tx: broadcast::Sender<(LogPosition, ModelOp)>,
-    log_seq: Sequence,
+    log_tx: broadcast::Sender<EngineOp>,
+    session_seq: Sequence,
     modules: HashMap<ModuleId, Module>,
     geometry: HashMap<ModuleId, WindowGeometry>,
     module_seq: Sequence,
@@ -120,7 +154,7 @@ impl Engine {
 
             for (module_id, indication) in indications {
                 self.indications.insert(module_id, indication.clone());
-                self.log_op(ModelOp::UpdateModuleIndication(module_id, indication));
+                self.log_op(ServerUpdate::UpdateModuleIndication(module_id, indication));
             }
 
             let sleep_until = start + Duration::from_millis(tick * 1_000 / TICKS_PER_SECOND as u64);
@@ -134,7 +168,7 @@ impl Engine {
 
                 match self.cmd_rx.recv_timeout(sleep_until - now) {
                     Ok(EngineMessage::ConnectSession(tx)) => { let _ = tx.send(self.connect_session()); }
-                    Ok(EngineMessage::ClientMessage(msg)) => { self.client_update(msg); }
+                    Ok(EngineMessage::ClientMessage(session, msg)) => { self.client_update(session, msg); }
                     Err(RecvTimeoutError::Timeout) => { break; }
                     Err(RecvTimeoutError::Disconnected) => { return; }
                 }
@@ -142,10 +176,11 @@ impl Engine {
         }
     }
 
-    fn connect_session(&mut self) -> (WorkspaceState, EngineOps) {
+    fn connect_session(&mut self) -> (SessionId, WorkspaceState, EngineOps) {
+        let session_id = SessionId(self.session_seq.next());
         let log_rx = self.log_tx.subscribe();
         let state = self.dump_state();
-        (state, log_rx)
+        (session_id, state, log_rx)
     }
 
     fn dump_state(&self) -> WorkspaceState {
@@ -179,14 +214,19 @@ impl Engine {
         state
     }
 
-    fn log_op(&mut self, op: ModelOp) {
-        let pos = LogPosition(self.log_seq.next());
-        let _ = self.log_tx.send((pos, op));
+    fn log_op(&mut self, op: ServerUpdate) {
+        let _ = self.log_tx.send(EngineOp::ServerUpdate(op));
     }
 
-    fn client_update(&mut self, msg: ClientMessage) {
-        match msg {
-            ClientMessage::CreateModule(params, geometry) => {
+    fn sync_log(&mut self, clock: OpClock) {
+        let _ = self.log_tx.send(EngineOp::Sync(clock));
+    }
+
+    fn client_update(&mut self, session_id: SessionId, msg: ClientMessage) {
+        let clock = OpClock(session_id, msg.sequence);
+
+        match msg.op {
+            ClientOp::CreateModule(params, geometry) => {
                 // TODO - the audio engine is not actually concerned with
                 // window geometry and so should not own this data and force
                 // all accesses to it to go via the live audio thread
@@ -198,7 +238,7 @@ impl Engine {
                 self.geometry.insert(id, geometry.clone());
                 self.indications.insert(id, indication.clone());
 
-                self.log_op(ModelOp::CreateModule {
+                self.log_op(ServerUpdate::CreateModule {
                     id,
                     params,
                     geometry,
@@ -207,19 +247,19 @@ impl Engine {
                     outputs,
                 });
             }
-            ClientMessage::UpdateModuleParams(module_id, params) => {
+            ClientOp::UpdateModuleParams(module_id, params) => {
                 if let Some(module) = self.modules.get_mut(&module_id) {
                     module.update(params.clone());
-                    self.log_op(ModelOp::UpdateModuleParams(module_id, params));
+                    self.log_op(ServerUpdate::UpdateModuleParams(module_id, params));
                 }
             }
-            ClientMessage::UpdateWindowGeometry(module_id, geometry) => {
+            ClientOp::UpdateWindowGeometry(module_id, geometry) => {
                 if let Some(geom) = self.geometry.get_mut(&module_id) {
                     *geom = geometry.clone();
-                    self.log_op(ModelOp::UpdateWindowGeometry(module_id, geometry));
+                    self.log_op(ServerUpdate::UpdateWindowGeometry(module_id, geometry));
                 }
             }
-            ClientMessage::DeleteModule(module_id) => {
+            ClientOp::DeleteModule(module_id) => {
                 // find any connections connected to this module's inputs or
                 // outputs and delete them, generating oplog entries
 
@@ -233,17 +273,17 @@ impl Engine {
 
                 for deleted_connection in deleted_connections {
                     self.connections.remove(&deleted_connection);
-                    self.log_op(ModelOp::DeleteConnection(deleted_connection));
+                    self.log_op(ServerUpdate::DeleteConnection(deleted_connection));
                 }
 
                 // finally, delete the module:
 
                 if self.modules.contains_key(&module_id) {
                     self.modules.remove(&module_id);
-                    self.log_op(ModelOp::DeleteModule(module_id));
+                    self.log_op(ServerUpdate::DeleteModule(module_id));
                 }
             }
-            ClientMessage::CreateConnection(input_id, output_id) => {
+            ClientOp::CreateConnection(input_id, output_id) => {
                 let input_type = match terminal_line_type(self, TerminalId::Input(input_id)) {
                     Some(ty) => ty,
                     None => return,
@@ -256,20 +296,22 @@ impl Engine {
 
                 if input_type == output_type {
                     if let Some(_) = self.connections.insert(input_id, output_id) {
-                        self.log_op(ModelOp::DeleteConnection(input_id));
+                        self.log_op(ServerUpdate::DeleteConnection(input_id));
                     }
 
-                    self.log_op(ModelOp::CreateConnection(input_id, output_id));
+                    self.log_op(ServerUpdate::CreateConnection(input_id, output_id));
                 } else {
                     // type mismatch, don't connect
                 }
             }
-            ClientMessage::DeleteConnection(input_id) => {
+            ClientOp::DeleteConnection(input_id) => {
                 if let Some(_) = self.connections.remove(&input_id) {
-                    self.log_op(ModelOp::DeleteConnection(input_id));
+                    self.log_op(ServerUpdate::DeleteConnection(input_id));
                 }
             }
         }
+
+        return self.sync_log(clock);
 
         fn terminal_line_type(engine: &Engine, terminal: TerminalId) -> Option<LineType> {
             engine.modules.get(&terminal.module_id()).and_then(|module| {
