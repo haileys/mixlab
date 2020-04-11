@@ -4,10 +4,6 @@ mod icecast;
 mod module;
 mod util;
 
-static INDEX_HTML: &str = include_str!("../frontend/static/index.html");
-static STYLE_CSS: &str = include_str!("../frontend/static/style.css");
-static APP_JS: &str = include_str!("../frontend/pkg/frontend.js");
-static APP_WASM: &[u8] = include_bytes!("../frontend/pkg/frontend_bg.wasm");
 
 use std::sync::Arc;
 use std::net::SocketAddr;
@@ -31,22 +27,38 @@ fn content(content_type: &str, reply: impl Reply) -> impl Reply {
 
 // #[get("/")]
 fn index() -> impl Reply {
-    content("text/html; charset=utf-8", INDEX_HTML)
+    #[cfg(not(debug_assertions))]
+    static index_html: &str = include_str!("../frontend/static/index.html");
+    #[cfg(debug_assertions)]
+    let index_html = std::fs::read_to_string("frontend/static/index.html").expect("frontend built");
+    content("text/html; charset=utf-8", index_html)
 }
 
 // #[get("/style.css")]
 fn style() -> impl Reply {
-    content("text/css; charset=utf-8", STYLE_CSS)
+    #[cfg(not(debug_assertions))]
+    static style_css: &str = include_str!("../frontend/static/style.css");
+    #[cfg(debug_assertions)]
+    let style_css = std::fs::read_to_string("frontend/static/style.css").expect("frontend built");
+    content("text/css; charset=utf-8", style_css)
 }
 
 // #[get("/app.js")]
 fn js() -> impl Reply {
-    content("text/javascript; charset=utf-8", APP_JS)
+    #[cfg(not(debug_assertions))]
+    static app_js: &str = include_str!("../frontend/pkg/frontend.js");
+    #[cfg(debug_assertions)]
+    let app_js = std::fs::read_to_string("frontend/pkg/frontend.js").expect("frontend built");
+    content("text/javascript; charset=utf-8", app_js)
 }
 
 // #[get("/app.wasm")]
 fn wasm() -> impl Reply {
-    content("application/wasm", APP_WASM)
+    #[cfg(not(debug_assertions))]
+    static app_wasm: &[u8] = include_bytes!("../frontend/pkg/frontend_bg.wasm");
+    #[cfg(debug_assertions)]
+    let app_wasm = std::fs::read("frontend/pkg/frontend_bg.wasm").expect("frontend built");
+    content("application/wasm", app_wasm)
 }
 
 async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
