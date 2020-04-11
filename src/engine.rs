@@ -342,7 +342,25 @@ impl Engine {
 
         // run modules in dependency order according to BFS above
 
-        let mut buffers = HashMap::<OutputId, Vec<Sample>>::new();
+        // TODO consolidate hashmaps?
+        let mut upmixed = HashMap::<OutputId, Vec<Sample>>::new();
+
+        // let upmix = move |output_id: &OutputId, buffer: &[Sample]| -> &[Sample] {
+        fn upmix<'a>(upmixed: &'a mut HashMap::<OutputId, Vec<Sample>>, output_id: &OutputId, buffer: &[Sample]) -> &'a [Sample] {
+            let entry = upmixed.entry(output_id.clone());
+            entry.or_insert_with(|| {
+                let mut output = Vec::with_capacity(SAMPLES_PER_TICK * 2);
+                for i in 0..buffer.len() {
+                    output[i * 2] = buffer[i];
+                    output[i * 2 + 1] = buffer[i];
+                }
+                output
+            })
+        };
+
+        let mut downmixed = HashMap::<OutputId, Vec<Sample>>::new();
+        let mut buffers = HashMap::<OutputId, (LineType, Vec<Sample>)>::new();
+
         let mut indications = Vec::new();
 
         for module_id in topsort.run_order.iter() {
@@ -351,24 +369,41 @@ impl Engine {
 
             let connections = &self.connections;
 
-            let mut output_buffers = Vec::<Vec<Sample>>::new();
+            let mut output_buffers = Vec::<(LineType, Vec<Sample>)>::new();
 
-            for _ in 0..module.outputs().len() {
-                output_buffers.push(vec![0.0; SAMPLES_PER_TICK * CHANNELS]);
+            for output in module.outputs() {
+                output_buffers.push((output.line_type(), match output.line_type() {
+                    LineType::Mono => vec![0.0; SAMPLES_PER_TICK],
+                    LineType::Stereo => vec![0.0; SAMPLES_PER_TICK * 2],
+                }));
             }
 
             {
                 let input_refs = module.inputs().iter()
                     .enumerate()
-                    .map(|(i, ty)| (InputId(*module_id, i), ty))
-                    .map(|(input, ty)|
-                        connections.get(&input).map(|output|
-                            &buffers[output][0..line_type_sample_count(ty.line_type())]))
+                    .map(|(i, terminal)| (InputId(*module_id, i), terminal))
+                    .map(|(input, terminal)|
+                        connections.get(&input).map(|out_id| {
+                            let (output_line_type, output) = &buffers[out_id];
+                            match (*output_line_type, terminal.line_type()) {
+                                (LineType::Mono, LineType::Mono) | (LineType::Stereo, LineType::Stereo) =>
+                                    &output[..],
+                                (LineType::Mono, LineType::Stereo) => upmix(&mut upmixed, out_id, output),
+                                (LineType::Stereo, LineType::Mono) => &output[..], // TODO
+                                //     downmixed.entry(out_id.clone()).or_insert_with(|| {
+                                //         let buffer = Vec::with_capacity(SAMPLES_PER_TICK);
+                                //         // for (i, sample) in output.iter().enumerate() {
+                                //         //     buffer[i * 2] = *sample;
+                                //         //     buffer[i * 2 + 1] = *sample;
+                                //         // }
+                                //         buffer
+                                //     }),
+                            }
+                        }))
                     .collect::<Vec<Option<&[Sample]>>>();
 
                 let mut output_refs = output_buffers.iter_mut()
-                    .zip(module.outputs())
-                    .map(|(vec, ty)| &mut vec[0..line_type_sample_count(ty.line_type())])
+                    .map(|(_ty, vec)| &mut vec[..])
                     .collect::<Vec<_>>();
 
                 let t = tick * SAMPLES_PER_TICK as u64;
