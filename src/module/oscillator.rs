@@ -12,6 +12,16 @@ pub struct Oscillator {
     outputs: Vec<Terminal>,
 }
 
+fn sign(n: f64) -> f64 {
+    if n.is_sign_positive() {
+        1.0
+    } else if n.is_sign_negative() {
+        -1.0
+    } else {
+        0.0
+    }
+}
+
 impl ModuleT for Oscillator {
     type Params = OscillatorParams;
     type Indication = ();
@@ -47,6 +57,7 @@ impl ModuleT for Oscillator {
             let t0 = (t + i as u64) as f64 / SAMPLE_RATE as f64;
             let sample: f32 = match &self.params.waveform {
                 Waveform::Sine => f64::sin(co * t0),
+                Waveform::Square => sign(f64::sin(co * t0)),
                 Waveform::On => 1.0,
                 Waveform::Off => 0.0,
             } as f32;
