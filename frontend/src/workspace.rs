@@ -18,7 +18,7 @@ use crate::module::output_device::OutputDevice;
 use crate::module::plotter::Plotter;
 use crate::module::oscillator::Oscillator;
 use crate::module::trigger::Trigger;
-use crate::util::{callback_ex, stop_propagation, prevent_default, Sequence};
+use crate::util::{stop_propagation, prevent_default, Sequence};
 use crate::{App, AppMsg, State};
 
 pub struct Workspace {
@@ -153,9 +153,6 @@ impl Component for Workspace {
                         }
                         MouseMode::Drag(_) => {}
                     }
-
-                    ev.prevent_default();
-                    ev.stop_propagation();
 
                     true
                 } else {
@@ -569,8 +566,6 @@ impl Component for Window {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             WindowMsg::DragStart(ev) => {
-                ev.stop_propagation();
-
                 self.props.workspace.send_message(
                     WorkspaceMsg::DragStart(self.props.id, ev));
             }
@@ -584,8 +579,6 @@ impl Component for Window {
                     };
 
                 self.props.workspace.send_message(msg);
-
-                ev.stop_propagation();
             }
             WindowMsg::Delete => {
                 self.props.workspace.send_message(
@@ -618,7 +611,7 @@ impl Component for Window {
                 oncontextmenu={prevent_default()}
             >
                 <div class="module-window-title"
-                    onmousedown={callback_ex(&self.link, WindowMsg::DragStart)}
+                    onmousedown={self.link.callback(WindowMsg::DragStart)}
                 >
                     <div class="module-window-title-label">
                         {&self.props.name}

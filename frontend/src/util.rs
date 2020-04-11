@@ -1,14 +1,14 @@
 use std::num::NonZeroUsize;
 
-use yew::{Component, ComponentLink, Callback};
+use yew::Callback;
 use web_sys::Event;
 
 pub fn stop_propagation<In>() -> Callback<In>
 where
     In: AsRef<Event>
 {
-    Callback::from(|ev: In| {
-        ev.as_ref().stop_propagation();
+    Callback::from(|_: In| {
+        // no-op, yew already stops propagation for us
     })
 }
 
@@ -17,22 +17,7 @@ where
     In: AsRef<Event>
 {
     Callback::from(|ev: In| {
-        ev.as_ref().stop_propagation();
         ev.as_ref().prevent_default();
-    })
-}
-
-pub fn callback_ex<Comp, F, In, M>(link: &ComponentLink<Comp>, f: F) -> Callback<In>
-where
-    Comp: Component,
-    M: Into<Comp::Message>,
-    F: Fn(In) -> M + 'static,
-    In: AsRef<Event>
-{
-    link.callback(move |ev: In| {
-        ev.as_ref().stop_propagation();
-        ev.as_ref().prevent_default();
-        f(ev)
     })
 }
 
