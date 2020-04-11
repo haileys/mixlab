@@ -18,27 +18,13 @@ use crate::module::output_device::OutputDevice;
 use crate::module::plotter::Plotter;
 use crate::module::sine_generator::SineGenerator;
 use crate::module::trigger::Trigger;
-use crate::util::{callback_ex, stop_propagation, prevent_default};
+use crate::util::{callback_ex, stop_propagation, prevent_default, Sequence};
 use crate::{App, AppMsg, State};
-
-pub struct Counter(usize);
-
-impl Counter {
-    pub fn new() -> Self {
-        Counter(0)
-    }
-
-    pub fn next(&mut self) -> usize {
-        let seq = self.0;
-        self.0 += 1;
-        seq
-    }
-}
 
 pub struct Workspace {
     link: ComponentLink<Self>,
     props: WorkspaceProps,
-    gen_z_index: Counter,
+    gen_z_index: Sequence,
     mouse: MouseMode,
     window_refs: BTreeMap<ModuleId, WindowRef>,
 }
@@ -87,7 +73,7 @@ impl Component for Workspace {
         let mut workspace = Workspace {
             link,
             props,
-            gen_z_index: Counter::new(),
+            gen_z_index: Sequence::new(),
             mouse: MouseMode::Normal,
             window_refs: BTreeMap::new(),
         };
