@@ -9,14 +9,12 @@ pub struct Foo {
 }
 
 #[derive(Fieldwise, Debug)]
-pub struct Bar {
-    three: usize,
-}
+pub struct Bar(usize);
 
 fn main() {
-    let mut foo = Foo { one: 1, two: Bar { three: 3 } };
+    let mut foo = Foo { one: 1, two: Bar(0) };
 
-    let lens = path!(crate::Foo.two.three);
+    let lens = path!(crate::Foo.two.0);
 
     {
         use fieldwise::Path;

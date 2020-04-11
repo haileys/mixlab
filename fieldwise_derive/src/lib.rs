@@ -2,7 +2,7 @@ extern crate proc_macro;
 
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::parse::{self, Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::{self, parse_macro_input, Data, DataStruct, DataEnum, DataUnion, DeriveInput, Fields, Token};
@@ -22,53 +22,61 @@ fn derive_struct(info: &DeriveInfo, data: DataStruct) -> TokenStream2 {
         fields_type,
     } = &info;
 
-    match data.fields {
-        Fields::Named(fields) => {
+    let fields = match data.fields {
+        Fields::Named(fields) => fields.named,
+        Fields::Unnamed(fields) => fields.unnamed,
+        _ => panic!(),
+    };
 
-            let field_lenses = fields.named.iter().enumerate().map(|(index, field)| {
-                let field_name = field.ident.clone().unwrap_or_else(|| {
-                    // for tuple structs, use index as field name
-                    syn::Ident::new(&format!("{}", index), field.span())
-                });
+    let field_lenses = fields.iter().enumerate().map(|(index, field)| {
+        let field_name = field.ident.clone().unwrap_or_else(|| {
+            // for tuple structs, use index as field name
+            syn::Ident::new(&format!("_{}", index), field.span())
+        });
 
-                let field_lens_name = syn::Ident::new(&format!("{}__{}", info.root_type, field_name), field_name.span());
-                let field_type = field.ty.clone();
+        let field_access = field.ident.as_ref()
+            .map(|ident| ident.to_token_stream())
+            .unwrap_or_else(|| {
+                // for tuple structs, use index as field name
+                syn::Index { index: index as u32, span: field.span() }
+                    .to_token_stream()
+            });
 
-                quote! {
-                    #[derive(Clone)]
-                    #[allow(non_camel_case_types)]
-                    #root_vis struct #field_lens_name<B: ::fieldwise::Path>(B);
+        let field_lens_name = syn::Ident::new(&format!("{}__{}", info.root_type, field_name), field_name.span());
+        let field_type = field.ty.clone();
 
-                    impl<B: ::fieldwise::Path<Item = #root_type>> ::fieldwise::Path for #field_lens_name<B> {
-                        type Root = B::Root;
-                        type Item = #field_type;
+        quote! {
+            #[derive(Clone)]
+            #[allow(non_camel_case_types)]
+            #root_vis struct #field_lens_name<B: ::fieldwise::Path>(B);
 
-                        fn access<'a>(&self, root: &'a <Self::Root as ::fieldwise::Path>::Item) -> Option<&'a Self::Item> {
-                            Some(&::fieldwise::Path::access(&self.0, root)?.#field_name)
-                        }
+            impl<B: ::fieldwise::Path<Item = #root_type>> ::fieldwise::Path for #field_lens_name<B> {
+                type Root = B::Root;
+                type Item = #field_type;
 
-                        fn access_mut<'a>(&self, root: &'a mut <Self::Root as ::fieldwise::Path>::Item) -> Option<&'a mut Self::Item> {
-                            Some(&mut ::fieldwise::Path::access_mut(&self.0, root)?.#field_name)
-                        }
-                    }
-
-                    impl #fields_type {
-                        pub fn #field_name(&self) -> #field_lens_name<#root_lens> {
-                            #field_lens_name(#root_lens)
-                        }
-                    }
+                fn access<'a>(&self, root: &'a <Self::Root as ::fieldwise::Path>::Item) -> Option<&'a Self::Item> {
+                    Some(&::fieldwise::Path::access(&self.0, root)?.#field_access)
                 }
-            }).collect::<TokenStream2>();
 
-            quote! {
-                #[derive(Clone)]
-                #[allow(non_camel_case_types)]
-                pub struct #fields_type;
+                fn access_mut<'a>(&self, root: &'a mut <Self::Root as ::fieldwise::Path>::Item) -> Option<&'a mut Self::Item> {
+                    Some(&mut ::fieldwise::Path::access_mut(&self.0, root)?.#field_access)
+                }
+            }
 
-                #field_lenses
+            impl #fields_type {
+                pub fn #field_name(&self) -> #field_lens_name<#root_lens> {
+                    #field_lens_name(#root_lens)
+                }
             }
         }
-        _ => panic!()
+    }).collect::<TokenStream2>();
+
+    quote! {
+        #[derive(Clone)]
+        #[allow(non_camel_case_types)]
+        pub struct #fields_type;
+
+        #field_lenses
     }
 }
 
@@ -174,14 +182,20 @@ impl Parse for Path {
 }
 
 enum Accessor {
-    FieldName(syn::Ident),
+    Field(syn::Ident),
 }
 
 impl Parse for Accessor {
     fn parse(input: ParseStream) -> parse::Result<Self> {
-        input.parse::<Token![.]>()?;
-        let ident = input.parse::<syn::Ident>()?;
-        Ok(Accessor::FieldName(ident))
+        input.parse::<Token![.]>()
+            .and_then(|_| {
+                input.parse::<syn::Ident>().map(Accessor::Field)
+                    .or_else(|_| {
+                        input.parse::<syn::Index>()
+                            .map(|index| syn::Ident::new(&format!("_{}", index.index), index.span()))
+                            .map(Accessor::Field)
+                    })
+            })
     }
 }
 
@@ -192,7 +206,7 @@ pub fn path(path: TokenStream) -> TokenStream {
 
     let accessors = path.accessors.iter().map(|accessor| {
         match accessor {
-            Accessor::FieldName(ident) => quote! {
+            Accessor::Field(ident) => quote! {
                 let lens = {
                     fn get_fieldwise<T: ::fieldwise::Path<Item = F>, F: ::fieldwise::Fieldwise>(_: &T) -> F::Fields {
                         F::fieldwise()
@@ -207,7 +221,6 @@ pub fn path(path: TokenStream) -> TokenStream {
 
     TokenStream::from(quote! {
         {
-            // type F = <#root_type as ::fieldwise::Fieldwise>;
             let lens = <#root_type as ::fieldwise::Fieldwise>::root();
 
             #accessors
