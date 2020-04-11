@@ -74,15 +74,12 @@ impl Component for Oscillator {
                         onchange={self.props.module.callback({
                             let params = self.props.params.clone();
                             move |waveform| {
-                                if let SelectableWaveform(waveform) = waveform {
-                                    WindowMsg::UpdateParams(
-                                        ModuleParams::Oscillator(OscillatorParams {
-                                            waveform,
-                                            ..params.clone()
-                                        }))
-                                } else {
-                                    unreachable!()
-                                }
+                                let SelectableWaveform(waveform) = waveform;
+                                WindowMsg::UpdateParams(
+                                    ModuleParams::Oscillator(OscillatorParams {
+                                        waveform,
+                                        ..params.clone()
+                                    }))
                             }
                         })}
                     />
