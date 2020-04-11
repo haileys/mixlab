@@ -192,8 +192,6 @@ impl Component for App {
 
                         let client_seq = self.client_seq.last().map(ClientSequence);
 
-                        log!("server_seq: {:?}, client_seq: {:?}", self.server_seq, client_seq);
-
                         if self.server_seq == client_seq {
                             // server is up to date, re-render
                             true
