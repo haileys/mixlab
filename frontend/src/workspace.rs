@@ -734,10 +734,10 @@ impl Window {
                 }
             }
             ModuleParams::FmSine(params) => {
-                html! { <FmSine id={self.props.id} module={self.link.clone()} params={params} /> }
+                html! { <FmSine id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
             ModuleParams::Amplifier(params) => {
-                html! { <Amplifier id={self.props.id} module={self.link.clone()} params={params} /> }
+                html! { <Amplifier id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
             ModuleParams::Trigger(params) => {
                 html! { <Trigger id={self.props.id} module={self.link.clone()} params={params} /> }
