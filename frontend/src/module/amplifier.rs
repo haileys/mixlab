@@ -3,13 +3,14 @@ use yew::events::ChangeData;
 
 use mixlab_protocol::{ModuleId, ModuleParams, AmplifierParams};
 
-use crate::workspace::{Window, WindowMsg};
 use crate::component::pure_module::{Pure, PureModule};
+use crate::component::midi_target::MidiUiMode;
+use crate::workspace::{Window, WindowMsg};
 
 pub type Amplifier = Pure<AmplifierParams>;
 
 impl PureModule for AmplifierParams {
-    fn view(&self, id: ModuleId, module: ComponentLink<Window>) -> Html {
+    fn view(&self, id: ModuleId, module: ComponentLink<Window>, _: MidiUiMode) -> Html {
         let amp_id = format!("w{}-amp", id.0);
         let amp_params = self.clone();
 
