@@ -5,8 +5,9 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::usize;
 
+use derive_more::From;
 use gloo_events::EventListener;
-use js_sys::Map;
+use js_sys::{Map, Reflect};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{MidiInput, MidiMessageEvent};
@@ -132,8 +133,15 @@ impl MidiBroker {
         wasm_bindgen_futures::spawn_local({
             let broker = broker.clone();
             async move {
-                setup(broker).await
-                    .expect("setup");
+                match setup(broker).await {
+                    Ok(()) => {}
+                    Err(MidiError::NotSupported) => {
+                        crate::warn!("WebMIDI not supported on this browser! MIDI features will not function");
+                    }
+                    Err(MidiError::Js(e)) => {
+                        crate::error!("Unhandled JavaScript exception while setting up MIDI access: {:?}", e);
+                    }
+                }
             }
         });
 
@@ -197,17 +205,29 @@ enum ConfigureKind {
     // Note(Callback<Option<MidiNoteId>>),
 }
 
-async fn request_midi_access() -> Result<web_sys::MidiAccess, JsValue> {
-    Ok(JsFuture::from(web_sys::window()
+#[derive(Debug, From)]
+pub enum MidiError {
+    NotSupported,
+    Js(JsValue),
+}
+
+async fn request_midi_access() -> Result<web_sys::MidiAccess, MidiError> {
+    let navigator = web_sys::window()
         .expect("web_sys::window")
-        .navigator()
-        .request_midi_access()
-        .expect("navigator.request_midi_access"))
+        .navigator();
+
+    // test for browser support before calling this function:
+    if !Reflect::has(&navigator, &JsValue::from_str("requestMIDIAccess"))? {
+        return Err(MidiError::NotSupported);
+    }
+
+    Ok(JsFuture::from(navigator
+        .request_midi_access()?)
         .await?
         .dyn_into::<web_sys::MidiAccess>()?)
 }
 
-async fn setup_input(broker: MidiBrokerRef, input: MidiInput) -> Result<(), JsValue> {
+async fn setup_input(broker: MidiBrokerRef, input: MidiInput) -> Result<(), MidiError> {
     let input_id = Rc::new(input.id());
 
     let event_listener = EventListener::new(&input, "midimessage", {
@@ -228,7 +248,7 @@ async fn setup_input(broker: MidiBrokerRef, input: MidiInput) -> Result<(), JsVa
     Ok(())
 }
 
-async fn setup(broker: MidiBrokerRef) -> Result<(), JsValue> {
+async fn setup(broker: MidiBrokerRef) -> Result<(), MidiError> {
     let midi = request_midi_access().await?;
 
     let inputs = midi.inputs()
