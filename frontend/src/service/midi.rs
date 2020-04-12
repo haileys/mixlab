@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, BTreeMap};
+use std::fmt::{self, Debug};
 use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::usize;
@@ -24,13 +25,13 @@ struct MidiBroker {
 #[derive(Clone)]
 pub struct MidiBrokerRef(Rc<RefCell<MidiBroker>>);
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct MidiRangeId(MidiInputId, u8);
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct MidiNoteId(MidiInputId, u8);
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct SubscriptionId(NonZeroUsize);
 
 impl SubscriptionId {
@@ -54,8 +55,15 @@ pub fn broker() -> MidiBrokerRef {
 }
 
 impl MidiBrokerRef {
-    pub fn configure_range(&self, callback: Callback<Option<(MidiRangeId, u8)>>) {
-        self.0.borrow_mut().configure(ConfigureKind::Range(callback));
+    pub fn configure_range(&self, callback: Callback<Option<(MidiRangeId, u8)>>) -> ConfigureTask {
+        let configure = ConfigureKind::Range(callback);
+
+        self.0.borrow_mut().configure(configure.clone());
+
+        ConfigureTask {
+            broker: self.clone(),
+            configure,
+        }
     }
 
     pub fn subscribe_range(&self, range_id: MidiRangeId, callback: Callback<u8>) -> RangeSubscription {
@@ -143,9 +151,16 @@ impl MidiBroker {
     }
 }
 
+#[must_use = "subscription only lives as long as this object"]
 pub struct RangeSubscription {
     broker: MidiBrokerRef,
     key: (MidiRangeId, SubscriptionId),
+}
+
+impl Debug for RangeSubscription {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RangeSubscription {{ key: {:?}, broker: .. }}", self.key)
+    }
 }
 
 impl Drop for RangeSubscription {
@@ -154,6 +169,29 @@ impl Drop for RangeSubscription {
     }
 }
 
+#[must_use = "configure callback will never fire after this is dropped"]
+pub struct ConfigureTask {
+    broker: MidiBrokerRef,
+    configure: ConfigureKind,
+}
+
+impl Debug for ConfigureTask {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ConfigureTask {{ configure: {:?}, broker: .. }}", self.configure)
+    }
+}
+
+impl Drop for ConfigureTask {
+    fn drop(&mut self) {
+        let mut broker = self.broker.0.borrow_mut();
+
+        if broker.configuring.as_ref() == Some(&self.configure) {
+            broker.configuring = None;
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 enum ConfigureKind {
     Range(Callback<Option<(MidiRangeId, u8)>>),
     // Note(Callback<Option<MidiNoteId>>),
