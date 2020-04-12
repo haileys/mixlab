@@ -9,6 +9,7 @@ use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properti
 
 use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams};
 
+use crate::component::midi_target::MidiUiMode;
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
 use crate::module::fm_sine::FmSine;
@@ -501,16 +502,15 @@ impl Workspace {
 pub struct Window {
     link: ComponentLink<Self>,
     props: WindowProps,
-    midi_mode: bool,
+    midi_mode: MidiUiMode,
 }
 
-#[derive(Debug)]
 pub enum WindowMsg {
     DragStart(MouseEvent),
     TerminalMouseDown(MouseEvent, TerminalId, TerminalRef),
     Delete,
     UpdateParams(ModuleParams),
-    SetMidiMode(bool),
+    SetMidiMode(MidiUiMode),
 }
 
 #[derive(Properties, Clone, Debug)]
@@ -562,7 +562,7 @@ impl Component for Window {
         Window {
             link,
             props,
-            midi_mode: false,
+            midi_mode: MidiUiMode::Normal,
         }
     }
 
@@ -617,14 +617,8 @@ impl Component for Window {
             self.props.geometry.position.y,
             self.props.geometry.z_index);
 
-        let class = if self.midi_mode {
-            "module-window midi-mode-enabled"
-        } else {
-            "module-window"
-        };
-
         html! {
-            <div class={class}
+            <div class="module-window"
                 style={window_style}
                 ref={self.props.refs.module.clone()}
                 onmousedown={stop_propagation()}
@@ -661,13 +655,17 @@ impl Window {
     fn view_custom_title_buttons(&self) -> Html {
         match &self.props.module {
             ModuleParams::Mixer(..) => {
-                let class = if self.midi_mode {
-                    "module-window-title-button module-window-title-midi-btn module-window-title-midi-btn-active"
-                } else {
-                    "module-window-title-button module-window-title-midi-btn"
+                let class = match self.midi_mode {
+                    MidiUiMode::Normal =>
+                        "module-window-title-button module-window-title-midi-btn",
+                    MidiUiMode::Configure =>
+                        "module-window-title-button module-window-title-midi-btn module-window-title-midi-btn-active",
                 };
 
-                let new_midi_mode = !self.midi_mode;
+                let new_midi_mode = match self.midi_mode {
+                    MidiUiMode::Normal => MidiUiMode::Configure,
+                    MidiUiMode::Configure => MidiUiMode::Normal,
+                };
 
                 html! {
                     <div class={class} onmousedown={self.link.callback(move |_| WindowMsg::SetMidiMode(new_midi_mode))}>
@@ -748,7 +746,7 @@ impl Window {
                 html! { <Envelope id={self.props.id} module={self.link.clone()} params={params} /> }
             }
             ModuleParams::Mixer(params) => {
-                html! { <Mixer id={self.props.id} module={self.link.clone()} params={params} /> }
+                html! { <Mixer id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
             ModuleParams::IcecastInput(params) => {
                 html! { <IcecastInput id={self.props.id} module={self.link.clone()} params={params} /> }

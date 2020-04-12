@@ -3,6 +3,12 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callba
 
 use crate::service::midi::{self, RangeSubscription};
 
+#[derive(Clone, Copy)]
+pub enum MidiUiMode {
+    Normal,
+    Configure,
+}
+
 pub struct MidiRangeTarget {
     link: ComponentLink<Self>,
     props: MidiTargetProps,
@@ -17,6 +23,7 @@ pub enum MidiState {
 
 #[derive(Properties, Clone)]
 pub struct MidiTargetProps {
+    pub ui_mode: MidiUiMode,
     pub onchange: Callback<f64>,
     #[prop_or_default]
     pub children: Children,
@@ -73,6 +80,7 @@ impl Component for MidiRangeTarget {
                         }
                     })
                 });
+
                 true
             }
             MidiTargetMsg::Bind(subscription) => {
@@ -87,26 +95,34 @@ impl Component for MidiRangeTarget {
     }
 
     fn view(&self) -> Html {
-        let overlay_class = match self.state {
-            MidiState::Unbound => "midi-target-overlay midi-target-overlay-unbound",
-            MidiState::Configure => "midi-target-overlay midi-target-overlay-configure",
-            MidiState::Bound(_) => "midi-target-overlay midi-target-overlay-bound",
-        };
+        let overlay = match self.props.ui_mode {
+            MidiUiMode::Normal => {
+                if let MidiState::Bound(_) = self.state {
+                    html! {
+                        <div class="midi-target-overlay midi-target-overlay-bound">
+                            <span class="midi-target-overlay-label">{"MIDI"}</span>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+            MidiUiMode::Configure => {
+                let class = match self.state {
+                    MidiState::Unbound => "midi-target-overlay midi-target-cfg-overlay midi-target-cfg-overlay-unbound",
+                    MidiState::Configure => "midi-target-overlay midi-target-cfg-overlay midi-target-cfg-overlay-configure",
+                    MidiState::Bound(_) => "midi-target-overlay midi-target-cfg-overlay midi-target-cfg-overlay-bound",
+                };
 
-        let overlay_label = if let MidiState::Bound(_) = self.state {
-            html! { <span class="midi-target-overlay-label">{"MIDI"}</span> }
-        } else {
-            html! {}
+                html! {
+                    <div class={class} onmousedown={self.overlay_mousedown()}></div>
+                }
+            }
         };
 
         html! {
             <div class="midi-target">
-                <div
-                    class={overlay_class}
-                    onmousedown={self.overlay_mousedown()}
-                >
-                    {overlay_label}
-                </div>
+                {overlay}
                 {self.props.children.render()}
             </div>
         }
