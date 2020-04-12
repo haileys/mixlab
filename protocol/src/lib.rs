@@ -135,28 +135,30 @@ impl LineType {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModuleParams {
     Amplifier(AmplifierParams),
+    Envelope(EnvelopeParams),
+    EqThree(EqThreeParams),
     FmSine(FmSineParams),
+    IcecastInput(IcecastInputParams),
+    Mixer(MixerParams),
+    Oscillator(OscillatorParams),
     OutputDevice(OutputDeviceParams),
     Plotter(()),
-    Oscillator(OscillatorParams),
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(GateState),
-    Envelope(EnvelopeParams),
-    Mixer(MixerParams),
-    IcecastInput(IcecastInputParams),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Indication {
     Amplifier(()),
     Envelope(()),
+    EqThree(()),
     FmSine(()),
     IcecastInput(()),
     Mixer(()),
+    Oscillator(()),
     OutputDevice(OutputDeviceIndication),
     Plotter(PlotterIndication),
-    Oscillator(()),
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(()),
@@ -203,6 +205,13 @@ pub enum OutputDeviceWarning {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PlotterIndication {
     pub inputs: Vec<Vec<Sample>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct EqThreeParams {
+    pub gain_lo: Decibel,
+    pub gain_mid: Decibel,
+    pub gain_hi: Decibel,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
