@@ -27,6 +27,7 @@ web-sys = { version = "0.3", features = [
     "HtmlCanvasElement",
     "InputEvent",
     "MidiAccess",
+    "MidiConnectionEvent",
     "MidiInput",
     "MidiInputMap",
     "MidiMessageEvent",
