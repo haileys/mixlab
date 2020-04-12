@@ -134,13 +134,19 @@ impl Component for Channel {
 
         html! {
             <div class="mixer-channel">
-                <Rotary<Decibel>
-                    value={self.props.params.gain}
-                    min={Decibel(-24.0)}
-                    max={Decibel(6.0)}
-                    default={Decibel(0.0)}
-                    onchange={self.link.callback(ChannelMsg::GainChanged)}
-                />
+                <MidiRangeTarget
+                    onchange={self.link.callback(|gain| {
+                        ChannelMsg::GainChanged(Decibel(gain * 30.0 - 24.0))
+                    })}
+                >
+                    <Rotary<Decibel>
+                        value={self.props.params.gain}
+                        min={Decibel(-24.0)}
+                        max={Decibel(6.0)}
+                        default={Decibel(0.0)}
+                        onchange={self.link.callback(ChannelMsg::GainChanged)}
+                    />
+                </MidiRangeTarget>
                 <div class={cue_style} onclick={self.link.callback(|_| ChannelMsg::CueClick)}>
                     {"CUE"}
                 </div>
