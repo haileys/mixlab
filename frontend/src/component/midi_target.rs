@@ -1,9 +1,11 @@
+use std::mem;
+
 use web_sys::MouseEvent;
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback, Children, Renderable};
 
-use crate::service::midi::{self, RangeSubscription};
+use crate::service::midi::{self, RangeSubscription, MidiRangeId, ConfigureTask};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum MidiUiMode {
     Normal,
     Configure,
@@ -15,9 +17,10 @@ pub struct MidiRangeTarget {
     state: MidiState,
 }
 
+#[derive(Debug)]
 pub enum MidiState {
     Unbound,
-    Configure,
+    Configure(ConfigureTask),
     Bound(RangeSubscription),
 }
 
@@ -29,10 +32,12 @@ pub struct MidiTargetProps {
     pub children: Children,
 }
 
+#[derive(Debug)]
 pub enum MidiTargetMsg {
     Configure,
     Unbind,
-    Bind(RangeSubscription),
+    RangeConfigured(MidiRangeId, u8),
+    RangeChanged(u8),
 }
 
 impl Component for MidiRangeTarget {
@@ -47,49 +52,56 @@ impl Component for MidiRangeTarget {
         }
     }
 
-    fn change(&mut self, props: MidiTargetProps) -> ShouldRender {
-        self.props = props;
+    fn change(&mut self, mut props: MidiTargetProps) -> ShouldRender {
+        mem::swap(&mut self.props, &mut props);
+
+        if props.ui_mode != self.props.ui_mode {
+            match (&self.state, self.props.ui_mode) {
+                (MidiState::Configure(_), MidiUiMode::Normal) => {
+                    // if we're still in configure state when the UI changes
+                    // back to normal mode, return to unbound mode:
+                    self.state = MidiState::Unbound;
+                }
+                _ => { /* otherwise do nothing */ }
+            }
+        }
+
         true
     }
 
     fn update(&mut self, msg: MidiTargetMsg) -> ShouldRender {
         match msg {
             MidiTargetMsg::Configure => {
-                self.state = MidiState::Configure;
-
-                midi::broker().configure_range({
-                    let link = self.link.clone();
-                    let onchange = self.props.onchange.clone();
-                    Callback::from(move |result| {
-                        match result {
-                            Some((range_id, value)) => {
-                                onchange.emit(value as f64 / 127.0);
-
-                                let subscription = midi::broker().subscribe_range(range_id, {
-                                    let onchange = onchange.clone();
-                                    Callback::from(move |value| {
-                                        onchange.emit(value as f64 / 127.0);
-                                    })
-                                });
-
-                                link.send_message(MidiTargetMsg::Bind(subscription));
-                            }
-                            None => {
-                                link.send_message(MidiTargetMsg::Unbind);
-                            }
-                        }
-                    })
-                });
-
-                true
-            }
-            MidiTargetMsg::Bind(subscription) => {
-                self.state = MidiState::Bound(subscription);
+                let configure = midi::broker().configure_range(self.link.callback(|result| {
+                    match result {
+                        None => MidiTargetMsg::Unbind,
+                        Some((range_id, range_value)) =>
+                            MidiTargetMsg::RangeConfigured(range_id, range_value),
+                    }
+                }));
+                self.state = MidiState::Configure(configure);
                 true
             }
             MidiTargetMsg::Unbind => {
                 self.state = MidiState::Unbound;
                 true
+            }
+            MidiTargetMsg::RangeConfigured(range_id, range_value) => {
+                // only handle this message if we're still in configure state:
+                if let MidiState::Configure(_) = self.state {
+                    let subscription = midi::broker().subscribe_range(range_id,
+                        self.link.callback(MidiTargetMsg::RangeChanged));
+
+                    self.props.onchange.emit(range_value as f64 / 127.0);
+                    self.state = MidiState::Bound(subscription);
+                    true
+                } else {
+                    false
+                }
+            }
+            MidiTargetMsg::RangeChanged(range_value) => {
+                self.props.onchange.emit(range_value as f64 / 127.0);
+                false
             }
         }
     }
@@ -110,12 +122,24 @@ impl Component for MidiRangeTarget {
             MidiUiMode::Configure => {
                 let class = match self.state {
                     MidiState::Unbound => "midi-target-overlay midi-target-cfg-overlay midi-target-cfg-overlay-unbound",
-                    MidiState::Configure => "midi-target-overlay midi-target-cfg-overlay midi-target-cfg-overlay-configure",
+                    MidiState::Configure(_) => "midi-target-overlay midi-target-cfg-overlay midi-target-cfg-overlay-configure",
                     MidiState::Bound(_) => "midi-target-overlay midi-target-cfg-overlay midi-target-cfg-overlay-bound",
                 };
 
                 html! {
-                    <div class={class} onmousedown={self.overlay_mousedown()}></div>
+                    <div
+                        class={class}
+                        onmousedown={
+                            self.link.callback(|ev: MouseEvent| {
+                                if ev.buttons() == 2 {
+                                    ev.prevent_default();
+                                    MidiTargetMsg::Unbind
+                                } else {
+                                    MidiTargetMsg::Configure
+                                }
+                            })
+                        }
+                    ></div>
                 }
             }
         };
@@ -126,22 +150,5 @@ impl Component for MidiRangeTarget {
                 {self.props.children.render()}
             </div>
         }
-    }
-}
-
-impl MidiRangeTarget {
-    fn overlay_mousedown(&self) -> Callback<MouseEvent> {
-        let link = self.link.clone();
-
-        Callback::from(move |ev: MouseEvent| {
-            ev.stop_propagation();
-
-            if ev.buttons() == 2 {
-                ev.prevent_default();
-                link.send_message(MidiTargetMsg::Unbind);
-            } else {
-                link.send_message(MidiTargetMsg::Configure);
-            }
-        })
     }
 }
