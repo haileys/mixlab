@@ -467,6 +467,7 @@ impl Workspace {
             ("Mixer (8 channel)", ModuleParams::Mixer(MixerParams::with_channels(8))),
             ("Output Device", ModuleParams::OutputDevice(OutputDeviceParams { device: None, left: None, right: None })),
             ("Plotter", ModuleParams::Plotter(())),
+            ("FFT", ModuleParams::Fft(())),
             ("FM Sine", ModuleParams::FmSine(FmSineParams { freq_lo: 90.0, freq_hi: 110.0 })),
             ("Amplifier", ModuleParams::Amplifier(AmplifierParams { amplitude: 1.0, mod_depth: 0.5 })),
             ("Trigger", ModuleParams::Trigger(GateState::Closed)),
@@ -716,7 +717,8 @@ impl Window {
                 html! { <Oscillator id={self.props.id} module={self.link.clone()} params={params} /> }
             }
             ModuleParams::StereoPanner(()) |
-            ModuleParams::StereoSplitter(()) => {
+            ModuleParams::StereoSplitter(()) |
+            ModuleParams::Fft(()) => {
                 html! {}
             }
             ModuleParams::OutputDevice(params) => {

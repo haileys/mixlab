@@ -1,50 +1,65 @@
-use crate::engine::{Sample, ZERO_BUFFER_STEREO, ONE_BUFFER_MONO};
+use std::fmt::{self, Debug};
+
+use rustfft::{FFTplanner, FFT};
+use rustfft::num_complex::Complex;
+use rustfft::num_traits::Zero;
+
+use crate::engine::{Sample, ZERO_BUFFER_MONO};
 use crate::module::{ModuleT, LineType, Terminal};
 
-#[derive(Debug)]
-pub struct Fft {,
+pub struct Fft {
+    planner: FFTplanner<f64>,
+    input_buffer: Vec<Complex<f64>>,
+    output_buffer: Vec<Complex<f64>>,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
 }
 
-impl ModuleT for Amplifier {
-    type Params = AmplifierParams;
+impl ModuleT for Fft {
+    type Params = ();
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
         (Self {
-            params,
-            inputs: vec![
-                LineType::Stereo.labeled("Input"),
-                LineType::Mono.labeled("Control")
-            ],
-            outputs: vec![LineType::Stereo.unlabeled()]
+            planner: FFTplanner::new(false),
+            input_buffer: Vec::new(),
+            output_buffer: Vec::new(),
+            inputs: vec![LineType::Mono.unlabeled()],
+            outputs: vec![LineType::Mono.unlabeled()],
         }, ())
     }
 
     fn params(&self) -> Self::Params {
-        self.params.clone()
+        ()
     }
 
     fn update(&mut self, params: Self::Params) -> Option<Self::Indication> {
-        self.params = params;
         None
     }
 
     fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let AmplifierParams {mod_depth, amplitude} = self.params;
+        let input = inputs[0].unwrap_or(&ZERO_BUFFER_MONO);
 
-        let input = &inputs[0].unwrap_or(&ZERO_BUFFER_STEREO);
-        let mod_input = &inputs[1].unwrap_or(&ONE_BUFFER_MONO);
-        let output = &mut outputs[0];
+        // ensure buffers are the right size:
+        self.input_buffer.resize(input.len(), Complex::zero());
+        self.output_buffer.resize(input.len(), Complex::zero());
 
-        let len = input.len();
+        // set up input buffer
+        for (i, sample) in input.iter().enumerate() {
+            self.input_buffer[i].re = *sample as f64;
+            self.input_buffer[i].im = 0.0;
+        }
 
-        for i in 0..len {
-            // mod input is a mono channel and so half the length:
-            let mod_value = mod_input[i / 2] as f64;
+        // do fft
+        let fft = self.planner.plan_fft(input.len());
+        fft.process(&mut self.input_buffer, &mut self.output_buffer);
 
-            output[i] = (input[i] as f64 * depth(mod_value, mod_depth) * amplitude) as Sample;
+        // normalise and write absolute value of fft result into output
+        let normal_factor = (input.len() as f64).sqrt();
+
+        let mut output = &mut outputs[0];
+        for (i, bin) in self.output_buffer.iter().enumerate() {
+            output[i] = bin.unscale(normal_factor).norm() as f32;
         }
 
         None
@@ -59,6 +74,8 @@ impl ModuleT for Amplifier {
     }
 }
 
-pub fn depth(value: f64, depth: f64) -> f64 {
-    1.0 - depth + depth * value
+impl Debug for Fft {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Fft")
+    }
 }
