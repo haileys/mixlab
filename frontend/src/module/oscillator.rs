@@ -48,6 +48,7 @@ impl Component for Oscillator {
                     Waveform::Square => "Square",
                     Waveform::Saw => "Sawtooth",
                     Waveform::Triangle => "Triangle",
+                    Waveform::Pulse => "Pulse",
                     Waveform::On => "High",
                     Waveform::Off => "Zero",
                 };
@@ -60,6 +61,7 @@ impl Component for Oscillator {
             SelectableWaveform(Waveform::Square),
             SelectableWaveform(Waveform::Saw),
             SelectableWaveform(Waveform::Triangle),
+            SelectableWaveform(Waveform::Pulse),
             SelectableWaveform(Waveform::On),
             SelectableWaveform(Waveform::Off),
         ];

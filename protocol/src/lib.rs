@@ -171,6 +171,7 @@ pub enum Waveform {
     Square,
     Triangle,
     Saw,
+    Pulse,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

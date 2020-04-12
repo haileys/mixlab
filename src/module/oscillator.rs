@@ -43,7 +43,9 @@ impl ModuleT for Oscillator {
     fn create(params: Self::Params) -> (Self, Self::Indication) {
         (Self {
             params,
-            inputs: vec![],
+            inputs: vec![
+                LineType::Mono.labeled("PWM"),
+            ],
             outputs: vec![
                 LineType::Mono.labeled("Mono"),
                 LineType::Stereo.labeled("Stereo"),
@@ -61,22 +63,33 @@ impl ModuleT for Oscillator {
     }
 
 
-    fn run_tick(&mut self, t: u64, _inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
+    fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         const MONO: usize = 0;
         const STEREO: usize = 1;
 
         let len = outputs[MONO].len();
         let hz = self.params.freq.to_hz().value();
 
+        let pw = 0.25; // TODO come from rotary, disabled if modulated by pwm input
+        let pwm = inputs[0];
+
         for i in 0..len {
-            let t0 = (t + i as u64) as f64 / SAMPLE_RATE as f64;
-            let n = t0 * hz as f64;
+            let secs = (t + i as u64) as f64 / SAMPLE_RATE as f64;
+            let n = secs * hz as f64;
 
             let sample: f32 = match &self.params.waveform {
                 Waveform::Sine => sine(n),
                 Waveform::Square => sign(sine(n)),
                 Waveform::Saw => saw(n),
                 Waveform::Triangle => triangle(n),
+                Waveform::Pulse => {
+                    let pw: f64 = pwm.map(|pw| pw[i]).unwrap_or(pw).into();
+                    if n % 1.0 <= pw.abs() {
+                        sign(pw)
+                    } else {
+                        0.0
+                    }
+                }
                 Waveform::On => 1.0,
                 Waveform::Off => 0.0,
             } as f32;
