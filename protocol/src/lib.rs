@@ -174,9 +174,39 @@ pub enum Waveform {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum Frequency {
+    Hz(f64),
+    BPM(f64),
+}
+
+impl Frequency {
+    pub fn to_hz(&self) -> Self {
+        match self {
+            Self::Hz(_) => self.clone(),
+            Self::BPM(bpm) => Self::Hz(bpm / 60.0),
+        }
+    }
+
+    pub fn to_bpm(&self) -> Self {
+        match self {
+            Self::Hz(hz) => Self::BPM(hz * 60.0),
+            Self::BPM(_) => self.clone(),
+        }
+    }
+
+    pub fn value(&self) -> f64 {
+        match self {
+            Self::Hz(hz) => *hz,
+            Self::BPM(bpm) => *bpm,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OscillatorParams {
-    pub freq: f64,
+    pub freq: Frequency,
     pub waveform: Waveform,
+    pub pulse_width: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

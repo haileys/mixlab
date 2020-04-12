@@ -4,7 +4,7 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 use yew::events::ChangeData;
 use yew::components::Select;
 
-use mixlab_protocol::{ModuleId, ModuleParams, OscillatorParams, Waveform};
+use mixlab_protocol::{ModuleId, ModuleParams, OscillatorParams, Waveform, Frequency};
 
 use crate::workspace::{Window, WindowMsg};
 
@@ -65,6 +65,8 @@ impl Component for Oscillator {
         ];
 
         let params = self.props.params.clone();
+        let hz = self.props.params.freq.to_hz().value();
+        let bpm = self.props.params.freq.to_bpm().value();
 
         html! {
             <>
@@ -87,19 +89,41 @@ impl Component for Oscillator {
                     />
                 </label>
                 <label>
-                    <div>{"Frequency"}</div>
+                    <div>{"Frequency (Hz)"}</div>
                     <input type="number"
-                        onchange={self.props.module.callback(move |ev| {
-                            if let ChangeData::Value(freq_str) = ev {
-                                let freq = freq_str.parse().unwrap_or(0.0);
-                                let params = OscillatorParams { freq, ..params };
-                                WindowMsg::UpdateParams(
-                                    ModuleParams::Oscillator(params))
-                            } else {
-                                unreachable!()
+                        onchange={self.props.module.callback({
+                            let params = self.props.params.clone();
+                            move |ev| {
+                                if let ChangeData::Value(freq_str) = ev {
+                                    let freq = freq_str.parse().unwrap_or(0.0);
+                                    let params = OscillatorParams { freq: Frequency::Hz(freq), ..params };
+                                    WindowMsg::UpdateParams(
+                                        ModuleParams::Oscillator(params))
+                                } else {
+                                    unreachable!()
+                                }
                             }
                         })}
-                        value={self.props.params.freq}
+                        value={hz}
+                    />
+                </label>
+                <label>
+                    <div>{"BPM"}</div>
+                    <input type="number"
+                        onchange={self.props.module.callback({
+                            let params = self.props.params.clone();
+                            move |ev| {
+                                if let ChangeData::Value(freq_str) = ev {
+                                    let freq = freq_str.parse().unwrap_or(0.0);
+                                    let params = OscillatorParams { freq: Frequency::BPM(freq), ..params };
+                                    WindowMsg::UpdateParams(
+                                        ModuleParams::Oscillator(params))
+                                } else {
+                                    unreachable!()
+                                }
+                            }
+                        })}
+                        value={bpm}
                     />
                 </label>
             </>
