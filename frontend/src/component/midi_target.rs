@@ -93,12 +93,20 @@ impl Component for MidiRangeTarget {
             MidiState::Bound(_) => "midi-target-overlay midi-target-overlay-bound",
         };
 
+        let overlay_label = if let MidiState::Bound(_) = self.state {
+            html! { <span class="midi-target-overlay-label">{"MIDI"}</span> }
+        } else {
+            html! {}
+        };
+
         html! {
             <div class="midi-target">
                 <div
                     class={overlay_class}
                     onmousedown={self.overlay_mousedown()}
-                ></div>
+                >
+                    {overlay_label}
+                </div>
                 {self.props.children.render()}
             </div>
         }
