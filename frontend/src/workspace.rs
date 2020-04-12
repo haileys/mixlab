@@ -9,6 +9,7 @@ use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properti
 
 use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams};
 
+use crate::component::midi_target::MidiUiMode;
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
 use crate::module::fm_sine::FmSine;
@@ -501,14 +502,15 @@ impl Workspace {
 pub struct Window {
     link: ComponentLink<Self>,
     props: WindowProps,
+    midi_mode: MidiUiMode,
 }
 
-#[derive(Debug)]
 pub enum WindowMsg {
     DragStart(MouseEvent),
     TerminalMouseDown(MouseEvent, TerminalId, TerminalRef),
     Delete,
     UpdateParams(ModuleParams),
+    SetMidiMode(MidiUiMode),
 }
 
 #[derive(Properties, Clone, Debug)]
@@ -560,6 +562,7 @@ impl Component for Window {
         Window {
             link,
             props,
+            midi_mode: MidiUiMode::Normal,
         }
     }
 
@@ -568,6 +571,8 @@ impl Component for Window {
             WindowMsg::DragStart(ev) => {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DragStart(self.props.id, ev));
+
+                false
             }
             WindowMsg::TerminalMouseDown(ev, terminal_id, terminal_ref) => {
                 let msg =
@@ -579,17 +584,26 @@ impl Component for Window {
                     };
 
                 self.props.workspace.send_message(msg);
+
+                false
             }
             WindowMsg::Delete => {
                 self.props.workspace.send_message(
                     WorkspaceMsg::DeleteWindow(self.props.id));
+
+                false
             }
             WindowMsg::UpdateParams(params) => {
                 self.props.workspace.send_message(
                     WorkspaceMsg::UpdateModuleParams(self.props.id, params));
+
+                false
+            }
+            WindowMsg::SetMidiMode(new_midi_mode) => {
+                self.midi_mode = new_midi_mode;
+                true
             }
         }
-        false
     }
 
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
@@ -616,7 +630,8 @@ impl Component for Window {
                     <div class="module-window-title-label">
                         {&self.props.name}
                     </div>
-                    <div class="module-window-title-delete" onmousedown={self.link.callback(|_| WindowMsg::Delete)}>
+                    {self.view_custom_title_buttons()}
+                    <div class="module-window-title-button module-window-title-delete" onmousedown={self.link.callback(|_| WindowMsg::Delete)}>
                         {"×"}
                     </div>
                 </div>
@@ -637,6 +652,30 @@ impl Component for Window {
 }
 
 impl Window {
+    fn view_custom_title_buttons(&self) -> Html {
+        match &self.props.module {
+            ModuleParams::Mixer(..) => {
+                let class = match self.midi_mode {
+                    MidiUiMode::Normal =>
+                        "module-window-title-button module-window-title-midi-btn",
+                    MidiUiMode::Configure =>
+                        "module-window-title-button module-window-title-midi-btn module-window-title-midi-btn-active",
+                };
+
+                let new_midi_mode = match self.midi_mode {
+                    MidiUiMode::Normal => MidiUiMode::Configure,
+                    MidiUiMode::Configure => MidiUiMode::Normal,
+                };
+
+                html! {
+                    <div class={class} onmousedown={self.link.callback(move |_| WindowMsg::SetMidiMode(new_midi_mode))}>
+                        {"MIDI"}
+                    </div>
+                }
+            }
+            _ => html! {},
+        }
+    }
     fn view_inputs(&self) -> Html {
         self.view_terminals(
             self.props.refs.inputs.iter()
@@ -707,7 +746,7 @@ impl Window {
                 html! { <Envelope id={self.props.id} module={self.link.clone()} params={params} /> }
             }
             ModuleParams::Mixer(params) => {
-                html! { <Mixer id={self.props.id} module={self.link.clone()} params={params} /> }
+                html! { <Mixer id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
             ModuleParams::IcecastInput(params) => {
                 html! { <IcecastInput id={self.props.id} module={self.link.clone()} params={params} /> }

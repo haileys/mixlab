@@ -75,6 +75,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive_more"
+version = "0.99.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2323f3f47db9a0e77ce7a300605d8d2098597fc451ed1a97bb1f6411bb550a7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -86,10 +97,14 @@ version = "0.0.0"
 dependencies = [
  "bincode",
  "console_error_panic_hook",
+ "derive_more",
  "gloo-events",
+ "js-sys",
+ "lazy_static",
  "mixlab-protocol",
  "plotters",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "yew",
 ]
