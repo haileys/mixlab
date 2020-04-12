@@ -16,5 +16,6 @@ lewton = "0.10"
 mixlab-protocol = { path = "protocol" }
 ogg = "0.7"
 ringbuf = "0.2"
+rustfft = "3.0"
 tokio = { version = "0.2", features = ["macros"] }
 warp = "0.2"

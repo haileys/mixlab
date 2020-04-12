@@ -135,28 +135,30 @@ impl LineType {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ModuleParams {
     Amplifier(AmplifierParams),
+    Envelope(EnvelopeParams),
+    Fft(()),
     FmSine(FmSineParams),
+    IcecastInput(IcecastInputParams),
+    Mixer(MixerParams),
+    Oscillator(OscillatorParams),
     OutputDevice(OutputDeviceParams),
     Plotter(()),
-    Oscillator(OscillatorParams),
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(GateState),
-    Envelope(EnvelopeParams),
-    Mixer(MixerParams),
-    IcecastInput(IcecastInputParams),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Indication {
     Amplifier(()),
     Envelope(()),
+    Fft(()),
     FmSine(()),
     IcecastInput(()),
     Mixer(()),
+    Oscillator(()),
     OutputDevice(OutputDeviceIndication),
     Plotter(PlotterIndication),
-    Oscillator(()),
     StereoPanner(()),
     StereoSplitter(()),
     Trigger(()),
