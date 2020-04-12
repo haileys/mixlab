@@ -3,6 +3,7 @@
 mod component;
 mod control;
 mod module;
+mod service;
 mod util;
 mod workspace;
 
@@ -264,9 +265,25 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = console, js_name = log)]
     fn log_val(v: &wasm_bindgen::JsValue);
+
+    #[wasm_bindgen(js_namespace = console, js_name = warn)]
+    fn warn_str(s: &str);
+
+    #[wasm_bindgen(js_namespace = console, js_name = warn)]
+    fn error_str(s: &str);
 }
 
 #[macro_export]
 macro_rules! log {
     ($($t:tt)*) => (crate::log_str(&format_args!($($t)*).to_string()))
+}
+
+#[macro_export]
+macro_rules! warn {
+    ($($t:tt)*) => (crate::warn_str(&format_args!($($t)*).to_string()))
+}
+
+#[macro_export]
+macro_rules! error {
+    ($($t:tt)*) => (crate::error_str(&format_args!($($t)*).to_string()))
 }

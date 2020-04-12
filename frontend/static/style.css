@@ -51,22 +51,43 @@ body {
     line-height:20px;
 }
 
-.module-window-title-delete {
+.module-window-title-button {
     font-size:14px;
     font-weight:bold;
-    margin-left:16px;
+    margin-left:8px;
     border:1px solid #c9c8d9;
     color:#c9c8d9;
-    width:16px;
     height:16px;
     line-height:16px;
     text-align:center;
     cursor:pointer;
 }
 
-.module-window-title-delete:hover {
+.module-window-title-button:hover {
     color:#dcdce7;
     border-color:#dcdce7;
+}
+
+.module-window-title-midi-btn {
+    font-size:12px;
+    padding:0px 4px;
+}
+
+.module-window-title-midi-btn-active {
+    font-size:12px;
+    padding:0px 4px;
+    background-color:#ffffff;
+    border-color:#ffffff;
+    color:#8d8bb0;
+}
+
+.module-window-title-midi-btn-active:hover {
+    border-color:#ffffff;
+    color:#8d8bb0;
+}
+
+.module-window-title-delete {
+    width:16px;
 }
 
 .module-window-content {
@@ -271,4 +292,57 @@ body {
     color:#ffffff;
     background-color:#ff003a;
     font-weight:bold;
+}
+
+.midi-target {
+    position:relative;
+}
+
+.midi-target-overlay {
+    position:absolute;
+    z-index:1;
+    left:0px;
+    top:0px;
+    width:100%;
+    height:100%;
+    opacity:50%;
+    display:block;
+}
+
+.midi-target-cfg-overlay {
+    cursor:pointer;
+}
+
+.midi-target-overlay-bound {
+    background-color:#eeeeee;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+.midi-target-overlay-label {
+    background-color:#ffffff;
+    padding:4px 8px;
+}
+
+.midi-target-cfg-overlay-unbound {
+    background-color:#e0a5a3;
+}
+
+.midi-target-cfg-overlay-unbound:hover {
+    background-color:#f0b5b3;
+}
+
+.midi-target-cfg-overlay-configure {
+    box-sizing:border-box;
+    background-color:#a3a5e0;
+    border:4px solid #373aa2;
+}
+
+.midi-target-cfg-overlay-bound {
+    background-color:#a3e0a5;
+}
+
+.midi-target-cfg-overlay-bound:hover {
+    background-color:#b3f0b5;
 }

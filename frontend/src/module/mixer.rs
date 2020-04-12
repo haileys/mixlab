@@ -2,6 +2,7 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callba
 
 use mixlab_protocol::{ModuleId, MixerParams, MixerChannelParams, ModuleParams, Decibel};
 
+use crate::component::midi_target::{MidiRangeTarget, MidiUiMode};
 use crate::control::{Fader, Rotary};
 use crate::workspace::{Window, WindowMsg};
 
@@ -15,6 +16,7 @@ pub struct MixerProps {
     pub id: ModuleId,
     pub module: ComponentLink<Window>,
     pub params: MixerParams,
+    pub midi_mode: MidiUiMode,
 }
 
 pub enum MixerMsg {
@@ -58,6 +60,7 @@ impl Component for Mixer {
                                 params={channel}
                                 onchange={self.link.callback(move |params|
                                     MixerMsg::ChannelChanged(idx, params))}
+                                midi_mode={self.props.midi_mode}
                             />
                         }
                     })
@@ -82,6 +85,7 @@ pub enum ChannelMsg {
 pub struct ChannelProps {
     pub params: MixerChannelParams,
     pub onchange: Callback<MixerChannelParams>,
+    pub midi_mode: MidiUiMode,
 }
 
 impl Component for Channel {
@@ -133,20 +137,32 @@ impl Component for Channel {
 
         html! {
             <div class="mixer-channel">
-                <Rotary<Decibel>
-                    value={self.props.params.gain}
-                    min={Decibel(-24.0)}
-                    max={Decibel(6.0)}
-                    default={Decibel(0.0)}
-                    onchange={self.link.callback(ChannelMsg::GainChanged)}
-                />
+                <MidiRangeTarget
+                    ui_mode={self.props.midi_mode}
+                    onchange={self.link.callback(|gain| {
+                        ChannelMsg::GainChanged(Decibel(gain * 30.0 - 24.0))
+                    })}
+                >
+                    <Rotary<Decibel>
+                        value={self.props.params.gain}
+                        min={Decibel(-24.0)}
+                        max={Decibel(6.0)}
+                        default={Decibel(0.0)}
+                        onchange={self.link.callback(ChannelMsg::GainChanged)}
+                    />
+                </MidiRangeTarget>
                 <div class={cue_style} onclick={self.link.callback(|_| ChannelMsg::CueClick)}>
                     {"CUE"}
                 </div>
-                <Fader
-                    value={self.props.params.fader}
+                <MidiRangeTarget
+                    ui_mode={self.props.midi_mode}
                     onchange={self.link.callback(ChannelMsg::FaderChanged)}
-                />
+                >
+                    <Fader
+                        value={self.props.params.fader}
+                        onchange={self.link.callback(ChannelMsg::FaderChanged)}
+                    />
+                </MidiRangeTarget>
             </div>
         }
     }
