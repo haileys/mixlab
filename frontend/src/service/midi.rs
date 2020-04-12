@@ -10,12 +10,13 @@ use gloo_events::EventListener;
 use js_sys::{Map, Reflect};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{MidiInput, MidiMessageEvent};
+use web_sys::{MidiInput, MidiMessageEvent, MidiConnectionEvent};
 use yew::Callback;
 
 use crate::util::Sequence;
 
 struct MidiBroker {
+    state_change_listener: Option<EventListener>,
     inputs: HashMap<MidiInputId, MidiInput>,
     listeners: HashMap<MidiInputId, EventListener>,
     configuring: Option<ConfigureKind>,
@@ -123,6 +124,7 @@ impl MidiBrokerRef {
 impl MidiBroker {
     pub fn new() -> MidiBrokerRef {
         let broker = MidiBrokerRef(Rc::new(RefCell::new(MidiBroker {
+            state_change_listener: None,
             inputs: HashMap::new(),
             listeners: HashMap::new(),
             configuring: None,
@@ -227,7 +229,7 @@ async fn request_midi_access() -> Result<web_sys::MidiAccess, MidiError> {
         .dyn_into::<web_sys::MidiAccess>()?)
 }
 
-async fn setup_input(broker: MidiBrokerRef, input: MidiInput) -> Result<(), MidiError> {
+fn setup_input(broker: MidiBrokerRef, input: MidiInput) {
     let input_id = Rc::new(input.id());
 
     let event_listener = EventListener::new(&input, "midimessage", {
@@ -244,12 +246,26 @@ async fn setup_input(broker: MidiBrokerRef, input: MidiInput) -> Result<(), Midi
     let mut broker = broker.0.borrow_mut();
     broker.inputs.insert(input_id.clone(), input);
     broker.listeners.insert(input_id.clone(), event_listener);
-
-    Ok(())
 }
 
 async fn setup(broker: MidiBrokerRef) -> Result<(), MidiError> {
     let midi = request_midi_access().await?;
+
+    broker.0.borrow_mut().state_change_listener =
+        Some(EventListener::new(&midi, "statechange", {
+            let broker = broker.clone();
+            move |ev| {
+                let ev = ev.dyn_ref::<MidiConnectionEvent>()
+                    .expect("dyn_into MidiConnectionEvent");
+
+                let input = ev.port().and_then(|port|
+                    port.dyn_into::<MidiInput>().ok());
+
+                if let Some(input) = input {
+                    setup_input(broker.clone(), input);
+                }
+            }
+        }));
 
     let inputs = midi.inputs()
         // MidiInputMap is not instanceof a Map, but is defined to adhere to
@@ -264,7 +280,7 @@ async fn setup(broker: MidiBrokerRef) -> Result<(), MidiError> {
         let input = input?.dyn_into::<MidiInput>()
             .expect("dyn_into MidiInput");
 
-        setup_input(broker.clone(), input).await?;
+        setup_input(broker.clone(), input);
     }
 
     Ok(())
