@@ -207,7 +207,7 @@ impl Frequency {
 pub struct OscillatorParams {
     pub freq: Frequency,
     pub waveform: Waveform,
-    pub pulse_width: f64,
+    pub pulse_width: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

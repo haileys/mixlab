@@ -460,7 +460,7 @@ impl Workspace {
         };
 
         let items = &[
-            ("Oscillator", ModuleParams::Oscillator(OscillatorParams { freq: Frequency::Hz(100.0), waveform: Waveform::Sine, pulse_width: 0.25 })),
+            ("Oscillator", ModuleParams::Oscillator(OscillatorParams { freq: Frequency::Hz(100.0), waveform: Waveform::Sine, pulse_width: None })),
             ("Mixer (2 channel)", ModuleParams::Mixer(MixerParams::with_channels(2))),
             ("Mixer (4 channel)", ModuleParams::Mixer(MixerParams::with_channels(4))),
             ("Mixer (8 channel)", ModuleParams::Mixer(MixerParams::with_channels(8))),

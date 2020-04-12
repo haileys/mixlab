@@ -70,29 +70,38 @@ impl ModuleT for Oscillator {
         let len = outputs[MONO].len();
         let hz = self.params.freq.to_hz().value();
 
-        let pw = 0.25; // TODO come from rotary, disabled if modulated by pwm input
+        let mut fixed_pw = self.params.pulse_width;
         let pwm = inputs[0];
 
         for i in 0..len {
             let secs = (t + i as u64) as f64 / SAMPLE_RATE as f64;
             let n = secs * hz as f64;
 
-            let sample: f32 = match &self.params.waveform {
+            let mut sample: f32 = match &self.params.waveform {
                 Waveform::Sine => sine(n),
                 Waveform::Square => sign(sine(n)),
                 Waveform::Saw => saw(n),
                 Waveform::Triangle => triangle(n),
                 Waveform::Pulse => {
-                    let pw: f64 = pwm.map(|pw| pw[i]).unwrap_or(pw).into();
-                    if n % 1.0 <= pw.abs() {
-                        sign(pw)
-                    } else {
-                        0.0
+                    if fixed_pw.is_none() {
+                        fixed_pw = Some(0.2);
                     }
+                    1.0
                 }
                 Waveform::On => 1.0,
                 Waveform::Off => 0.0,
             } as f32;
+
+            // apply pulse width mask
+            let pw: f64 = pwm.map(|pw| pw[i] as f64).
+                or(fixed_pw).
+                unwrap_or(1.0);
+
+            sample = if n % 1.0 < pw.abs() {
+                sample * sign(pw) as f32
+            } else {
+                0.0
+            };
 
             outputs[MONO][i] = sample;
             outputs[STEREO][i * 2 + 0] = sample;
