@@ -6,25 +6,16 @@ use std::thread;
 use std::time::{Instant, Duration};
 
 use derive_more::From;
-use futures::executor::block_on;
-use tokio::io::{AsyncRead, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 
 use crate::codec::{AudioStream, StreamRead, StreamError};
 use crate::codec::ogg::{self, OggStream};
 use crate::engine::{SAMPLE_RATE, Sample};
 
+use crate::util::SyncRead;
 use crate::listen::PeekTcpStream;
 use http::ContentType;
 use registry::SourceSend;
-
-pub struct SyncRead<T>(T);
-
-impl<T: AsyncRead + Unpin> io::Read for SyncRead<T> {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, io::Error> {
-        use tokio::io::AsyncReadExt;
-        block_on(self.0.read(buf))
-    }
-}
 
 pub async fn accept(mut stream: PeekTcpStream) {
     let req = match http::parse(&mut stream).await {
