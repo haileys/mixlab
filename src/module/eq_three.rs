@@ -1,15 +1,10 @@
 use std::f64;
-use std::fmt::{self, Debug};
-
-use fftw::plan::{Plan, R2CPlan, C2RPlan, Plan64};
-use fftw::types::{c64, Flag};
 
 use mixlab_protocol::EqThreeParams;
 
 use crate::engine::{Sample, SAMPLE_RATE, ZERO_BUFFER_MONO};
 use crate::module::{ModuleT, LineType, Terminal};
 
-const BUFFER_SIZE: usize = 1024;
 const FREQ_LO: f64 = 420.0;
 const FREQ_HI: f64 = 2700.0;
 
