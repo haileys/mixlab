@@ -1,9 +1,67 @@
 use std::cmp;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Poll, Context};
 
-use tokio::net::TcpStream;
+use futures::StreamExt;
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc::{self, Receiver, Sender};
+
+pub async fn start(addr: SocketAddr) -> Result<Receiver<Disambiguation>, io::Error> {
+    let mut listener = TcpListener::bind(&addr).await?;
+
+    let (mut result_tx, result_rx) = mpsc::channel::<Disambiguation>(1);
+    let (disambiguated_tx, mut disambiguated_rx) = mpsc::channel::<Disambiguation>(1);
+
+    tokio::spawn(async move {
+        let mut incoming = listener.incoming();
+
+        loop {
+            tokio::select! {
+                conn = incoming.next() => {
+                    match conn {
+                        Some(Ok(conn)) => {
+                            handle_connection(conn, disambiguated_tx.clone());
+                        }
+                        None | Some(Err(_)) => break,
+                    }
+                }
+                conn = disambiguated_rx.recv() => {
+                    let conn = match conn {
+                        Some(conn) => conn,
+                        None => break,
+                    };
+
+                    match result_tx.send(conn).await {
+                        Ok(()) => {}
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+    });
+
+    Ok(result_rx)
+}
+
+fn handle_connection(conn: TcpStream, mut out: Sender<Disambiguation>) {
+    if conn.set_nodelay(true).is_err() {
+        // nothing to do
+        return;
+    }
+
+    tokio::spawn(async move {
+        match disambiguate(conn).await {
+            Ok(conn) => {
+                let _ = out.send(conn);
+            }
+            Err(e) => {
+                eprintln!("listen: disambiguation error: {:?}", e);
+            }
+        }
+    });
+}
 
 pub enum Disambiguation {
     Http(PeekTcpStream),
@@ -11,7 +69,7 @@ pub enum Disambiguation {
 }
 
 pub async fn disambiguate(stream: TcpStream)
-    -> io::Result<Disambiguation>
+    -> Result<Disambiguation, io::Error>
 {
     let stream = PeekTcpStream::new(stream).await?;
 
