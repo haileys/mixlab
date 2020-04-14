@@ -10,6 +10,7 @@ use crate::listen::PeekTcpStream;
 pub enum Error {
     Io(tokio::io::Error),
     Http(httparse::Error),
+    Eof,
     HeadersTooLong,
     NoPath,
     NoContentType,
@@ -36,8 +37,14 @@ pub async fn parse(stream: &mut PeekTcpStream) -> Result<RequestInfo, Error> {
             return Err(Error::HeadersTooLong);
         }
 
-        buff_offset += stream.read(&mut buff[buff_offset..]).await
+        let bytes = stream.read(&mut buff[buff_offset..]).await
             .map_err(Error::Io)?;
+
+        if bytes == 0 {
+            return Err(Error::Eof);
+        }
+
+        buff_offset += bytes;
 
         let mut headers = [httparse::EMPTY_HEADER; 32];
         let mut request = Request::new(&mut headers);
