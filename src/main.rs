@@ -203,6 +203,14 @@ async fn main() {
                 Disambiguation::Icecast(conn) => {
                     tokio::spawn(icecast::accept(conn));
                 }
+                Disambiguation::Rtmp(conn) => {
+                    tokio::spawn(async move {
+                        match rtmp::accept(conn).await {
+                            Ok(()) => {}
+                            Err(e) => { eprintln!("rtmp::accept: {:?}", e); }
+                        }
+                    });
+                }
             }
         }
     });
