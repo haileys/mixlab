@@ -12,7 +12,7 @@ pub async fn start(addr: SocketAddr) -> Result<Receiver<Disambiguation>, io::Err
     let mut listener = TcpListener::bind(&addr).await?;
 
     let (mut result_tx, result_rx) = mpsc::channel::<Disambiguation>(1);
-    let (disambiguated_tx, mut disambiguated_rx) = mpsc::channel::<Disambiguation>(1);
+    let (disambiguated_tx, disambiguated_rx) = mpsc::channel::<Disambiguation>(1);
 
     tokio::spawn(async move {
         enum Event {
