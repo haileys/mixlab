@@ -7,17 +7,18 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams, EqThreeParams};
 
 use crate::component::midi_target::MidiUiMode;
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
+use crate::module::eq_three::EqThree;
 use crate::module::fm_sine::FmSine;
 use crate::module::icecast_input::IcecastInput;
 use crate::module::mixer::Mixer;
+use crate::module::oscillator::Oscillator;
 use crate::module::output_device::OutputDevice;
 use crate::module::plotter::Plotter;
-use crate::module::oscillator::Oscillator;
 use crate::module::trigger::Trigger;
 use crate::util::{stop_propagation, prevent_default, Sequence};
 use crate::{App, AppMsg, State};
@@ -474,6 +475,7 @@ impl Workspace {
             ("Stereo Panner", ModuleParams::StereoPanner(())),
             ("Stereo Splitter", ModuleParams::StereoSplitter(())),
             ("Icecast Input", ModuleParams::IcecastInput(IcecastInputParams::default())),
+            ("EQ Three", ModuleParams::EqThree(EqThreeParams::default())),
         ];
 
         html! {
@@ -654,6 +656,7 @@ impl Component for Window {
 impl Window {
     fn view_custom_title_buttons(&self) -> Html {
         match &self.props.module {
+            ModuleParams::EqThree(..) |
             ModuleParams::Mixer(..) => {
                 let class = match self.midi_mode {
                     MidiUiMode::Normal =>
@@ -734,10 +737,10 @@ impl Window {
                 }
             }
             ModuleParams::FmSine(params) => {
-                html! { <FmSine id={self.props.id} module={self.link.clone()} params={params} /> }
+                html! { <FmSine id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
             ModuleParams::Amplifier(params) => {
-                html! { <Amplifier id={self.props.id} module={self.link.clone()} params={params} /> }
+                html! { <Amplifier id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
             ModuleParams::Trigger(params) => {
                 html! { <Trigger id={self.props.id} module={self.link.clone()} params={params} /> }
@@ -750,6 +753,9 @@ impl Window {
             }
             ModuleParams::IcecastInput(params) => {
                 html! { <IcecastInput id={self.props.id} module={self.link.clone()} params={params} /> }
+            }
+            ModuleParams::EqThree(params) => {
+                html! { <EqThree id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
         }
     }

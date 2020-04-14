@@ -3,13 +3,14 @@ use yew::events::ChangeData;
 
 use mixlab_protocol::{ModuleId, ModuleParams, FmSineParams};
 
-use crate::workspace::{Window, WindowMsg};
 use crate::component::pure_module::{Pure, PureModule};
+use crate::component::midi_target::MidiUiMode;
+use crate::workspace::{Window, WindowMsg};
 
 pub type FmSine = Pure<FmSineParams>;
 
 impl PureModule for FmSineParams {
-    fn view(&self, id: ModuleId, module: ComponentLink<Window>) -> Html {
+    fn view(&self, id: ModuleId, module: ComponentLink<Window>, _: MidiUiMode) -> Html {
         let freq_lo_id = format!("w{}-fmsine-freqlo", id.0);
         let freq_hi_id = format!("w{}-fmsine-freqhi", id.0);
         let params = self.clone();
