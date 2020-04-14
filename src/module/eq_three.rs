@@ -10,8 +10,8 @@ use crate::engine::{Sample, SAMPLE_RATE, ZERO_BUFFER_MONO};
 use crate::module::{ModuleT, LineType, Terminal};
 
 const BUFFER_SIZE: usize = 1024;
-const FREQ_LO: f64 = 250.0;
-const FREQ_HI: f64 = 2500.0;
+const FREQ_LO: f64 = 420.0;
+const FREQ_HI: f64 = 2700.0;
 
 const VSA: f64 = 1.0 / 4294967295.0; // Very small amount (Denormal Fix)
 
