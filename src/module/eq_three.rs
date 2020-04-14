@@ -20,10 +20,8 @@ pub struct EqThree {
     params: EqThreeParams,
 
     // filter 1 (low band)
-    lo_poles: [f64; 4],
-
-    // filter 2 (high band)
-    hi_poles: [f64; 4],
+    lo: LowPass,
+    hi: LowPass,
 
     // sample history
     history: [f64; 3],
@@ -37,10 +35,13 @@ impl ModuleT for EqThree {
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
+        let lo = LowPass::new(FREQ_LO);
+        let hi = LowPass::new(FREQ_HI);
+
         let eq_three = Self {
             params,
-            lo_poles: [0.0; 4],
-            hi_poles: [0.0; 4],
+            lo,
+            hi,
             history: [0.0; 3],
             inputs: vec![LineType::Mono.unlabeled()],
             outputs: vec![LineType::Mono.unlabeled()],
@@ -62,9 +63,6 @@ impl ModuleT for EqThree {
         let input = inputs[0].unwrap_or(&ZERO_BUFFER_MONO);
         let output = &mut outputs[0];
 
-        let freq_lo = 2.0 * f64::sin(f64::consts::PI * FREQ_LO / (SAMPLE_RATE as f64));
-        let freq_hi = 2.0 * f64::sin(f64::consts::PI * FREQ_HI / (SAMPLE_RATE as f64));
-
         let gain_lo = self.params.gain_lo.to_linear();
         let gain_mid = self.params.gain_mid.to_linear();
         let gain_hi = self.params.gain_hi.to_linear();
@@ -72,25 +70,8 @@ impl ModuleT for EqThree {
         for (input, output) in input.iter().copied().zip(output.iter_mut()) {
             let sample = input as f64;
 
-            // lo pass:
-
-            self.lo_poles[0] += freq_lo * (sample - self.lo_poles[0]) + VSA;
-            self.lo_poles[1] += freq_lo * (self.lo_poles[0] - self.lo_poles[1]);
-            self.lo_poles[2] += freq_lo * (self.lo_poles[1] - self.lo_poles[2]);
-            self.lo_poles[3] += freq_lo * (self.lo_poles[2] - self.lo_poles[3]);
-
-            let lo = self.lo_poles[3];
-
-            // hi pass
-
-            self.hi_poles[0] += freq_hi * (sample - self.hi_poles[0]) + VSA;
-            self.hi_poles[1] += freq_hi * (self.hi_poles[0] - self.hi_poles[1]);
-            self.hi_poles[2] += freq_hi * (self.hi_poles[1] - self.hi_poles[2]);
-            self.hi_poles[3] += freq_hi * (self.hi_poles[2] - self.hi_poles[3]);
-
-            let hi = self.history[0] - self.hi_poles[3];
-
-            // mid range
+            let lo = self.lo.pump(sample);
+            let hi = self.history[0] - self.hi.pump(sample);
 
             let mid = self.history[0] - (hi + lo);
 
@@ -117,6 +98,33 @@ impl ModuleT for EqThree {
 
     fn outputs(&self)-> &[Terminal] {
         &self.outputs
+    }
+}
+
+#[derive(Debug)]
+struct LowPass {
+    freq: f64,
+    poles: [f64; 4],
+}
+
+impl LowPass {
+    pub fn new(freq: f64) -> Self {
+        let mut filter = LowPass { freq: 0.0, poles: [0.0, 0.0, 0.0, 0.0] };
+        filter.set_freq(freq);
+        filter
+    }
+
+    pub fn set_freq(&mut self, freq: f64) {
+        self.freq = 2.0 * f64::sin(f64::consts::PI * freq / (SAMPLE_RATE as f64));
+    }
+
+    pub fn pump(&mut self, sample: f64) -> f64 {
+        self.poles[0] += self.freq * (sample - self.poles[0]) + VSA;
+        self.poles[1] += self.freq * (self.poles[0] - self.poles[1]);
+        self.poles[2] += self.freq * (self.poles[1] - self.poles[2]);
+        self.poles[3] += self.freq * (self.poles[2] - self.poles[3]);
+
+        self.poles[3]
     }
 }
 
