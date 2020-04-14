@@ -13,7 +13,8 @@ use crate::codec::{AudioStream, StreamRead, StreamError};
 use crate::codec::ogg::{self, OggStream};
 use crate::engine::{SAMPLE_RATE, Sample};
 
-use http::{ContentType, PeekTcpStream};
+use crate::listen::PeekTcpStream;
+use http::ContentType;
 use registry::SourceSend;
 
 pub struct SyncRead<T>(T);
