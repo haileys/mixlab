@@ -135,6 +135,7 @@ mod tests {
             .collect::<Vec<_>>()
     }
 
+    #[allow(unused)]
     fn f32s_to_bytes(floats: &[f32]) -> Vec<u8> {
         let mut bytes = Vec::new();
 
