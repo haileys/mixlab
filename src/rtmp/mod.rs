@@ -1,12 +1,12 @@
-use std::io::{self, Read};
+use std::collections::VecDeque;
+use std::io;
 use std::mem;
 use std::thread;
-use std::time::{Instant, Duration};
 
 use derive_more::From;
 use rml_rtmp::handshake::{Handshake, HandshakeProcessResult, HandshakeError, PeerType};
-use rml_rtmp::sessions::{ServerSession, ServerSessionConfig, ServerSessionResult, ServerSessionError};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use rml_rtmp::sessions::{ServerSession, ServerSessionConfig, ServerSessionResult, ServerSessionError, ServerSessionEvent};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::listen::PeekTcpStream;
 
@@ -24,15 +24,22 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     let mut session = setup_session(&mut stream).await?;
 
     // handle any bytes read after handshake that have not yet been processed
-    handle_input(&mut stream, &mut session, &remaining_bytes).await?;
-    mem::drop(remaining_bytes);
+    {
+        let results = session.handle_input(&remaining_bytes)?;
+        handle_session_results(&mut stream, &mut session, results).await?;
+        mem::drop(remaining_bytes);
+    }
 
     loop {
         let bytes = stream.read(&mut buff).await?;
-        handle_input(&mut stream, &mut session, &buff[0..bytes]).await?;
-    }
 
-    Ok(())
+        if bytes == 0 {
+            return Ok(());
+        }
+
+        let results = session.handle_input(&buff[0..bytes])?;
+        handle_session_results(&mut stream, &mut session, results).await?;
+    }
 }
 
 async fn handshake(stream: &mut PeekTcpStream, buff: &mut [u8]) -> Result<(Handshake, Vec<u8>), RtmpError> {
@@ -79,16 +86,20 @@ async fn setup_session(stream: &mut PeekTcpStream) -> Result<ServerSession, Rtmp
     Ok(session)
 }
 
-async fn handle_input(stream: &mut PeekTcpStream, session: &mut ServerSession, data: &[u8]) -> Result<(), RtmpError> {
-    let results = session.handle_input(data)?;
+struct UserRequest {
 
-    for result in results {
-        match result {
+}
+
+async fn handle_session_results(stream: &mut PeekTcpStream, session: &mut ServerSession, actions: Vec<ServerSessionResult>) -> Result<(), RtmpError> {
+    let mut actions: VecDeque<_> = actions.into();
+
+    while let Some(action) = actions.pop_front() {
+        match action {
             ServerSessionResult::OutboundResponse(packet) => {
                 stream.write_all(&packet.bytes).await?;
             }
             ServerSessionResult::RaisedEvent(ev) => {
-                println!("rtmp: RaisedEvent: {:?}", ev);
+                actions.extend(handle_event(session, &ev).await?);
             }
             ServerSessionResult::UnhandleableMessageReceived(msg) => {
                 println!("rtmp: UnhandleableMessageReceived: {:?}", msg);
@@ -97,4 +108,28 @@ async fn handle_input(stream: &mut PeekTcpStream, session: &mut ServerSession, d
     }
 
     Ok(())
+}
+
+async fn handle_event(session: &mut ServerSession, event: &ServerSessionEvent) -> Result<Vec<ServerSessionResult>, RtmpError> {
+    match event {
+        ServerSessionEvent::ConnectionRequested { request_id, app_name } => {
+            println!("rtmp: connection requested on {:?}, accepting", app_name);
+            Ok(session.accept_request(*request_id)?)
+        }
+        ServerSessionEvent::PublishStreamRequested { request_id, app_name, stream_key, mode } => {
+            println!("rtmp: publish requested on {:?}, stream_key {:?}, mode {:?}, accepting",
+                app_name, stream_key, mode);
+            Ok(session.accept_request(*request_id)?)
+        }
+        ServerSessionEvent::AudioDataReceived { app_name, stream_key, data, timestamp } => {
+            Ok(Vec::new())
+        }
+        ServerSessionEvent::VideoDataReceived { app_name, stream_key, data, timestamp } => {
+            Ok(Vec::new())
+        }
+        _ => {
+            eprintln!("rtmp: unhandled event: {:?}", event);
+            Ok(Vec::new())
+        }
+    }
 }
