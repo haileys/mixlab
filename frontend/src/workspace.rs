@@ -656,6 +656,7 @@ impl Component for Window {
 impl Window {
     fn view_custom_title_buttons(&self) -> Html {
         match &self.props.module {
+            ModuleParams::EqThree(..) |
             ModuleParams::Mixer(..) => {
                 let class = match self.midi_mode {
                     MidiUiMode::Normal =>
