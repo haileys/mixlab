@@ -1,3 +1,4 @@
+use std::f64;
 use std::fmt::{self, Debug};
 
 use fftw::plan::{Plan, R2CPlan, C2RPlan, Plan64};
@@ -12,13 +13,21 @@ const BUFFER_SIZE: usize = 1024;
 const FREQ_LO: f64 = 250.0;
 const FREQ_HI: f64 = 2500.0;
 
+const VSA: f64 = 1.0 / 4294967295.0; // Very small amount (Denormal Fix)
+
+#[derive(Debug)]
 pub struct EqThree {
     params: EqThreeParams,
-    fft: Plan<f64, c64, Plan64>,
-    ifft: Plan<c64, f64, Plan64>,
-    input_buffer: Vec<f64>,
-    eq_buffer: Vec<c64>,
-    output_buffer: Vec<f64>,
+
+    // filter 1 (low band)
+    lo_poles: [f64; 4],
+
+    // filter 2 (high band)
+    hi_poles: [f64; 4],
+
+    // sample history
+    history: [f64; 3],
+
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
 }
@@ -28,31 +37,11 @@ impl ModuleT for EqThree {
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
-        let mut input_buffer = vec![0.0; BUFFER_SIZE];
-        let mut eq_buffer = vec![c64 { re: 0.0, im: 0.0 }; BUFFER_SIZE];
-        let mut output_buffer = vec![0.0; BUFFER_SIZE];
-
-        let fft = R2CPlan::new(
-                &[BUFFER_SIZE],
-                &mut input_buffer,
-                &mut eq_buffer,
-                Flag::Estimate | Flag::DestroyInput,
-            ).expect("R2CPlan::new");
-
-        let ifft = C2RPlan::new(
-                &[BUFFER_SIZE],
-                &mut eq_buffer,
-                &mut output_buffer,
-                Flag::Estimate | Flag::DestroyInput,
-            ).expect("C2RPlan::new");
-
         let eq_three = Self {
             params,
-            fft,
-            ifft,
-            input_buffer,
-            eq_buffer,
-            output_buffer,
+            lo_poles: [0.0; 4],
+            hi_poles: [0.0; 4],
+            history: [0.0; 3],
             inputs: vec![LineType::Mono.unlabeled()],
             outputs: vec![LineType::Mono.unlabeled()],
         };
@@ -71,44 +60,52 @@ impl ModuleT for EqThree {
 
     fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
         let input = inputs[0].unwrap_or(&ZERO_BUFFER_MONO);
-
-        // shift input buffer down a bit. it would be nice to avoid this copy
-        self.input_buffer.drain(0..input.len());
-        self.input_buffer.extend(input.iter().map(|sample| *sample as f64));
-
-        // do fft
-        self.fft.r2c(&mut self.input_buffer, &mut self.eq_buffer)
-            .expect("R2CPlan::r2c");
-
-        for (i, value) in self.eq_buffer.iter_mut().enumerate() {
-            let i = if i * 2 > BUFFER_SIZE {
-                BUFFER_SIZE - i
-            } else {
-                i
-            };
-
-            let freq_per_bin = (SAMPLE_RATE as f64 / BUFFER_SIZE as f64);
-            let bin_lo_freq = i as f64 * freq_per_bin;
-            let bin_hi_freq = (i + 1) as f64 * freq_per_bin;
-
-            if bin_lo_freq >= FREQ_HI {
-                *value = value.scale(self.params.gain_hi.to_linear());
-            }
-        }
-
-        // do inverse fft
-        self.ifft.c2r(&mut self.eq_buffer, &mut self.output_buffer)
-            .expect("C2RPlan::c2r");
-
-        // FFT results must be normalised by dividing by the square root of the
-        // sample count. because we're doing two transforms, we skip the square
-        // root:
-        let normal_factor = BUFFER_SIZE as f64;
-
-        let output_values = &self.output_buffer[(self.output_buffer.len() - input.len())..];
         let output = &mut outputs[0];
-        for (i, value) in output_values.iter().enumerate() {
-            output[i] = (*value / normal_factor) as f32;
+
+        let freq_lo = 2.0 * f64::sin(f64::consts::PI * FREQ_LO / (SAMPLE_RATE as f64));
+        let freq_hi = 2.0 * f64::sin(f64::consts::PI * FREQ_HI / (SAMPLE_RATE as f64));
+
+        let gain_lo = self.params.gain_lo.to_linear();
+        let gain_mid = self.params.gain_mid.to_linear();
+        let gain_hi = self.params.gain_hi.to_linear();
+
+        for (input, output) in input.iter().copied().zip(output.iter_mut()) {
+            let sample = input as f64;
+
+            // lo pass:
+
+            self.lo_poles[0] += freq_lo * (sample - self.lo_poles[0]) + VSA;
+            self.lo_poles[1] += freq_lo * (self.lo_poles[0] - self.lo_poles[1]);
+            self.lo_poles[2] += freq_lo * (self.lo_poles[1] - self.lo_poles[2]);
+            self.lo_poles[3] += freq_lo * (self.lo_poles[2] - self.lo_poles[3]);
+
+            let lo = self.lo_poles[3];
+
+            // hi pass
+
+            self.hi_poles[0] += freq_hi * (sample - self.hi_poles[0]) + VSA;
+            self.hi_poles[1] += freq_hi * (self.hi_poles[0] - self.hi_poles[1]);
+            self.hi_poles[2] += freq_hi * (self.hi_poles[1] - self.hi_poles[2]);
+            self.hi_poles[3] += freq_hi * (self.hi_poles[2] - self.hi_poles[3]);
+
+            let hi = self.history[0] - self.hi_poles[3];
+
+            // mid range
+
+            let mid = self.history[0] - (hi + lo);
+
+            // shift history
+            self.history[0] = self.history[1];
+            self.history[1] = self.history[2];
+            self.history[2] = sample;
+
+            // apply gain
+
+            let lo = lo * gain_lo;
+            let mid = mid * gain_mid;
+            let hi = hi * gain_hi;
+
+            *output = (lo + mid + hi) as f32;
         }
 
         None
@@ -123,8 +120,47 @@ impl ModuleT for EqThree {
     }
 }
 
-impl Debug for EqThree {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "EqThree {{ params: {:?} }}", self.params)
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+    use std::fs::File;
+
+    use crate::module::ModuleT;
+    use mixlab_protocol::{Decibel, EqThreeParams};
+    use super::EqThree;
+
+    fn bytes_to_f32s(bytes: &[u8]) -> Vec<f32> {
+        bytes.chunks_exact(4)
+            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .collect::<Vec<_>>()
+    }
+
+    fn f32s_to_bytes(floats: &[f32]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+
+        for float in floats {
+            bytes.extend(&float.to_le_bytes());
+        }
+
+        bytes
+    }
+
+    #[test]
+    fn basic_smoke_test() {
+        let input = bytes_to_f32s(include_bytes!("../../fixtures/module/eq_three/chronos.f32.raw"));
+
+        let (mut eq, _) = EqThree::create(EqThreeParams {
+            gain_lo: Decibel(4.0),
+            gain_mid: Decibel(0.0),
+            gain_hi: Decibel(4.0),
+        });
+
+        let mut output = vec![0.0; input.len()];
+
+        eq.run_tick(0, &[Some(&input)], &mut [&mut output]);
+
+        let expected_output = bytes_to_f32s(include_bytes!("../../fixtures/module/eq_three/chronos-eq.f32.raw"));
+
+        assert!(output == expected_output);
     }
 }
