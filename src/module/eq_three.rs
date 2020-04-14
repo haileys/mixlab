@@ -125,9 +125,6 @@ impl LowPass {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-    use std::fs::File;
-
     use crate::module::ModuleT;
     use mixlab_protocol::{Decibel, EqThreeParams};
     use super::EqThree;
