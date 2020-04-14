@@ -1,9 +1,9 @@
 mod codec;
 mod engine;
 mod icecast;
+mod listen;
 mod module;
 mod util;
-
 
 use std::sync::Arc;
 use std::net::SocketAddr;
@@ -17,7 +17,7 @@ use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
 use engine::{EngineHandle, EngineOp};
-use icecast::http::Disambiguation;
+use listen::Disambiguation;
 
 use mixlab_protocol::{ClientMessage, ServerMessage};
 
@@ -204,7 +204,7 @@ async fn main() {
                 Ok(conn) => {
                     let mut incoming_tx = incoming_tx.clone();
                     tokio::spawn(async move {
-                        match icecast::http::disambiguate(conn).await {
+                        match listen::disambiguate(conn).await {
                             Ok(Disambiguation::Http(conn)) => {
                                 // nothing we can do in case of error here
                                 let _ = incoming_tx.send(Ok(conn)).await;
