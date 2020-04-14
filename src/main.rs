@@ -4,6 +4,7 @@ mod icecast;
 mod listen;
 mod module;
 mod rtmp;
+mod source;
 mod util;
 
 use std::sync::Arc;

@@ -1,9 +1,9 @@
 use mixlab_protocol::{IcecastInputParams, LineType, Terminal};
 
 use crate::engine::Sample;
-use crate::icecast::registry::SourceRecv;
 use crate::icecast;
 use crate::module::ModuleT;
+use crate::source::SourceRecv;
 use crate::util;
 
 #[derive(Debug)]
@@ -22,7 +22,7 @@ impl ModuleT for IcecastInput {
         let recv = params.mountpoint.as_ref().and_then(|mountpoint|
             // TODO - listen returning an error means the mountpoint is already
             // in use. tell the user this via an indication
-            icecast::registry::listen(mountpoint).ok());
+            icecast::listen(mountpoint).ok());
 
         let module = IcecastInput {
             params,
@@ -39,7 +39,7 @@ impl ModuleT for IcecastInput {
     }
 
     fn update(&mut self, new_params: Self::Params) -> Option<Self::Indication> {
-        let current_mountpoint = self.recv.as_ref().map(|recv| recv.mountpoint());
+        let current_mountpoint = self.recv.as_ref().map(|recv| recv.channel_name());
         let new_mountpoint = new_params.mountpoint.as_ref().map(String::as_str);
 
         if current_mountpoint != new_mountpoint {
@@ -49,7 +49,7 @@ impl ModuleT for IcecastInput {
                 }
                 Some(mountpoint) => {
                     // TODO - tell the user about this one too
-                    self.recv = icecast::registry::listen(mountpoint).ok();
+                    self.recv = icecast::listen(mountpoint).ok();
                 }
             }
         }

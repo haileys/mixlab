@@ -1,6 +1,6 @@
 pub mod http;
-pub mod registry;
 
+use std::fmt::Debug;
 use std::io::{self, Read};
 use std::thread;
 use std::time::{Instant, Duration};
@@ -8,14 +8,18 @@ use std::time::{Instant, Duration};
 use derive_more::From;
 use tokio::io::AsyncWriteExt;
 
-use crate::codec::{AudioStream, StreamRead, StreamError};
 use crate::codec::ogg::{self, OggStream};
+use crate::codec::{AudioStream, StreamRead, StreamError};
 use crate::engine::{SAMPLE_RATE, Sample};
-
-use crate::util::SyncRead;
 use crate::listen::PeekTcpStream;
+use crate::source::{Registry, ListenError, SourceRecv, SourceSend};
+use crate::util::SyncRead;
+
 use http::ContentType;
-use registry::SourceSend;
+
+lazy_static::lazy_static! {
+    static ref MOUNTPOINTS: Registry = Registry::new();
+}
 
 pub async fn accept(mut stream: PeekTcpStream) {
     let req = match http::parse(&mut stream).await {
@@ -33,7 +37,7 @@ pub async fn accept(mut stream: PeekTcpStream) {
         return;
     };
 
-    let send = match registry::connect(&req.path) {
+    let send = match MOUNTPOINTS.connect(&req.path) {
         Ok(send) => send,
         Err(e) => {
             eprintln!("could not connect to icecast mountpoint: {:?}", e);
@@ -54,6 +58,10 @@ pub async fn accept(mut stream: PeekTcpStream) {
             }
         }
     });
+}
+
+pub fn listen(mountpoint: &str) -> Result<SourceRecv, ListenError> {
+    MOUNTPOINTS.listen(mountpoint)
 }
 
 #[derive(From, Debug)]
