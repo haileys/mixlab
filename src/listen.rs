@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Poll, Context};
 
-use futures::StreamExt;
+use futures::stream::{self, StreamExt};
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -15,25 +15,27 @@ pub async fn start(addr: SocketAddr) -> Result<Receiver<Disambiguation>, io::Err
     let (disambiguated_tx, mut disambiguated_rx) = mpsc::channel::<Disambiguation>(1);
 
     tokio::spawn(async move {
-        let mut incoming = listener.incoming();
+        enum Event {
+            Listener(Result<TcpStream, io::Error>),
+            Disambiguate(Disambiguation),
+        }
 
-        loop {
-            tokio::select! {
-                conn = incoming.next() => {
-                    match conn {
-                        Some(Ok(conn)) => {
-                            handle_connection(conn, disambiguated_tx.clone());
-                        }
-                        None | Some(Err(_)) => break,
-                    }
+        let mut events = stream::select(
+            listener.incoming().map(Event::Listener),
+            disambiguated_rx.map(Event::Disambiguate),
+        );
+
+        while let Some(event) = events.next().await {
+            match event {
+                Event::Listener(Ok(conn)) => {
+                    handle_connection(conn, disambiguated_tx.clone());
                 }
-                conn = disambiguated_rx.recv() => {
-                    let conn = match conn {
-                        Some(conn) => conn,
-                        None => break,
-                    };
-
-                    match result_tx.send(conn).await {
+                Event::Listener(Err(e)) => {
+                    eprintln!("listen: {:?}", e);
+                    break;
+                }
+                Event::Disambiguate(disambiguated) => {
+                    match result_tx.send(disambiguated).await {
                         Ok(()) => {}
                         Err(_) => break,
                     }
@@ -46,15 +48,15 @@ pub async fn start(addr: SocketAddr) -> Result<Receiver<Disambiguation>, io::Err
 }
 
 fn handle_connection(conn: TcpStream, mut out: Sender<Disambiguation>) {
-    if conn.set_nodelay(true).is_err() {
-        // nothing to do
+    if let Err(e) = conn.set_nodelay(true) {
+        eprintln!("listen: set_nodelay: {:?}", e);
         return;
     }
 
     tokio::spawn(async move {
         match disambiguate(conn).await {
             Ok(conn) => {
-                let _ = out.send(conn);
+                let _: Result<_, _> = out.send(conn).await;
             }
             Err(e) => {
                 eprintln!("listen: disambiguation error: {:?}", e);
@@ -63,9 +65,11 @@ fn handle_connection(conn: TcpStream, mut out: Sender<Disambiguation>) {
     });
 }
 
+#[derive(Debug)]
 pub enum Disambiguation {
     Http(PeekTcpStream),
     Icecast(PeekTcpStream),
+    Rtmp(PeekTcpStream),
 }
 
 pub async fn disambiguate(stream: TcpStream)
@@ -73,13 +77,14 @@ pub async fn disambiguate(stream: TcpStream)
 {
     let stream = PeekTcpStream::new(stream).await?;
 
-    if stream.peek() == b"SOURCE " {
-        Ok(Disambiguation::Icecast(stream))
-    } else {
-        Ok(Disambiguation::Http(stream))
+    match stream.peek() {
+        b"SOURCE " => Ok(Disambiguation::Icecast(stream)),
+        [0x03, ..] => Ok(Disambiguation::Rtmp(stream)),
+        _ => Ok(Disambiguation::Http(stream)),
     }
 }
 
+#[derive(Debug)]
 pub struct PeekTcpStream {
     peek: [u8; 7],
     offset: u8,
