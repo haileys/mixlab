@@ -336,6 +336,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "faad2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3c7b6f5b9b7115c3d134e5e7d32a671f68414c2adb5b1690b284ad2a166f462"
+dependencies = [
+ "faad2-sys",
+]
+
+[[package]]
+name = "faad2-sys"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64c8e672825b5eeb7c824bfadc986fe2188b86d79fa18f518940aa0635f72edc"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "failure"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -889,6 +907,7 @@ dependencies = [
  "cpal",
  "derive_more",
  "env_logger",
+ "faad2",
  "futures",
  "httparse",
  "lazy_static",
