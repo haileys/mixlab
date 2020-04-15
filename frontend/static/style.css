@@ -350,6 +350,11 @@ body {
 .form-field {
     display:flex;
     flex-flow:column nowrap;
+    margin-bottom:12px;
+}
+
+.form-field:last-child {
+    margin-bottom:0px;
 }
 
 .form-field-label {

@@ -1,8 +1,9 @@
-use mixlab_protocol::{StreamInputParams, LineType, Terminal};
+use mixlab_protocol::{StreamInputParams, LineType, Terminal, StreamProtocol};
 
 use crate::engine::Sample;
 use crate::icecast;
 use crate::module::ModuleT;
+use crate::rtmp;
 use crate::source::SourceRecv;
 use crate::util;
 
@@ -42,16 +43,9 @@ impl ModuleT for StreamInput {
         let current_mountpoint = self.recv.as_ref().map(|recv| recv.channel_name());
         let new_mountpoint = new_params.mountpoint.as_ref().map(String::as_str);
 
-        if current_mountpoint != new_mountpoint {
-            match new_mountpoint {
-                None => {
-                    self.recv = None;
-                }
-                Some(mountpoint) => {
-                    // TODO - tell the user about this one too
-                    self.recv = icecast::listen(mountpoint).ok();
-                }
-            }
+        if current_mountpoint != new_mountpoint || self.params.protocol != new_params.protocol {
+            // TODO - tell the user about this one too
+            self.recv = listen_mountpoint(&new_params);
         }
 
         self.params = new_params;
@@ -75,5 +69,14 @@ impl ModuleT for StreamInput {
 
     fn outputs(&self)-> &[Terminal] {
         &self.outputs
+    }
+}
+
+fn listen_mountpoint(params: &StreamInputParams) -> Option<SourceRecv> {
+    let mountpoint = params.mountpoint.as_ref()?;
+
+    match params.protocol? {
+        StreamProtocol::Icecast => icecast::listen(mountpoint).ok(),
+        StreamProtocol::Rtmp => rtmp::listen(mountpoint).ok(),
     }
 }

@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc::{self, Sender};
 
 use crate::listen::PeekTcpStream;
-use crate::source::{Registry, ConnectError};
+use crate::source::{Registry, ConnectError, SourceRecv, ListenError};
 
 // mod adts;
 mod incoming;
@@ -22,6 +22,10 @@ lazy_static::lazy_static! {
         mem::forget(reg.listen("my_stream_endpoint"));
         reg
     };
+}
+
+pub fn listen(mountpoint: &str) -> Result<SourceRecv, ListenError> {
+    MOUNTPOINTS.listen(mountpoint)
 }
 
 #[derive(From, Debug)]
@@ -48,7 +52,7 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     };
 
     // authenticate client
-    let _source = match publish {
+    let mut source = match publish {
         Some(publish) => {
             println!("rtmp: client wants to publish on {:?} with stream_key {:?}",
                 publish.app_name, publish.stream_key);
@@ -77,9 +81,6 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
 
         let mut codec = None;
 
-        use std::io::Write;
-        let mut tmp = std::fs::File::create("tmp.raw").unwrap();
-
         while let Some(packet) = aac_packets.next().await {
             match packet {
                 AudioPacket::AacSequenceHeader(bytes) => {
@@ -89,8 +90,9 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
                 AudioPacket::AacRawData(bytes) => {
                     if let Some(codec) = &mut codec {
                         let decode_info = codec.decode(&bytes).expect("codec.decode");
-                        for sample in decode_info.samples {
-                            let _ = tmp.write_all(&sample.to_le_bytes());
+                        match source.write(decode_info.samples) {
+                            Ok(_) => {}
+                            Err(_) => { break; }
                         }
                     } else {
                         eprintln!("rtmp: received aac data packet before sequence header, dropping");

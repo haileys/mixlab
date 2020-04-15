@@ -273,7 +273,14 @@ pub struct MixerChannelParams {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct StreamInputParams {
+    pub protocol: Option<StreamProtocol>,
     pub mountpoint: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub enum StreamProtocol {
+    Icecast,
+    Rtmp,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
