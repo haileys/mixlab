@@ -208,7 +208,7 @@ async fn main() {
                     tokio::spawn(async move {
                         match rtmp::accept(conn).await {
                             Ok(()) => {}
-                            Err(e) => { eprintln!("rtmp::accept: {:?}", e); }
+                            Err(e) => { eprintln!("rtmp: {:?}", e); }
                         }
                     });
                 }

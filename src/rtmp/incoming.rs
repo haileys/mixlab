@@ -83,9 +83,28 @@ pub async fn handle_new_client(
         let results = session.handle_input(&buff[0..bytes])?;
 
         if let Some(info) = handle_session_results(stream, session, results).await? {
-            return Ok(Some(info));
+            return Ok(Some(info))
         }
     }
+}
+
+pub async fn accept_publish(
+    stream: &mut PeekTcpStream,
+    session: &mut ServerSession,
+    publish: &PublishInfo,
+) -> Result<(), RtmpError> {
+    let results = session.accept_request(publish.request_id)?;
+
+    for result in results {
+        if let ServerSessionResult::OutboundResponse(resp) = result {
+            stream.write_all(&resp.bytes).await?;
+        } else {
+            // accept_request never returns any variant of ServerSessionResult other than OutboundReponse:
+            panic!("rtmp: unexpected result from accept_request: {:?}", result);
+        }
+    }
+
+    Ok(())
 }
 
 async fn handle_session_results(stream: &mut PeekTcpStream, session: &mut ServerSession, actions: Vec<ServerSessionResult>) -> Result<Option<PublishInfo>, RtmpError> {
