@@ -16,16 +16,6 @@ struct RegistryInner {
     channels: HashMap<String, Source>,
 }
 
-impl Registry {
-    pub fn new() -> Self {
-        let inner = RegistryInner {
-            channels: HashMap::new(),
-        };
-
-        Registry { inner: Arc::new(Mutex::new(inner)) }
-    }
-}
-
 pub struct Source {
     shared: Arc<SourceShared>,
     tx: Option<Producer<Sample>>,
@@ -48,7 +38,29 @@ pub enum ConnectError {
     AlreadyConnected,
 }
 
+pub struct SourceSend {
+    registry: Registry,
+    shared: Arc<SourceShared>,
+    // this is, regrettably, an Option because we need to take the producer
+    // and put it back in the mountpoints table on drop:
+    tx: Option<Producer<Sample>>,
+}
+
+pub struct SourceRecv {
+    registry: Registry,
+    shared: Arc<SourceShared>,
+    rx: Consumer<Sample>,
+}
+
 impl Registry {
+    pub fn new() -> Self {
+        let inner = RegistryInner {
+            channels: HashMap::new(),
+        };
+
+        Registry { inner: Arc::new(Mutex::new(inner)) }
+    }
+
     pub fn listen(&self, channel_name: &str) -> Result<SourceRecv, ListenError> {
         let mut registry = self.inner.lock()
             .expect("registry lock");
@@ -102,15 +114,6 @@ impl Registry {
     }
 }
 
-
-pub struct SourceSend {
-    registry: Registry,
-    shared: Arc<SourceShared>,
-    // this is, regrettably, an Option because we need to take the producer
-    // and put it back in the mountpoints table on drop:
-    tx: Option<Producer<Sample>>,
-}
-
 impl SourceSend {
     pub fn connected(&self) -> bool {
         self.shared.recv_online.load(Ordering::Relaxed)
@@ -150,12 +153,6 @@ impl Drop for SourceSend {
             }
         }
     }
-}
-
-pub struct SourceRecv {
-    registry: Registry,
-    shared: Arc<SourceShared>,
-    rx: Consumer<Sample>,
 }
 
 impl Debug for SourceRecv {
