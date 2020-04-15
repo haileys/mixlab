@@ -34,13 +34,10 @@ impl Component for StreamInput {
     }
 
     fn view(&self) -> Html {
-        let mountpoint_id = format!("w{}-icecast-input-mountpoint", self.props.id.0);
-
         html! {
-            <>
-                <label for={&mountpoint_id}>{"Mountpoint"}</label>
+            <label class="form-field">
+                <span class="form-field-label">{"Mountpoint"}</span>
                 <input type="text"
-                    id={&mountpoint_id}
                     onchange={self.callback(text(move |mountpoint, params| {
                         StreamInputParams {
                             mountpoint: mountpoint.map(str::to_owned),
@@ -49,7 +46,7 @@ impl Component for StreamInput {
                     }))}
                     value={self.props.params.mountpoint.as_ref().map(String::as_str).unwrap_or("")}
                 />
-            </>
+            </label>
         }
     }
 }
