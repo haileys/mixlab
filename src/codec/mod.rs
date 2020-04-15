@@ -1,12 +1,8 @@
-pub mod aac;
 pub mod ogg;
 
 use std::io;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
 use futures::stream::Stream;
-use tokio::io::AsyncRead;
 
 type PcmData = Vec<Vec<i16>>;
 

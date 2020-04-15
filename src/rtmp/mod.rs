@@ -3,25 +3,22 @@ use std::mem;
 
 use bytes::{Bytes, Buf};
 use derive_more::From;
-use futures::future;
-use futures::stream::{Stream, StreamExt};
+use faad2::Decoder;
+use futures::stream::StreamExt;
 use rml_rtmp::handshake::HandshakeError;
-use rml_rtmp::sessions::{ServerSession, ServerSessionConfig, ServerSessionResult, ServerSessionError, ServerSessionEvent};
+use rml_rtmp::sessions::{ServerSession, ServerSessionResult, ServerSessionError, ServerSessionEvent};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc::{self, Sender};
 
-use crate::codec::aac::Aac;
 use crate::listen::PeekTcpStream;
-use crate::source::{Registry, ConnectError, SourceSend};
+use crate::source::{Registry, ConnectError};
 
-mod adts;
+// mod adts;
 mod incoming;
-
-use adts::{AudioSpecificConfiguration, AudioDataTransportStream};
 
 lazy_static::lazy_static! {
     static ref MOUNTPOINTS: Registry = {
-        let mut reg = Registry::new();
+        let reg = Registry::new();
         mem::forget(reg.listen("my_stream_endpoint"));
         reg
     };
@@ -51,7 +48,7 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     };
 
     // authenticate client
-    let source = match publish {
+    let _source = match publish {
         Some(publish) => {
             println!("rtmp: client wants to publish on {:?} with stream_key {:?}",
                 publish.app_name, publish.stream_key);
@@ -76,40 +73,34 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     };
 
     tokio::spawn(async move {
-        let aac_packets = audio_rx
-            .map(|packet| classify_audio_packet(packet))
-            .filter_map({
-                let mut current_asc = None;
+        let mut aac_packets = audio_rx.map(|packet| classify_audio_packet(packet));
 
-                move |packet| {
-                    future::ready(match packet {
-                        AudioPacket::AacSequenceHeader(mut bytes) => {
-                            if let Some(asc) = AudioSpecificConfiguration::try_from_buf(&mut bytes).ok() {
-                                current_asc = Some(asc);
-                            }
-                            None
-                        }
-                        AudioPacket::AacRawData(bytes) => {
-                            if let Some(asc) = current_asc.clone() {
-                                let adts = AudioDataTransportStream::new(bytes, asc);
-                                let packet: Bytes = adts.into();
-                                Some(packet)
-                            } else {
-                                eprintln!("rtmp: received aac data packet before sequence header, dropping");
-                                None
-                            }
-                        }
-                        AudioPacket::Unknown(bytes) => {
-                            println!("rtmp: received unknown audio packet, dropping");
-                            None
-                        }
-                    })
+        let mut codec = None;
+
+        use std::io::Write;
+        let mut tmp = std::fs::File::create("tmp.raw").unwrap();
+
+        while let Some(packet) = aac_packets.next().await {
+            match packet {
+                AudioPacket::AacSequenceHeader(bytes) => {
+                    // TODO - validate user input before passing it to faad2
+                    codec = Some(Decoder::new(&bytes).expect("Decoder::new"));
                 }
-            })
-            .map(Ok);
-
-        let reader = tokio::io::stream_reader(aac_packets);
-        let aac = Aac::new(reader).await.unwrap();
+                AudioPacket::AacRawData(bytes) => {
+                    if let Some(codec) = &mut codec {
+                        let decode_info = codec.decode(&bytes).expect("codec.decode");
+                        for sample in decode_info.samples {
+                            let _ = tmp.write_all(&sample.to_le_bytes());
+                        }
+                    } else {
+                        eprintln!("rtmp: received aac data packet before sequence header, dropping");
+                    }
+                }
+                AudioPacket::Unknown(_) => {
+                    eprintln!("rtmp: received unknown audio packet, dropping");
+                }
+            }
+        }
 
         println!("**** HERE *****");
     });
@@ -186,7 +177,7 @@ async fn handle_event(
     event: ServerSessionEvent,
 ) -> Result<(), ReceiveError> {
     match event {
-        ServerSessionEvent::AudioDataReceived { app_name, stream_key, data, timestamp } => {
+        ServerSessionEvent::AudioDataReceived { app_name: _, stream_key: _, data, timestamp: _ } => {
             ctx.audio_tx.send(data)
                 .await
                 .map_err(|_| ReceiveError::Exit)?;
