@@ -84,7 +84,7 @@ gen_modules!{
     envelope::Envelope,
     eq_three::EqThree,
     fm_sine::FmSine,
-    icecast_input::IcecastInput,
+    stream_input::StreamInput,
     mixer::Mixer,
     oscillator::Oscillator,
     output_device::OutputDevice,

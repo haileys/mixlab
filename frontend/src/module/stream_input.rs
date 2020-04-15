@@ -1,23 +1,23 @@
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback};
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, ModuleParams, IcecastInputParams};
+use mixlab_protocol::{ModuleId, ModuleParams, StreamInputParams};
 
 use crate::workspace::{Window, WindowMsg};
 
 #[derive(Properties, Clone, Debug)]
-pub struct IcecastInputProps {
+pub struct StreamInputProps {
     pub id: ModuleId,
     pub module: ComponentLink<Window>,
-    pub params: IcecastInputParams,
+    pub params: StreamInputParams,
 }
 
-pub struct IcecastInput {
-    props: IcecastInputProps,
+pub struct StreamInput {
+    props: StreamInputProps,
 }
 
-impl Component for IcecastInput {
-    type Properties = IcecastInputProps;
+impl Component for StreamInput {
+    type Properties = StreamInputProps;
     type Message = ();
 
     fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
@@ -42,7 +42,7 @@ impl Component for IcecastInput {
                 <input type="text"
                     id={&mountpoint_id}
                     onchange={self.callback(text(move |mountpoint, params| {
-                        IcecastInputParams {
+                        StreamInputParams {
                             mountpoint: mountpoint.map(str::to_owned),
                             ..params
                         }
@@ -54,21 +54,21 @@ impl Component for IcecastInput {
     }
 }
 
-impl IcecastInput {
-    fn callback<Ev>(&self, f: impl Fn(Ev, IcecastInputParams) -> IcecastInputParams + 'static)
+impl StreamInput {
+    fn callback<Ev>(&self, f: impl Fn(Ev, StreamInputParams) -> StreamInputParams + 'static)
         -> Callback<Ev>
     {
         let params = self.props.params.clone();
 
         self.props.module.callback(move |ev|
             WindowMsg::UpdateParams(
-                ModuleParams::IcecastInput(
+                ModuleParams::StreamInput(
                     f(ev, params.clone()))))
     }
 }
 
-fn text<T>(f: impl Fn(Option<&str>, IcecastInputParams) -> T)
-    -> impl Fn(ChangeData, IcecastInputParams) -> T
+fn text<T>(f: impl Fn(Option<&str>, StreamInputParams) -> T)
+    -> impl Fn(ChangeData, StreamInputParams) -> T
 {
     move |change, params| {
         if let ChangeData::Value(value) = change {
