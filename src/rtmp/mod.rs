@@ -43,16 +43,7 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     let mut session = incoming::setup_session(&mut stream).await?;
     let publish = incoming::handle_new_client(&mut stream, &mut session, remaining_bytes, &mut buff).await?;
 
-    let (audio_tx, audio_rx) = mpsc::channel(1);
-
-    let mut ctx = ReceiveContext {
-        stream,
-        session,
-        audio_tx,
-    };
-
-    // authenticate client
-    let mut source = match publish {
+    let (mut now, mut source) = match publish {
         Some(publish) => {
             println!("rtmp: client wants to publish on {:?} with stream_key {:?}",
                 publish.app_name, publish.stream_key);
@@ -60,20 +51,21 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
             // TODO handle stream keys
 
             let source = MOUNTPOINTS.connect(&publish.app_name)?;
-            let results = ctx.session.accept_request(publish.request_id)?;
+            let now = std::time::Instant::now();
 
-            for result in results {
-                if let ServerSessionResult::OutboundResponse(resp) = result {
-                    ctx.stream.write_all(&resp.bytes).await?;
-                } else {
-                    // accept_request never returns any variant of ServerSessionResult other than OutboundReponse:
-                    panic!("rtmp: unexpected result from accept_request: {:?}", result);
-                }
-            }
+            incoming::accept_publish(&mut stream, &mut session, &publish).await?;
 
-            source
+            (Some(now), source)
         }
-        None => return Ok(())
+        None => { return Ok(()); }
+    };
+
+    let (audio_tx, audio_rx) = mpsc::channel(1);
+
+    let mut ctx = ReceiveContext {
+        stream,
+        session,
+        audio_tx,
     };
 
     tokio::spawn(async move {
@@ -88,6 +80,10 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
                     codec = Some(Decoder::new(&bytes).expect("Decoder::new"));
                 }
                 AudioPacket::AacRawData(bytes) => {
+                    if let Some(now) = now.take() {
+                        println!("took {} ms for initial data", (std::time::Instant::now() - now).as_millis());
+                    }
+
                     if let Some(codec) = &mut codec {
                         let decode_info = codec.decode(&bytes).expect("codec.decode");
                         match source.write(decode_info.samples) {
@@ -103,18 +99,11 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
                 }
             }
         }
-
-        println!("**** HERE *****");
     });
 
-    match run_receive(&mut ctx, buff).await {
-        Ok(()) => {}
-        Err(e) => {
-            eprintln!("rtmp: client error, dropping: {:?}", e);
-        }
-    }
+    run_receive(&mut ctx, buff).await?;
 
-    unimplemented!()
+    Ok(())
 }
 
 struct ReceiveContext {
