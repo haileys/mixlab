@@ -1,7 +1,11 @@
+use std::fmt::{self, Display};
+
+use derive_more::{From, Into};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback};
+use yew::components::Select;
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, ModuleParams, StreamInputParams};
+use mixlab_protocol::{ModuleId, ModuleParams, StreamInputParams, StreamProtocol};
 
 use crate::workspace::{Window, WindowMsg};
 
@@ -35,18 +39,34 @@ impl Component for StreamInput {
 
     fn view(&self) -> Html {
         html! {
-            <label class="form-field">
-                <span class="form-field-label">{"Mountpoint"}</span>
-                <input type="text"
-                    onchange={self.callback(text(move |mountpoint, params| {
-                        StreamInputParams {
-                            mountpoint: mountpoint.map(str::to_owned),
-                            ..params
-                        }
-                    }))}
-                    value={self.props.params.mountpoint.as_ref().map(String::as_str).unwrap_or("")}
-                />
-            </label>
+            <>
+                <label class="form-field">
+                    <span class="form-field-label">{"Protocol"}</span>
+                    <Select<DisplayProtocol>
+                        selected={self.props.params.protocol.map(DisplayProtocol)}
+                        options={vec![
+                            DisplayProtocol(StreamProtocol::Icecast),
+                            DisplayProtocol(StreamProtocol::Rtmp),
+                        ]}
+                        onchange={self.callback(move |protocol: DisplayProtocol, params| {
+                            StreamInputParams { protocol: Some(protocol.0), ..params }
+                        })}
+                    />
+                </label>
+
+                <label class="form-field">
+                    <span class="form-field-label">{"Mountpoint"}</span>
+                    <input type="text"
+                        onchange={self.callback(text(move |mountpoint, params| {
+                            StreamInputParams {
+                                mountpoint: mountpoint.map(str::to_owned),
+                                ..params
+                            }
+                        }))}
+                        value={self.props.params.mountpoint.as_ref().map(String::as_str).unwrap_or("")}
+                    />
+                </label>
+            </>
         }
     }
 }
@@ -77,6 +97,18 @@ fn text<T>(f: impl Fn(Option<&str>, StreamInputParams) -> T)
             f(str_value, params)
         } else {
             unreachable!()
+        }
+    }
+}
+
+#[derive(From, Into, PartialEq, Clone)]
+pub struct DisplayProtocol(StreamProtocol);
+
+impl Display for DisplayProtocol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            StreamProtocol::Icecast => write!(f, "Icecast"),
+            StreamProtocol::Rtmp => write!(f, "RTMP"),
         }
     }
 }
