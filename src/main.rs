@@ -1,15 +1,16 @@
 mod codec;
 mod engine;
 mod icecast;
+mod listen;
 mod module;
+mod rtmp;
+mod source;
 mod util;
-
 
 use std::sync::Arc;
 use std::net::SocketAddr;
 
 use futures::{StreamExt, SinkExt, stream};
-use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use warp::Filter;
@@ -17,7 +18,7 @@ use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
 use engine::{EngineHandle, EngineOp};
-use icecast::http::Disambiguation;
+use listen::Disambiguation;
 
 use mixlab_protocol::{ClientMessage, ServerMessage};
 
@@ -184,42 +185,32 @@ async fn main() {
     let listen_addr = "127.0.0.1:8000".parse::<SocketAddr>()
         .expect("parse SocketAddr");
 
-    let mut listener = TcpListener::bind(&listen_addr).await
-        .expect("TcpListener::bind");
+    let mut incoming = listen::start(listen_addr).await
+        .expect("listen::start");
 
     println!("Mixlab is now running at http://localhost:8000");
 
-    let (incoming_tx, incoming_rx) = mpsc::channel::<Result<_, warp::Error>>(1);
+    let (mut incoming_tx, incoming_rx) = mpsc::channel::<Result<_, warp::Error>>(1);
 
     tokio::spawn(async move {
-        let mut incoming = listener.incoming();
-
         while let Some(conn) = incoming.next().await {
-            let conn = conn.and_then(|conn| {
-                conn.set_nodelay(true)?;
-                Ok(conn)
-            });
-
             match conn {
-                Ok(conn) => {
-                    let mut incoming_tx = incoming_tx.clone();
+                Disambiguation::Http(conn) => {
+                    match incoming_tx.send(Ok(conn)).await {
+                        Ok(()) => {}
+                        Err(_) => break,
+                    }
+                }
+                Disambiguation::Icecast(conn) => {
+                    tokio::spawn(icecast::accept(conn));
+                }
+                Disambiguation::Rtmp(conn) => {
                     tokio::spawn(async move {
-                        match icecast::http::disambiguate(conn).await {
-                            Ok(Disambiguation::Http(conn)) => {
-                                // nothing we can do in case of error here
-                                let _ = incoming_tx.send(Ok(conn)).await;
-                            }
-                            Ok(Disambiguation::Icecast(conn)) => {
-                                tokio::spawn(icecast::accept(conn));
-                            }
-                            Err(e) => {
-                                eprintln!("http: disambiguation error: {:?}", e);
-                            }
+                        match rtmp::accept(conn).await {
+                            Ok(()) => {}
+                            Err(e) => { eprintln!("rtmp: {:?}", e); }
                         }
                     });
-                }
-                Err(e) => {
-                    eprintln!("http: accept error: {:?}", e);
                 }
             }
         }

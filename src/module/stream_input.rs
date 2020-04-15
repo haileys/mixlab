@@ -1,30 +1,31 @@
-use mixlab_protocol::{IcecastInputParams, LineType, Terminal};
+use mixlab_protocol::{StreamInputParams, LineType, Terminal, StreamProtocol};
 
 use crate::engine::Sample;
-use crate::icecast::registry::SourceRecv;
 use crate::icecast;
 use crate::module::ModuleT;
+use crate::rtmp;
+use crate::source::SourceRecv;
 use crate::util;
 
 #[derive(Debug)]
-pub struct IcecastInput {
-    params: IcecastInputParams,
+pub struct StreamInput {
+    params: StreamInputParams,
     recv: Option<SourceRecv>,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
 }
 
-impl ModuleT for IcecastInput {
-    type Params = IcecastInputParams;
+impl ModuleT for StreamInput {
+    type Params = StreamInputParams;
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
         let recv = params.mountpoint.as_ref().and_then(|mountpoint|
             // TODO - listen returning an error means the mountpoint is already
             // in use. tell the user this via an indication
-            icecast::registry::listen(mountpoint).ok());
+            icecast::listen(mountpoint).ok());
 
-        let module = IcecastInput {
+        let module = StreamInput {
             params,
             recv,
             inputs: vec![],
@@ -39,19 +40,12 @@ impl ModuleT for IcecastInput {
     }
 
     fn update(&mut self, new_params: Self::Params) -> Option<Self::Indication> {
-        let current_mountpoint = self.recv.as_ref().map(|recv| recv.mountpoint());
+        let current_mountpoint = self.recv.as_ref().map(|recv| recv.channel_name());
         let new_mountpoint = new_params.mountpoint.as_ref().map(String::as_str);
 
-        if current_mountpoint != new_mountpoint {
-            match new_mountpoint {
-                None => {
-                    self.recv = None;
-                }
-                Some(mountpoint) => {
-                    // TODO - tell the user about this one too
-                    self.recv = icecast::registry::listen(mountpoint).ok();
-                }
-            }
+        if current_mountpoint != new_mountpoint || self.params.protocol != new_params.protocol {
+            // TODO - tell the user about this one too
+            self.recv = listen_mountpoint(&new_params);
         }
 
         self.params = new_params;
@@ -75,5 +69,14 @@ impl ModuleT for IcecastInput {
 
     fn outputs(&self)-> &[Terminal] {
         &self.outputs
+    }
+}
+
+fn listen_mountpoint(params: &StreamInputParams) -> Option<SourceRecv> {
+    let mountpoint = params.mountpoint.as_ref()?;
+
+    match params.protocol? {
+        StreamProtocol::Icecast => icecast::listen(mountpoint).ok(),
+        StreamProtocol::Rtmp => rtmp::listen(mountpoint).ok(),
     }
 }

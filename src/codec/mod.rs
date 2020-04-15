@@ -2,6 +2,8 @@ pub mod ogg;
 
 use std::io;
 
+use futures::stream::Stream;
+
 type PcmData = Vec<Vec<i16>>;
 
 pub enum StreamRead {
@@ -27,3 +29,18 @@ pub struct Metadata {
     pub artist: Option<String>,
     pub title: Option<String>,
 }
+
+pub trait PcmRead: Stream<Item = Vec<f32>> {
+    fn channels() -> usize;
+}
+
+// impl<T: AsyncRead> AsyncRead for PcmStream<T> {
+//     fn poll_read(
+//         self: Pin<&mut Self>,
+//         cx: &mut Context,
+//         buf: &mut [u8]
+//     ) -> Poll<Result<usize, io::Error>> {
+//         let underlying = unsafe { self.map_unchecked(|stream| &mut stream.underlying) };
+//         underlying.poll_read(cx, buf)
+//     }
+// }

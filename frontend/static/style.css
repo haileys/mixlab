@@ -346,3 +346,17 @@ body {
 .midi-target-cfg-overlay-bound:hover {
     background-color:#b3f0b5;
 }
+
+.form-field {
+    display:flex;
+    flex-flow:column nowrap;
+    margin-bottom:12px;
+}
+
+.form-field:last-child {
+    margin-bottom:0px;
+}
+
+.form-field-label {
+    margin-bottom:4px;
+}
