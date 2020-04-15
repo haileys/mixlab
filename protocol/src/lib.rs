@@ -138,7 +138,7 @@ pub enum ModuleParams {
     Envelope(EnvelopeParams),
     EqThree(EqThreeParams),
     FmSine(FmSineParams),
-    IcecastInput(IcecastInputParams),
+    StreamInput(StreamInputParams),
     Mixer(MixerParams),
     Oscillator(OscillatorParams),
     OutputDevice(OutputDeviceParams),
@@ -154,7 +154,7 @@ pub enum Indication {
     Envelope(()),
     EqThree(()),
     FmSine(()),
-    IcecastInput(()),
+    StreamInput(()),
     Mixer(()),
     Oscillator(()),
     OutputDevice(OutputDeviceIndication),
@@ -272,12 +272,19 @@ pub struct MixerChannelParams {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct IcecastInputParams {
+pub struct StreamInputParams {
+    pub protocol: Option<StreamProtocol>,
     pub mountpoint: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub enum StreamProtocol {
+    Icecast,
+    Rtmp,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct IcecastSource {
+pub struct StreamSource {
     pub codec: String,
     pub kbps: usize,
 }

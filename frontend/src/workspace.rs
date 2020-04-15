@@ -7,14 +7,14 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, IcecastInputParams, EqThreeParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams};
 
 use crate::component::midi_target::MidiUiMode;
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
 use crate::module::eq_three::EqThree;
 use crate::module::fm_sine::FmSine;
-use crate::module::icecast_input::IcecastInput;
+use crate::module::stream_input::StreamInput;
 use crate::module::mixer::Mixer;
 use crate::module::oscillator::Oscillator;
 use crate::module::output_device::OutputDevice;
@@ -474,7 +474,7 @@ impl Workspace {
             ("Envelope", ModuleParams::Envelope(EnvelopeParams::default())),
             ("Stereo Panner", ModuleParams::StereoPanner(())),
             ("Stereo Splitter", ModuleParams::StereoSplitter(())),
-            ("Icecast Input", ModuleParams::IcecastInput(IcecastInputParams::default())),
+            ("Stream Input", ModuleParams::StreamInput(StreamInputParams::default())),
             ("EQ Three", ModuleParams::EqThree(EqThreeParams::default())),
         ];
 
@@ -751,8 +751,8 @@ impl Window {
             ModuleParams::Mixer(params) => {
                 html! { <Mixer id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
-            ModuleParams::IcecastInput(params) => {
-                html! { <IcecastInput id={self.props.id} module={self.link.clone()} params={params} /> }
+            ModuleParams::StreamInput(params) => {
+                html! { <StreamInput id={self.props.id} module={self.link.clone()} params={params} /> }
             }
             ModuleParams::EqThree(params) => {
                 html! { <EqThree id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
