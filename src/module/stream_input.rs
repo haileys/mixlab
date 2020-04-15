@@ -1,4 +1,4 @@
-use mixlab_protocol::{IcecastInputParams, LineType, Terminal};
+use mixlab_protocol::{StreamInputParams, LineType, Terminal};
 
 use crate::engine::Sample;
 use crate::icecast;
@@ -7,15 +7,15 @@ use crate::source::SourceRecv;
 use crate::util;
 
 #[derive(Debug)]
-pub struct IcecastInput {
-    params: IcecastInputParams,
+pub struct StreamInput {
+    params: StreamInputParams,
     recv: Option<SourceRecv>,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
 }
 
-impl ModuleT for IcecastInput {
-    type Params = IcecastInputParams;
+impl ModuleT for StreamInput {
+    type Params = StreamInputParams;
     type Indication = ();
 
     fn create(params: Self::Params) -> (Self, Self::Indication) {
@@ -24,7 +24,7 @@ impl ModuleT for IcecastInput {
             // in use. tell the user this via an indication
             icecast::listen(mountpoint).ok());
 
-        let module = IcecastInput {
+        let module = StreamInput {
             params,
             recv,
             inputs: vec![],
