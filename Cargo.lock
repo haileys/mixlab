@@ -913,6 +913,7 @@ dependencies = [
  "lazy_static",
  "lewton",
  "mixlab-protocol",
+ "mpeg2ts",
  "ogg",
  "ringbuf",
  "rml_rtmp",
@@ -926,6 +927,16 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "mpeg2ts"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a38c92bbb0d15f62ed915c392f2d675e3c0889c98be7ad418ae660bfcb7f3b2"
+dependencies = [
+ "byteorder",
+ "trackable",
 ]
 
 [[package]]
@@ -1733,6 +1744,25 @@ name = "tower-service"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e987b6bf443f4b5b3b6f38704195592cca41c5bb7aedd3c3693c7081f8289860"
+
+[[package]]
+name = "trackable"
+version = "0.2.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11475c3c53b075360eac9794965822cb053996046545f91cf61d90e00b72efa5"
+dependencies = [
+ "trackable_derive",
+]
+
+[[package]]
+name = "trackable_derive"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edcf0b9b2caa5f4804ef77aeee1b929629853d806117c48258f402b69737e65c"
+dependencies = [
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "try-lock"
