@@ -214,7 +214,7 @@ fn receive_audio_packet(
             if let Some(codec) = &mut ctx.audio_codec {
                 let decode_info = codec.decode(&bytes).expect("codec.decode");
 
-                ctx.source.write(decode_info.samples)
+                ctx.source.write_audio(decode_info.samples)
                     .map_err(|()| RtmpError::SourceSend)?;
             } else {
                 eprintln!("rtmp: received aac data packet before sequence header, dropping");

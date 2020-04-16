@@ -120,7 +120,7 @@ fn run_decode_thread(mut send: SourceSend, stream: impl io::Read, content_type: 
                     }
                 }
 
-                send.write(&samples)
+                send.write_audio(&samples)
                     .map_err(|()| DecodeThreadError::ListenerDisconnected)?;
 
                 throttle.send_samples(sample_count);
