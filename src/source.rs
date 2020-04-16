@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use ringbuf::{RingBuffer, Producer, Consumer};
 
-use crate::codec::avc::AvcPacket;
+use crate::codec::avc::AvcFrame;
 use crate::engine::Sample;
 
 #[derive(Clone)]
@@ -24,7 +24,7 @@ pub struct Source {
 
 struct TxPair {
     audio: Producer<Sample>,
-    video: Producer<AvcPacket>,
+    video: Producer<AvcFrame>,
 }
 
 #[derive(Debug)]
@@ -56,7 +56,7 @@ pub struct SourceRecv {
     registry: Registry,
     shared: Arc<SourceShared>,
     audio_rx: Consumer<Sample>,
-    video_rx: Consumer<AvcPacket>,
+    video_rx: Consumer<AvcFrame>,
 }
 
 impl Registry {
@@ -77,7 +77,7 @@ impl Registry {
         }
 
         let (audio_tx, audio_rx) = RingBuffer::<Sample>::new(65536).split();
-        let (video_tx, video_rx) = RingBuffer::<AvcPacket>::new(128).split();
+        let (video_tx, video_rx) = RingBuffer::<AvcFrame>::new(128).split();
 
         let shared = Arc::new(SourceShared {
             channel_name: channel_name.to_owned(),
@@ -147,7 +147,7 @@ impl SourceSend {
         }
     }
 
-    pub fn write_video(&mut self, data: AvcPacket) -> Result<(), ()> {
+    pub fn write_video(&mut self, data: AvcFrame) -> Result<(), ()> {
         if self.connected() {
             // tx is always Some for a valid (non-dropped) SourceSend:
             let tx = self.tx.as_mut().unwrap();
@@ -198,7 +198,7 @@ impl SourceRecv {
         self.audio_rx.pop_slice(data)
     }
 
-    pub fn read_video(&mut self) -> Option<AvcPacket> {
+    pub fn read_video(&mut self) -> Option<AvcFrame> {
         self.video_rx.pop()
     }
 }

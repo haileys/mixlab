@@ -57,13 +57,21 @@ impl ModuleT for StreamInput {
     }
 
     fn run_tick(&mut self, _t: u64, _: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
-        let output = outputs[1].expect_stereo();
+        let (video, audio) = match outputs {
+            [video, audio] => (video.expect_avc(), audio.expect_stereo()),
+            _ => unimplemented!(),
+        };
+
+        let avc_packet = self.recv.as_mut()
+            .and_then(|recv| recv.read_video());
+
+        *video = avc_packet;
 
         let samples = self.recv.as_mut()
-            .map(|recv| recv.read_audio(output))
+            .map(|recv| recv.read_audio(audio))
             .unwrap_or(0);
 
-        util::zero(&mut output[samples..]);
+        util::zero(&mut audio[samples..]);
 
         None
     }

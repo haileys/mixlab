@@ -44,7 +44,7 @@ impl Bitstream {
         Ok(Self { nal_units, dcr })
     }
 
-    pub fn try_as_bytes(&self) -> Result<Bytes, AvcError> {
+    pub fn into_bytes(&self) -> Result<Bytes, AvcError> {
         use self::nal::UnitType;
 
         let mut tmp = BytesMut::new();

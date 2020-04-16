@@ -12,7 +12,7 @@ use rml_rtmp::handshake::HandshakeError;
 use rml_rtmp::sessions::{ServerSession, ServerSessionResult, ServerSessionError, ServerSessionEvent};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketType};
+use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketType, AvcFrame, Millis};
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError};
 
@@ -87,55 +87,6 @@ struct ReceiveContext {
     audio_codec: Option<faad2::Decoder>,
     video_dcr: Option<Arc<avc::DecoderConfigurationRecord>>,
 }
-
-// fn run_decode_thread(audio_rx: Receiver<(Bytes, RtmpTimestamp)>, video_rx: Receiver<(Bytes, RtmpTimestamp)>, mut source: SourceSend) {
-//     enum Packet {
-//         Audio(AudioPacket),
-//         Video(Result<VideoPacket, VideoPacketError>),
-//     }
-
-//     let aac_packets = audio_rx.map(|(packet, _)| AudioPacket::parse(packet));
-//     let avc_packets = video_rx.map(|(packet, _)| VideoPacket::parse(packet));
-//     let mut packets = stream::select(
-//         aac_packets.map(Packet::Audio),
-//         avc_packets.map(Packet::Video),
-//     );
-
-//     use std::io::Write;
-//     let mut video_dump = std::fs::File::create("dump.h264").unwrap();
-
-//     while let Some(packet) = block_on(packets.next()) {
-//         match packet {
-//             Packet::Audio(AudioPacket::AacSequenceHeader(bytes)) => {
-//                 if audio_codec.is_some() {
-//                     eprintln!("rtmp: received second aac sequence header?");
-//                 }
-
-//                 // TODO - validate user input before passing it to faad2
-//                 audio_codec = Some(Decoder::new(&bytes).expect("Decoder::new"));
-//             }
-//             Packet::Audio(AudioPacket::AacRawData(bytes)) => {
-//                 if let Some(codec) = &mut audio_codec {
-//                     let decode_info = codec.decode(&bytes).expect("codec.decode");
-//                     match source.write(decode_info.samples) {
-//                         Ok(_) => {}
-//                         Err(_) => { break; }
-//                     }
-//                 } else {
-//                     eprintln!("rtmp: received aac data packet before sequence header, dropping");
-//                 }
-//             }
-//             Packet::Audio(AudioPacket::Unknown(_)) => {
-//                 eprintln!("rtmp: received unknown audio packet, dropping");
-//             }
-//             Packet::Video(Ok(mut packet)) => {
-//             }
-//             Packet::Video(Err(e)) => {
-//                 eprintln!("rtmp: received unknown video packet: {:?}", e);
-//             }
-//         }
-//     }
-// }
 
 fn run_receive_thread(ctx: &mut ReceiveContext, mut buff: Vec<u8>) -> Result<(), RtmpError> {
     loop {
@@ -231,7 +182,7 @@ fn receive_audio_packet(
 fn receive_video_packet(
     ctx: &mut ReceiveContext,
     data: Bytes,
-    _timestamp: RtmpTimestamp,
+    timestamp: RtmpTimestamp,
 ) -> Result<(), RtmpError> {
     let mut packet = match AvcPacket::parse(data) {
         Ok(packet) => packet,
@@ -256,8 +207,6 @@ fn receive_video_packet(
         }
     }
 
-    // println!("packet timestamp: {:?}", packet.timestamp);
-
     if let Some(dcr) = ctx.video_dcr.clone() {
         match Bitstream::parse(packet.data, dcr) {
             Ok(bitstream) => {
@@ -271,10 +220,15 @@ fn receive_video_packet(
                         .open("dump.h264")
                         .unwrap();
 
-                    video_dump.write_all(&bitstream.try_as_bytes().unwrap()).unwrap();
+                    video_dump.write_all(&bitstream.into_bytes().unwrap()).unwrap();
                 }
 
-                // do stuff!
+                let _ = ctx.source.write_video(AvcFrame {
+                    frame_type: packet.frame_type,
+                    timestamp: Millis(timestamp.value as u64),
+                    presentation_timestamp: Millis(timestamp.value as u64 + packet.composition_time as u64),
+                    bitstream: bitstream,
+                });
             }
             Err(e) => {
                 eprintln!("rtmp: could not read avc bitstream: {:?}", e);
@@ -283,19 +237,6 @@ fn receive_video_packet(
     } else {
         eprintln!("rtmp: cannot read avc frame without dcr");
     }
-
-    // println!("frame_type: {:?}, avc_packet_type: {:?}, composition_time: {:?}",
-    //     packet.frame_type, packet.avc_packet_type, packet.composition_time);
-
-    // println!("data: (len = {:8}) {:x?}", packet.data.len(), &packet.data[0..32]);
-
-    // match packet.avc_packet_type {
-    //     AvcPacketType::SequenceHeader => {}
-    //     AvcPacketType::EndOfSequence => {}
-    //     _ => {
-    //         video_dump.write_all(&packet.data).unwrap();
-    //     }
-    // }
 
     Ok(())
 }
