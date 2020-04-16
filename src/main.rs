@@ -5,6 +5,7 @@ mod listen;
 mod module;
 mod rtmp;
 mod source;
+mod throttle;
 mod util;
 
 use std::sync::Arc;
