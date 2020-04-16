@@ -2,7 +2,7 @@ use std::f64;
 
 use mixlab_protocol::{FmSineParams, LineType, Terminal};
 
-use crate::engine::{Sample, SAMPLE_RATE, CHANNELS, ZERO_BUFFER_STEREO};
+use crate::engine::{Sample, InputRef, OutputRef, SAMPLE_RATE, CHANNELS};
 use crate::module::ModuleT;
 
 #[derive(Debug)]
@@ -33,10 +33,10 @@ impl ModuleT for FmSine {
         None
     }
 
-    fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let len = outputs[0].len() / CHANNELS;
-
-        let input = inputs[0].unwrap_or(&ZERO_BUFFER_STEREO);
+    fn run_tick(&mut self, t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let input = inputs[0].expect_mono();
+        let output = outputs[0].expect_stereo();
+        let len = output.len() / CHANNELS;
 
         let freq_amp = (self.params.freq_hi - self.params.freq_lo) / 2.0;
         let freq_mid = self.params.freq_lo + freq_amp;
@@ -47,7 +47,7 @@ impl ModuleT for FmSine {
             let x = f64::sin(co * t);
 
             for chan in 0..CHANNELS {
-                outputs[0][i * CHANNELS + chan] = x as Sample;
+                output[i * CHANNELS + chan] = x as Sample;
             }
         }
 

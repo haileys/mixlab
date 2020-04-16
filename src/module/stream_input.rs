@@ -1,6 +1,6 @@
 use mixlab_protocol::{StreamInputParams, LineType, Terminal, StreamProtocol};
 
-use crate::engine::Sample;
+use crate::engine::{InputRef, OutputRef};
 use crate::icecast;
 use crate::module::ModuleT;
 use crate::rtmp;
@@ -53,12 +53,14 @@ impl ModuleT for StreamInput {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, _inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
+    fn run_tick(&mut self, _t: u64, _: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let output = outputs[0].expect_stereo();
+
         let samples = self.recv.as_mut()
-            .map(|recv| recv.read(&mut outputs[0]))
+            .map(|recv| recv.read(output))
             .unwrap_or(0);
 
-        util::zero(&mut outputs[0][samples..]);
+        util::zero(&mut output[samples..]);
 
         None
     }

@@ -1,4 +1,4 @@
-use crate::engine::{Sample, ZERO_BUFFER_MONO, SAMPLE_RATE};
+use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::{ModuleT, LineType, Terminal};
 
 use mixlab_protocol::EnvelopeParams;
@@ -87,9 +87,9 @@ impl ModuleT for Envelope {
         None
     }
 
-    fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let input = &inputs[0].unwrap_or(&ZERO_BUFFER_MONO);
-        let output = &mut outputs[0];
+    fn run_tick(&mut self, t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let input = inputs[0].expect_mono();
+        let output = outputs[0].expect_mono();
 
         let len = input.len();
         for i in 0..len {

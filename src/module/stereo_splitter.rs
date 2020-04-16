@@ -1,4 +1,4 @@
-use crate::engine::{Sample, ZERO_BUFFER_STEREO};
+use crate::engine::{InputRef, OutputRef};
 use crate::module::{ModuleT, LineType, Terminal};
 
 #[derive(Debug)]
@@ -29,16 +29,17 @@ impl ModuleT for StereoSplitter {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let input = &inputs[0].unwrap_or(&ZERO_BUFFER_STEREO);
+    fn run_tick(&mut self, _t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let input = inputs[0].expect_stereo();
 
-        if let [left, right] = outputs {
-            for i in 0..left.len() {
-                left[i] = input[i * 2 + 0];
-                right[i] = input[i * 2 + 1];
-            }
-        } else {
-            unreachable!();
+        let (left, right) = match outputs {
+            [left, right] => (left.expect_mono(), right.expect_mono()),
+            _ => unreachable!(),
+        };
+
+        for i in 0..left.len() {
+            left[i] = input[i * 2 + 0];
+            right[i] = input[i * 2 + 1];
         }
 
         None

@@ -1,4 +1,4 @@
-use crate::engine::Sample;
+use crate::engine::{InputRef, OutputRef};
 use crate::module::ModuleT;
 
 use mixlab_protocol::{PlotterIndication, LineType, Terminal};
@@ -31,20 +31,20 @@ impl ModuleT for Plotter {
         None
     }
 
-    fn run_tick(&mut self, t: u64, inputs: &[Option<&[Sample]>], _outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        if t % 10 == 1 {
-            inputs[0].map(|input| {
-                let samples = input.len() / 2;
-                let mut left = Vec::with_capacity(samples);
-                let mut right = Vec::with_capacity(samples);
+    fn run_tick(&mut self, t: u64, inputs: &[InputRef], _: &mut [OutputRef]) -> Option<Self::Indication> {
+        if t % 10 == 1 && inputs[0].connected() {
+            let input = inputs[0].expect_stereo();
 
-                for i in 0..samples {
-                    left.push(input[i * 2]);
-                    right.push(input[i * 2 + 1]);
-                }
+            let samples = input.len() / 2;
+            let mut left = Vec::with_capacity(samples);
+            let mut right = Vec::with_capacity(samples);
 
-                PlotterIndication { inputs: vec![left, right] }
-            })
+            for i in 0..samples {
+                left.push(input[i * 2]);
+                right.push(input[i * 2 + 1]);
+            }
+
+            Some(PlotterIndication { inputs: vec![left, right] })
         } else {
             None
         }

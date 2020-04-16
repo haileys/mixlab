@@ -1,4 +1,4 @@
-use crate::engine::{Sample, ZERO_BUFFER_STEREO, ONE_BUFFER_MONO};
+use crate::engine::{Sample, InputRef, OutputRef};
 use crate::module::{ModuleT, LineType, Terminal};
 
 use mixlab_protocol::AmplifierParams;
@@ -34,18 +34,23 @@ impl ModuleT for Amplifier {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
+    fn run_tick(&mut self, _t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
         let AmplifierParams {mod_depth, amplitude} = self.params;
 
-        let input = &inputs[0].unwrap_or(&ZERO_BUFFER_STEREO);
-        let mod_input = &inputs[1].unwrap_or(&ONE_BUFFER_MONO);
-        let output = &mut outputs[0];
+        let input = inputs[0].expect_stereo();
+        let mod_input = if inputs[1].connected() {
+            Some(inputs[1].expect_mono())
+        } else {
+            None
+        };
+
+        let output = outputs[0].expect_stereo();
 
         let len = input.len();
 
         for i in 0..len {
             // mod input is a mono channel and so half the length:
-            let mod_value = mod_input[i / 2] as f64;
+            let mod_value = mod_input.map(|buff| buff[i / 2] as f64).unwrap_or(1.0);
 
             output[i] = (input[i] as f64 * depth(mod_value, mod_depth) * amplitude) as Sample;
         }

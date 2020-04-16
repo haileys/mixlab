@@ -41,7 +41,6 @@ const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 pub static ZERO_BUFFER_STEREO: [Sample; SAMPLES_PER_TICK * CHANNELS] = [0.0; SAMPLES_PER_TICK * CHANNELS];
 
 pub static ZERO_BUFFER_MONO: [Sample; SAMPLES_PER_TICK] = [0.0; SAMPLES_PER_TICK];
-pub static ONE_BUFFER_MONO: [Sample; SAMPLES_PER_TICK] = [1.0; SAMPLES_PER_TICK];
 
 pub enum EngineMessage {
     ConnectSession(oneshot::Sender<(SessionId, WorkspaceState, EngineOps)>),
@@ -384,7 +383,7 @@ impl Engine {
 
         // run modules in dependency order according to BFS above
 
-        let mut buffers = HashMap::<OutputId, Vec<Sample>>::new();
+        let mut buffers = HashMap::<OutputId, Output>::new();
         let mut indications = Vec::new();
 
         for module_id in topsort.run_order.iter() {
@@ -393,24 +392,24 @@ impl Engine {
 
             let connections = &self.connections;
 
-            let mut output_buffers = Vec::<Vec<Sample>>::new();
-
-            for _ in 0..module.outputs().len() {
-                output_buffers.push(vec![0.0; SAMPLES_PER_TICK * CHANNELS]);
-            }
+            let mut output_buffers = module.outputs().iter()
+                .map(|output| Output::from_line_type(output.line_type()))
+                .collect::<Vec<_>>();
 
             {
                 let input_refs = module.inputs().iter()
                     .enumerate()
-                    .map(|(i, ty)| (InputId(*module_id, i), ty))
-                    .map(|(input, ty)|
-                        connections.get(&input).map(|output|
-                            &buffers[output][0..line_type_sample_count(ty.line_type())]))
-                    .collect::<Vec<Option<&[Sample]>>>();
+                    .map(|(i, _ty)| InputId(*module_id, i))
+                    .map(|input_id| {
+                        connections.get(&input_id)
+                            .and_then(|output_id| buffers.get(output_id))
+                            .map(|output| output.as_input_ref())
+                            .unwrap_or(InputRef::Disconnected)
+                    })
+                    .collect::<Vec<_>>();
 
                 let mut output_refs = output_buffers.iter_mut()
-                    .zip(module.outputs())
-                    .map(|(vec, ty)| &mut vec[0..line_type_sample_count(ty.line_type())])
+                    .map(|output| output.as_output_ref())
                     .collect::<Vec<_>>();
 
                 let t = tick * SAMPLES_PER_TICK as u64;
@@ -423,8 +422,8 @@ impl Engine {
                 }
             }
 
-            for (i, buffer) in output_buffers.into_iter().enumerate(){
-                buffers.insert(OutputId(*module_id, i), buffer);
+            for (i, output) in output_buffers.into_iter().enumerate() {
+                buffers.insert(OutputId(*module_id, i), output);
             }
         }
 
@@ -432,9 +431,83 @@ impl Engine {
     }
 }
 
-fn line_type_sample_count(line_type: LineType) -> usize {
-    match line_type {
-        LineType::Mono => SAMPLES_PER_TICK,
-        LineType::Stereo => SAMPLES_PER_TICK * 2,
+pub enum InputRef<'a> {
+    Disconnected,
+    Mono(&'a [Sample]),
+    Stereo(&'a [Sample]),
+}
+
+impl<'a> InputRef<'a> {
+    pub fn connected(&self) -> bool {
+        match self {
+            InputRef::Disconnected => false,
+            InputRef::Mono(_) |
+            InputRef::Stereo(_) => true,
+        }
+    }
+
+    pub fn expect_mono(&self) -> &'a [Sample] {
+        match self {
+            InputRef::Disconnected => &ZERO_BUFFER_MONO,
+            InputRef::Mono(buff) => buff,
+            InputRef::Stereo(_) => panic!("expected mono input, got stereo"),
+        }
+    }
+
+    pub fn expect_stereo(&self) -> &'a [Sample] {
+        match self {
+            InputRef::Disconnected => &ZERO_BUFFER_STEREO,
+            InputRef::Stereo(buff) => buff,
+            InputRef::Mono(_) => panic!("expected stereo input, got mono"),
+        }
+    }
+}
+
+enum Output {
+    Mono(Vec<Sample>),
+    Stereo(Vec<Sample>),
+}
+
+impl Output {
+    pub fn from_line_type(line_type: LineType) -> Output {
+        match line_type {
+            LineType::Mono => Output::Mono(vec![0.0; SAMPLES_PER_TICK]),
+            LineType::Stereo => Output::Stereo(vec![0.0; SAMPLES_PER_TICK * CHANNELS]),
+        }
+    }
+
+    pub fn as_input_ref(&self) -> InputRef<'_> {
+        match self {
+            Output::Mono(buff) => InputRef::Mono(buff),
+            Output::Stereo(buff) => InputRef::Stereo(buff),
+        }
+    }
+
+    pub fn as_output_ref(&mut self) -> OutputRef<'_> {
+        match self {
+            Output::Mono(buff) => OutputRef::Mono(buff),
+            Output::Stereo(buff) => OutputRef::Stereo(buff),
+        }
+    }
+}
+
+pub enum OutputRef<'a> {
+    Mono(&'a mut [Sample]),
+    Stereo(&'a mut [Sample]),
+}
+
+impl<'a> OutputRef<'a> {
+    pub fn expect_mono(&mut self) -> &mut [Sample] {
+        match self {
+            OutputRef::Mono(buff) => buff,
+            OutputRef::Stereo(_) => panic!("expected mono output, got stereo"),
+        }
+    }
+
+    pub fn expect_stereo(&mut self) -> &mut [Sample] {
+        match self {
+            OutputRef::Stereo(buff) => buff,
+            OutputRef::Mono(_) => panic!("expected stereo output, got mono"),
+        }
     }
 }

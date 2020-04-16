@@ -2,7 +2,7 @@ use std::f64;
 
 use mixlab_protocol::EqThreeParams;
 
-use crate::engine::{Sample, SAMPLE_RATE, ZERO_BUFFER_MONO};
+use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::{ModuleT, LineType, Terminal};
 
 const FREQ_LO: f64 = 420.0;
@@ -54,9 +54,9 @@ impl ModuleT for EqThree {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let input = inputs[0].unwrap_or(&ZERO_BUFFER_MONO);
-        let output = &mut outputs[0];
+    fn run_tick(&mut self, _t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let input = inputs[0].expect_mono();
+        let output = outputs[0].expect_mono();
 
         let gain_lo = self.params.gain_lo.to_linear();
         let gain_mid = self.params.gain_mid.to_linear();
