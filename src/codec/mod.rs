@@ -1,3 +1,4 @@
+pub mod avc;
 pub mod ogg;
 
 use std::io;
