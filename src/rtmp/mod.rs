@@ -7,14 +7,12 @@ use bytes::Bytes;
 use derive_more::From;
 use faad2::Decoder;
 use futures::executor::block_on;
-use futures::stream::{self, StreamExt};
 use rml_rtmp::time::RtmpTimestamp;
 use rml_rtmp::handshake::HandshakeError;
 use rml_rtmp::sessions::{ServerSession, ServerSessionResult, ServerSessionError, ServerSessionEvent};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::mpsc::{self, Sender, Receiver};
 
-use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketError, AvcPacketType};
+use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketType};
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError};
 
@@ -197,7 +195,7 @@ fn handle_event(
 fn receive_audio_packet(
     ctx: &mut ReceiveContext,
     data: Bytes,
-    timestamp: RtmpTimestamp,
+    _timestamp: RtmpTimestamp,
 ) -> Result<(), RtmpError> {
     let packet = AudioPacket::parse(data);
 
@@ -206,6 +204,8 @@ fn receive_audio_packet(
             if ctx.audio_codec.is_some() {
                 eprintln!("rtmp: received second aac sequence header?");
             }
+
+            println!("bytes: {:?}", bytes);
 
             // TODO - validate user input before passing it to faad2
             ctx.audio_codec = Some(Decoder::new(&bytes).expect("Decoder::new"));
@@ -231,7 +231,7 @@ fn receive_audio_packet(
 fn receive_video_packet(
     ctx: &mut ReceiveContext,
     data: Bytes,
-    timestamp: RtmpTimestamp,
+    _timestamp: RtmpTimestamp,
 ) -> Result<(), RtmpError> {
     let mut packet = match AvcPacket::parse(data) {
         Ok(packet) => packet,

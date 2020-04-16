@@ -2,3 +2,4 @@
 /frontend/target
 /frontend/pkg/
 /frontend/wasm-pack.log
+/dump.ts

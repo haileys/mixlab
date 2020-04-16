@@ -139,14 +139,15 @@ pub enum ModuleParams {
     Envelope(EnvelopeParams),
     EqThree(EqThreeParams),
     FmSine(FmSineParams),
-    StreamInput(StreamInputParams),
     Mixer(MixerParams),
     Oscillator(OscillatorParams),
     OutputDevice(OutputDeviceParams),
     Plotter(()),
     StereoPanner(()),
     StereoSplitter(()),
+    StreamInput(StreamInputParams),
     Trigger(GateState),
+    TsDump(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -155,14 +156,15 @@ pub enum Indication {
     Envelope(()),
     EqThree(()),
     FmSine(()),
-    StreamInput(()),
     Mixer(()),
     Oscillator(()),
     OutputDevice(OutputDeviceIndication),
     Plotter(PlotterIndication),
     StereoPanner(()),
     StereoSplitter(()),
+    StreamInput(()),
     Trigger(()),
+    TsDump(()),
 }
 
 
