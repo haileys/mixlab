@@ -1,11 +1,14 @@
 use std::cmp;
 use std::fs::File;
 
+use bytes::Buf;
+use derive_more::From;
 use fdk_aac::enc as aac;
-use mpeg2ts::ts::{self, TsPacketWriter, TsPacket, TsHeader, TsPayload, ProgramAssociation, ContinuityCounter, Pid, VersionNumber, WriteTsPacket};
 use mpeg2ts::es::StreamId;
 use mpeg2ts::time::Timestamp;
+use mpeg2ts::ts::{self, TsPacketWriter, TsPacket, TsHeader, TsPayload, ProgramAssociation, ContinuityCounter, Pid, VersionNumber, WriteTsPacket};
 
+use crate::codec::avc::{AvcFrame, AvcError, Millis};
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
 
@@ -25,6 +28,7 @@ pub struct TsDump {
 struct TsWriteCtx {
     ts: TsPacketWriter<File>,
     audio_continuity_counter: ContinuityCounter,
+    video_continuity_counter: ContinuityCounter,
 }
 
 impl ModuleT for TsDump {
@@ -48,6 +52,7 @@ impl ModuleT for TsDump {
         let write_ctx = TsWriteCtx {
             ts,
             audio_continuity_counter: ContinuityCounter::default(),
+            video_continuity_counter: ContinuityCounter::default(),
         };
 
         let module = TsDump {
@@ -74,7 +79,7 @@ impl ModuleT for TsDump {
     }
 
     fn run_tick(&mut self, _t: u64, inputs: &[InputRef], _: &mut [OutputRef]) -> Option<Self::Indication> {
-        let (_video, audio) = match inputs {
+        let (video, audio) = match inputs {
             [video, audio] => (video.expect_avc(), audio.expect_stereo()),
             _ => unreachable!()
         };
@@ -118,6 +123,12 @@ impl ModuleT for TsDump {
             self.aac_output_buff.truncate(0);
         }
 
+        // process incoming video
+
+        if let Some(frame) = video {
+            write_video(&mut self.write_ctx, frame).unwrap();
+        }
+
         None
     }
 
@@ -129,9 +140,6 @@ impl ModuleT for TsDump {
         &[]
     }
 }
-
-#[derive(Debug, Clone, Copy)]
-pub struct Millis(u64);
 
 const PMT_PID: u16 = 256;
 const VIDEO_ES_PID: u16 = 257;
@@ -204,8 +212,7 @@ fn program_map_table() -> TsPacket {
 
 fn write_audio(ctx: &mut TsWriteCtx, mut data: &[u8], timestamp: Millis) -> Result<(), mpeg2ts::Error> {
     use mpeg2ts::pes::PesHeader;
-
-    use ts::payload::Bytes;
+    use mpeg2ts::ts::payload::Bytes;
 
     let first_payload_len = cmp::min(153, data.len());
     let (first_payload, rest) = data.split_at(first_payload_len);
@@ -244,6 +251,81 @@ fn write_audio(ctx: &mut TsWriteCtx, mut data: &[u8], timestamp: Millis) -> Resu
         })?;
 
         ctx.audio_continuity_counter.increment();
+    }
+
+    Ok(())
+}
+
+#[derive(From, Debug)]
+enum WriteVideoError {
+    Mpeg2Ts(mpeg2ts::Error),
+    Avc(AvcError),
+}
+
+fn write_video(ctx: &mut TsWriteCtx, video: &AvcFrame) -> Result<(), WriteVideoError> {
+    use mpeg2ts::es::StreamId;
+    use mpeg2ts::pes::PesHeader;
+    use mpeg2ts::time::{ClockReference, Timestamp};
+    use mpeg2ts::ts::AdaptationField;
+    use mpeg2ts::ts::payload::{Bytes, Pes};
+
+    let mut buf = video.bitstream.into_bytes()?;
+    let pes_data_len = cmp::min(153, buf.remaining());
+    let pes_data = buf.split_to(pes_data_len);
+    let pcr = ClockReference::new(video.timestamp.0 * 90)?;
+
+    let adaptation_field = if video.frame_type.is_key_frame() {
+        Some(AdaptationField {
+            discontinuity_indicator: false,
+            random_access_indicator: true,
+            es_priority_indicator: false,
+            pcr: Some(pcr),
+            opcr: None,
+            splice_countdown: None,
+            transport_private_data: Vec::new(),
+            extension: None,
+        })
+    } else {
+        None
+    };
+
+    let pts = Timestamp::new(video.presentation_timestamp.0 * 90)?;
+    let dts = Timestamp::new(video.timestamp.0 * 90)?;
+
+    let packet = TsPacket {
+        header: ts_header(VIDEO_ES_PID, ctx.video_continuity_counter.clone()),
+        adaptation_field,
+        payload: Some(TsPayload::Pes(Pes {
+            header: PesHeader {
+                stream_id: StreamId::new(PES_VIDEO_STREAM_ID),
+                priority: false,
+                data_alignment_indicator: false,
+                copyright: false,
+                original_or_copy: false,
+                pts: Some(pts),
+                dts: Some(dts),
+                escr: None,
+            },
+            pes_packet_len: 0,
+            data: Bytes::new(&pes_data)?,
+        })),
+    };
+
+    ctx.ts.write_ts_packet(&packet)?;
+    ctx.video_continuity_counter.increment();
+
+    while buf.remaining() > 0 {
+        let pes_data_len = cmp::min(Bytes::MAX_SIZE, buf.remaining());
+        let pes_data = buf.split_to(pes_data_len);
+
+        let packet = TsPacket {
+            header: ts_header(VIDEO_ES_PID, ctx.video_continuity_counter.clone()),
+            adaptation_field: None,
+            payload: Some(TsPayload::Raw(Bytes::new(&pes_data)?)),
+        };
+
+        ctx.ts.write_ts_packet(&packet)?;
+        ctx.video_continuity_counter.increment();
     }
 
     Ok(())

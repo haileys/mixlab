@@ -10,7 +10,7 @@ use tokio::sync::{oneshot, broadcast};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ServerUpdate, Indication, LineType, ClientSequence, ClientOp};
 
-use crate::codec::avc::AvcPacket;
+use crate::codec::avc::AvcFrame;
 use crate::module::Module;
 use crate::util::Sequence;
 
@@ -436,7 +436,7 @@ pub enum InputRef<'a> {
     Disconnected,
     Mono(&'a [Sample]),
     Stereo(&'a [Sample]),
-    Avc(Option<&'a AvcPacket>),
+    Avc(Option<&'a AvcFrame>),
 }
 
 impl<'a> InputRef<'a> {
@@ -467,12 +467,12 @@ impl<'a> InputRef<'a> {
         }
     }
 
-    pub fn expect_avc(&self) -> Option<&'a AvcPacket> {
+    pub fn expect_avc(&self) -> Option<&'a AvcFrame> {
         match self {
             InputRef::Disconnected => None,
             InputRef::Stereo(_) => panic!("expected stereo input, got stereo"),
             InputRef::Mono(_) => panic!("expected stereo input, got mono"),
-            InputRef::Avc(packet) => *packet,
+            InputRef::Avc(frame) => *frame,
         }
     }
 }
@@ -480,7 +480,7 @@ impl<'a> InputRef<'a> {
 enum Output {
     Mono(Vec<Sample>),
     Stereo(Vec<Sample>),
-    Avc(Option<AvcPacket>),
+    Avc(Option<AvcFrame>),
 }
 
 impl Output {
@@ -504,7 +504,7 @@ impl Output {
         match self {
             Output::Mono(buff) => OutputRef::Mono(buff),
             Output::Stereo(buff) => OutputRef::Stereo(buff),
-            Output::Avc(packet) => OutputRef::Avc(packet),
+            Output::Avc(frame) => OutputRef::Avc(frame),
         }
     }
 }
@@ -512,7 +512,7 @@ impl Output {
 pub enum OutputRef<'a> {
     Mono(&'a mut [Sample]),
     Stereo(&'a mut [Sample]),
-    Avc(&'a mut Option<AvcPacket>)
+    Avc(&'a mut Option<AvcFrame>)
 }
 
 impl<'a> OutputRef<'a> {
@@ -529,6 +529,14 @@ impl<'a> OutputRef<'a> {
             OutputRef::Stereo(buff) => buff,
             OutputRef::Mono(_) => panic!("expected stereo output, got mono"),
             OutputRef::Avc(_) => panic!("expected mono output, got avc"),
+        }
+    }
+
+    pub fn expect_avc(&mut self) -> &mut Option<AvcFrame> {
+        match self {
+            OutputRef::Stereo(_) => panic!("expected stereo output, got avc"),
+            OutputRef::Mono(_) => panic!("expected mono input, got avc"),
+            OutputRef::Avc(frame) => frame,
         }
     }
 }

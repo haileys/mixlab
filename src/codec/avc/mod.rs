@@ -7,6 +7,9 @@ pub mod nal;
 pub use dcr::DecoderConfigurationRecord;
 pub use bitstream::Bitstream;
 
+#[derive(Debug, Clone, Copy)]
+pub struct Millis(pub u64);
+
 #[derive(Debug)]
 pub enum AvcError {
     NotEnoughData,
@@ -15,13 +18,19 @@ pub enum AvcError {
     UnknownNalUnitType(u8),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AvcFrameType {
     KeyFrame,
     InterFrame,
     DisposableInterFrame,
     GeneratedKeyFrame,
     VideoInfoFrame,
+}
+
+impl AvcFrameType {
+    pub fn is_key_frame(&self) -> bool {
+        *self == AvcFrameType::KeyFrame || *self == AvcFrameType::GeneratedKeyFrame
+    }
 }
 
 #[derive(Debug)]
@@ -91,4 +100,12 @@ impl AvcPacket {
             data,
         })
     }
+}
+
+#[derive(Debug)]
+pub struct AvcFrame {
+    pub frame_type: AvcFrameType,
+    pub timestamp: Millis,
+    pub presentation_timestamp: Millis,
+    pub bitstream: Bitstream,
 }
