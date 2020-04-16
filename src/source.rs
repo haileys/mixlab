@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex};
 use ringbuf::{RingBuffer, Producer, Consumer};
 
 use crate::engine::Sample;
-use crate::throttle::AudioThrottle;
 
 #[derive(Clone)]
 pub struct Registry {
@@ -45,7 +44,6 @@ pub struct SourceSend {
     // this is, regrettably, an Option because we need to take the producer
     // and put it back in the mountpoints table on drop:
     tx: Option<Producer<Sample>>,
-    throttle: AudioThrottle,
 }
 
 pub struct SourceRecv {
@@ -112,7 +110,6 @@ impl Registry {
             registry: self.clone(),
             shared: source.shared.clone(),
             tx: Some(tx),
-            throttle: AudioThrottle::new(),
         })
     }
 }
@@ -124,10 +121,6 @@ impl SourceSend {
 
     pub fn write(&mut self, data: &[Sample]) -> Result<(), ()> {
         if self.connected() {
-            // assume stereo:
-            let sample_count = data.len() / 2;
-            self.throttle.send_samples(sample_count);
-
             // tx is always Some for a valid (non-dropped) SourceSend:
             let tx = self.tx.as_mut().unwrap();
 

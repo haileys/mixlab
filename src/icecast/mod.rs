@@ -12,6 +12,7 @@ use crate::codec::{AudioStream, StreamRead, StreamError};
 use crate::engine::{SAMPLE_RATE, Sample};
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ListenError, SourceRecv, SourceSend};
+use crate::throttle::AudioThrottle;
 use crate::util::SyncRead;
 
 use http::ContentType;
@@ -93,6 +94,8 @@ fn run_decode_thread(mut send: SourceSend, stream: impl io::Read, content_type: 
         return Ok(());
     }
 
+    let mut throttle = AudioThrottle::new();
+
     while let Some(packet) = audio.read().transpose() {
         match packet {
             Ok(StreamRead::Audio(pcm)) => {
@@ -119,6 +122,8 @@ fn run_decode_thread(mut send: SourceSend, stream: impl io::Read, content_type: 
 
                 send.write(&samples)
                     .map_err(|()| DecodeThreadError::ListenerDisconnected)?;
+
+                throttle.send_samples(sample_count);
             }
             Ok(StreamRead::Metadata(_)) => {
                 // ignore metadata for now
