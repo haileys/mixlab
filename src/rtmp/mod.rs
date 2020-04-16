@@ -14,14 +14,14 @@ use rml_rtmp::sessions::{ServerSession, ServerSessionResult, ServerSessionError,
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc::{self, Sender, Receiver};
 
-use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream};
+use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketError, AvcPacketType};
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError};
 
 mod incoming;
 mod packet;
 
-use packet::{AudioPacket, VideoPacket, VideoPacketError, AvcPacketType};
+use packet::AudioPacket;
 
 lazy_static::lazy_static! {
     static ref MOUNTPOINTS: Registry = {
@@ -233,7 +233,7 @@ fn receive_video_packet(
     data: Bytes,
     timestamp: RtmpTimestamp,
 ) -> Result<(), RtmpError> {
-    let mut packet = match VideoPacket::parse(data) {
+    let mut packet = match AvcPacket::parse(data) {
         Ok(packet) => packet,
         Err(e) => {
             println!("rtmp: could not parse video packet: {:?}", e);
@@ -241,7 +241,7 @@ fn receive_video_packet(
         }
     };
 
-    if let AvcPacketType::SequenceHeader = packet.avc_packet_type {
+    if let AvcPacketType::SequenceHeader = packet.packet_type {
         match DecoderConfigurationRecord::parse(&mut packet.data) {
             Ok(dcr) => {
                 if ctx.video_dcr.is_some() {

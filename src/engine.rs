@@ -10,6 +10,7 @@ use tokio::sync::{oneshot, broadcast};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ServerUpdate, Indication, LineType, ClientSequence, ClientOp};
 
+use crate::codec::avc::AvcPacket;
 use crate::module::Module;
 use crate::util::Sequence;
 
@@ -435,6 +436,7 @@ pub enum InputRef<'a> {
     Disconnected,
     Mono(&'a [Sample]),
     Stereo(&'a [Sample]),
+    Avc(Option<&'a AvcPacket>),
 }
 
 impl<'a> InputRef<'a> {
@@ -442,7 +444,8 @@ impl<'a> InputRef<'a> {
         match self {
             InputRef::Disconnected => false,
             InputRef::Mono(_) |
-            InputRef::Stereo(_) => true,
+            InputRef::Stereo(_) |
+            InputRef::Avc(_) => true,
         }
     }
 
@@ -451,6 +454,7 @@ impl<'a> InputRef<'a> {
             InputRef::Disconnected => &ZERO_BUFFER_MONO,
             InputRef::Mono(buff) => buff,
             InputRef::Stereo(_) => panic!("expected mono input, got stereo"),
+            InputRef::Avc(_) => panic!("expected mono input, got avc"),
         }
     }
 
@@ -459,6 +463,16 @@ impl<'a> InputRef<'a> {
             InputRef::Disconnected => &ZERO_BUFFER_STEREO,
             InputRef::Stereo(buff) => buff,
             InputRef::Mono(_) => panic!("expected stereo input, got mono"),
+            InputRef::Avc(_) => panic!("expected stereo input, got avc"),
+        }
+    }
+
+    pub fn expect_avc(&self) -> Option<&'a AvcPacket> {
+        match self {
+            InputRef::Disconnected => None,
+            InputRef::Stereo(_) => panic!("expected stereo input, got stereo"),
+            InputRef::Mono(_) => panic!("expected stereo input, got mono"),
+            InputRef::Avc(packet) => *packet,
         }
     }
 }
@@ -466,6 +480,7 @@ impl<'a> InputRef<'a> {
 enum Output {
     Mono(Vec<Sample>),
     Stereo(Vec<Sample>),
+    Avc(Option<AvcPacket>),
 }
 
 impl Output {
@@ -473,6 +488,7 @@ impl Output {
         match line_type {
             LineType::Mono => Output::Mono(vec![0.0; SAMPLES_PER_TICK]),
             LineType::Stereo => Output::Stereo(vec![0.0; SAMPLES_PER_TICK * CHANNELS]),
+            LineType::Avc => Output::Avc(None),
         }
     }
 
@@ -480,6 +496,7 @@ impl Output {
         match self {
             Output::Mono(buff) => InputRef::Mono(buff),
             Output::Stereo(buff) => InputRef::Stereo(buff),
+            Output::Avc(packet) => InputRef::Avc(packet.as_ref()),
         }
     }
 
@@ -487,6 +504,7 @@ impl Output {
         match self {
             Output::Mono(buff) => OutputRef::Mono(buff),
             Output::Stereo(buff) => OutputRef::Stereo(buff),
+            Output::Avc(packet) => OutputRef::Avc(packet),
         }
     }
 }
@@ -494,6 +512,7 @@ impl Output {
 pub enum OutputRef<'a> {
     Mono(&'a mut [Sample]),
     Stereo(&'a mut [Sample]),
+    Avc(&'a mut Option<AvcPacket>)
 }
 
 impl<'a> OutputRef<'a> {
@@ -501,6 +520,7 @@ impl<'a> OutputRef<'a> {
         match self {
             OutputRef::Mono(buff) => buff,
             OutputRef::Stereo(_) => panic!("expected mono output, got stereo"),
+            OutputRef::Avc(_) => panic!("expected mono output, got avc"),
         }
     }
 
@@ -508,6 +528,7 @@ impl<'a> OutputRef<'a> {
         match self {
             OutputRef::Stereo(buff) => buff,
             OutputRef::Mono(_) => panic!("expected stereo output, got mono"),
+            OutputRef::Avc(_) => panic!("expected mono output, got avc"),
         }
     }
 }
