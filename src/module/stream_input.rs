@@ -29,7 +29,10 @@ impl ModuleT for StreamInput {
             params,
             recv,
             inputs: vec![],
-            outputs: vec![LineType::Stereo.unlabeled()],
+            outputs: vec![
+                LineType::Avc.labeled("Video"),
+                LineType::Stereo.labeled("Audio"),
+            ],
         };
 
         (module, ())
@@ -54,7 +57,7 @@ impl ModuleT for StreamInput {
     }
 
     fn run_tick(&mut self, _t: u64, _: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
-        let output = outputs[0].expect_stereo();
+        let output = outputs[1].expect_stereo();
 
         let samples = self.recv.as_mut()
             .map(|recv| recv.read(output))
