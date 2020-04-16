@@ -2,12 +2,11 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Instant, Duration};
 
 use ringbuf::{RingBuffer, Producer, Consumer};
 
-use crate::engine::{Sample, SAMPLE_RATE};
+use crate::engine::Sample;
+use crate::throttle::AudioThrottle;
 
 #[derive(Clone)]
 pub struct Registry {
@@ -46,9 +45,7 @@ pub struct SourceSend {
     // this is, regrettably, an Option because we need to take the producer
     // and put it back in the mountpoints table on drop:
     tx: Option<Producer<Sample>>,
-    // throttling data:
-    started: Option<Instant>,
-    samples_sent: u64,
+    throttle: AudioThrottle,
 }
 
 pub struct SourceRecv {
@@ -115,8 +112,7 @@ impl Registry {
             registry: self.clone(),
             shared: source.shared.clone(),
             tx: Some(tx),
-            started: None,
-            samples_sent: 0,
+            throttle: AudioThrottle::new(),
         })
     }
 }
@@ -128,7 +124,9 @@ impl SourceSend {
 
     pub fn write(&mut self, data: &[Sample]) -> Result<(), ()> {
         if self.connected() {
-            let started = *self.started.get_or_insert_with(Instant::now);
+            // assume stereo:
+            let sample_count = data.len() / 2;
+            self.throttle.send_samples(sample_count);
 
             // tx is always Some for a valid (non-dropped) SourceSend:
             let tx = self.tx.as_mut().unwrap();
@@ -140,23 +138,6 @@ impl SourceSend {
             // is drop the data
 
             let _ = tx.push_slice(data);
-
-            // throttle ourselves according to how long these samples should
-            // take to play through. this ensures that fast clients don't
-            // fill the ring buffer up on us
-
-            let elapsed = Duration::from_micros((self.samples_sent * 1_000_000) / SAMPLE_RATE as u64);
-            let sleep_until = started + elapsed;
-            let now = Instant::now();
-
-            if now < sleep_until {
-                thread::sleep(sleep_until - now);
-            }
-
-            // assume stereo:
-            let sample_count = data.len() / 2;
-
-            self.samples_sent += sample_count as u64;
 
             Ok(())
         } else {
