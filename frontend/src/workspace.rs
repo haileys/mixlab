@@ -476,6 +476,7 @@ impl Workspace {
             ("Stereo Splitter", ModuleParams::StereoSplitter(())),
             ("Stream Input", ModuleParams::StreamInput(StreamInputParams::default())),
             ("EQ Three", ModuleParams::EqThree(EqThreeParams::default())),
+            ("MPEG-TS Dump", ModuleParams::TsDump(())),
         ];
 
         html! {
@@ -719,7 +720,8 @@ impl Window {
                 html! { <Oscillator id={self.props.id} module={self.link.clone()} params={params} /> }
             }
             ModuleParams::StereoPanner(()) |
-            ModuleParams::StereoSplitter(()) => {
+            ModuleParams::StereoSplitter(()) |
+            ModuleParams::TsDump(()) => {
                 html! {}
             }
             ModuleParams::OutputDevice(params) => {

@@ -39,6 +39,7 @@ pub enum AvcPacketType {
     EndOfSequence,
 }
 
+#[derive(Debug)]
 pub struct AvcPacket {
     pub frame_type: AvcFrameType,
     pub packet_type: AvcPacketType,
