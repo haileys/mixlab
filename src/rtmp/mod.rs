@@ -1,22 +1,27 @@
 use std::io;
 use std::mem;
+use std::sync::Arc;
 use std::thread;
 
-use bytes::{Bytes, Buf};
+use bytes::Bytes;
 use derive_more::From;
 use faad2::Decoder;
 use futures::executor::block_on;
-use futures::stream::StreamExt;
+use futures::stream::{self, StreamExt};
+use rml_rtmp::time::RtmpTimestamp;
 use rml_rtmp::handshake::HandshakeError;
 use rml_rtmp::sessions::{ServerSession, ServerSessionResult, ServerSessionError, ServerSessionEvent};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc::{self, Sender, Receiver};
 
+use crate::codec::avc::{DecoderConfigurationRecord, Bitstream};
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError};
 
-// mod adts;
 mod incoming;
+mod packet;
+
+use packet::{AudioPacket, VideoPacket, VideoPacketError, AvcPacketType};
 
 lazy_static::lazy_static! {
     static ref MOUNTPOINTS: Registry = {
@@ -62,15 +67,17 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     };
 
     let (audio_tx, audio_rx) = mpsc::channel(1);
+    let (video_tx, video_rx) = mpsc::channel(1);
 
     let mut ctx = ReceiveContext {
         stream,
         session,
         audio_tx,
+        video_tx,
     };
 
     thread::spawn(move || {
-        run_decode_thread(audio_rx, source);
+        run_decode_thread(audio_rx, video_rx, source);
     });
 
     run_receive(&mut ctx, buff).await?;
@@ -78,18 +85,37 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     Ok(())
 }
 
-fn run_decode_thread(audio_rx: Receiver<Bytes>, mut source: SourceSend) {
-    let mut aac_packets = audio_rx.map(|packet| classify_audio_packet(packet));
-    let mut codec = None;
+fn run_decode_thread(audio_rx: Receiver<(Bytes, RtmpTimestamp)>, video_rx: Receiver<(Bytes, RtmpTimestamp)>, mut source: SourceSend) {
+    enum Packet {
+        Audio(AudioPacket),
+        Video(Result<VideoPacket, VideoPacketError>),
+    }
 
-    while let Some(packet) = block_on(aac_packets.next()) {
+    let aac_packets = audio_rx.map(|(packet, _)| AudioPacket::parse(packet));
+    let avc_packets = video_rx.map(|(packet, _)| VideoPacket::parse(packet));
+    let mut packets = stream::select(
+        aac_packets.map(Packet::Audio),
+        avc_packets.map(Packet::Video),
+    );
+
+    let mut audio_codec = None;
+    let mut video_dcr = None;
+
+    use std::io::Write;
+    let mut video_dump = std::fs::File::create("dump.h264").unwrap();
+
+    while let Some(packet) = block_on(packets.next()) {
         match packet {
-            AudioPacket::AacSequenceHeader(bytes) => {
+            Packet::Audio(AudioPacket::AacSequenceHeader(bytes)) => {
+                if audio_codec.is_some() {
+                    eprintln!("rtmp: received second aac sequence header?");
+                }
+
                 // TODO - validate user input before passing it to faad2
-                codec = Some(Decoder::new(&bytes).expect("Decoder::new"));
+                audio_codec = Some(Decoder::new(&bytes).expect("Decoder::new"));
             }
-            AudioPacket::AacRawData(bytes) => {
-                if let Some(codec) = &mut codec {
+            Packet::Audio(AudioPacket::AacRawData(bytes)) => {
+                if let Some(codec) = &mut audio_codec {
                     let decode_info = codec.decode(&bytes).expect("codec.decode");
                     match source.write(decode_info.samples) {
                         Ok(_) => {}
@@ -99,8 +125,58 @@ fn run_decode_thread(audio_rx: Receiver<Bytes>, mut source: SourceSend) {
                     eprintln!("rtmp: received aac data packet before sequence header, dropping");
                 }
             }
-            AudioPacket::Unknown(_) => {
+            Packet::Audio(AudioPacket::Unknown(_)) => {
                 eprintln!("rtmp: received unknown audio packet, dropping");
+            }
+            Packet::Video(Ok(mut packet)) => {
+                if let AvcPacketType::SequenceHeader = packet.avc_packet_type {
+                    match DecoderConfigurationRecord::parse(&mut packet.data) {
+                        Ok(dcr) => {
+                            if video_dcr.is_some() {
+                                if audio_codec.is_some() {
+                                    eprintln!("rtmp: received second avc sequence header?");
+                                }
+                            }
+                            eprintln!("rtmp: received avc dcr: {:?}", dcr);
+                            video_dcr = Some(Arc::new(dcr));
+                        }
+                        Err(e) => {
+                            eprintln!("rtmp: could not read avc dcr: {:?}", e);
+                        }
+                    }
+                }
+
+                // println!("packet timestamp: {:?}", packet.timestamp);
+
+                if let Some(dcr) = video_dcr.clone() {
+                    match Bitstream::parse(packet.data, dcr) {
+                        Ok(bitstream) => {
+                            video_dump.write_all(&bitstream.try_as_bytes().unwrap()).unwrap();
+                            // do stuff!
+                        }
+                        Err(e) => {
+                            eprintln!("rtmp: could not read avc bitstream: {:?}", e);
+                        }
+                    }
+                } else {
+                    eprintln!("rtmp: cannot read avc frame without dcr");
+                }
+
+                // println!("frame_type: {:?}, avc_packet_type: {:?}, composition_time: {:?}",
+                //     packet.frame_type, packet.avc_packet_type, packet.composition_time);
+
+                // println!("data: (len = {:8}) {:x?}", packet.data.len(), &packet.data[0..32]);
+
+                // match packet.avc_packet_type {
+                //     AvcPacketType::SequenceHeader => {}
+                //     AvcPacketType::EndOfSequence => {}
+                //     _ => {
+                //         video_dump.write_all(&packet.data).unwrap();
+                //     }
+                // }
+            }
+            Packet::Video(Err(e)) => {
+                eprintln!("rtmp: received unknown video packet: {:?}", e);
             }
         }
     }
@@ -109,7 +185,8 @@ fn run_decode_thread(audio_rx: Receiver<Bytes>, mut source: SourceSend) {
 struct ReceiveContext {
     stream: PeekTcpStream,
     session: ServerSession,
-    audio_tx: Sender<Bytes>,
+    audio_tx: Sender<(Bytes, RtmpTimestamp)>,
+    video_tx: Sender<(Bytes, RtmpTimestamp)>,
 }
 
 #[derive(From)]
@@ -168,15 +245,18 @@ async fn handle_event(
     event: ServerSessionEvent,
 ) -> Result<(), ReceiveError> {
     match event {
-        ServerSessionEvent::AudioDataReceived { app_name: _, stream_key: _, data, timestamp: _ } => {
-            ctx.audio_tx.send(data)
+        ServerSessionEvent::AudioDataReceived { app_name: _, stream_key: _, data, timestamp } => {
+            ctx.audio_tx.send((data, timestamp))
                 .await
                 .map_err(|_| ReceiveError::Exit)?;
 
             Ok(())
         }
-        ServerSessionEvent::VideoDataReceived { .. } => {
-            // ignore for now
+        ServerSessionEvent::VideoDataReceived { data, timestamp, .. } => {
+            ctx.video_tx.send((data, timestamp))
+                .await
+                .map_err(|_| ReceiveError::Exit)?;
+
             Ok(())
         }
         _ => {
@@ -186,31 +266,3 @@ async fn handle_event(
     }
 }
 
-enum AudioPacket {
-    AacSequenceHeader(Bytes),
-    AacRawData(Bytes),
-    Unknown(Bytes)
-}
-
-// See https://www.adobe.com/content/dam/acom/en/devnet/flv/video_file_format_spec_v10_1.pdf
-// Section E.4.2.1 AUDIODATA for reference
-fn classify_audio_packet(mut bytes: Bytes) -> AudioPacket {
-    let original = bytes.clone();
-
-    if bytes.len() >= 2 {
-        let tag = bytes.get_u8();
-
-        if tag == 0xaf {
-            // AAC
-            let packet_type = bytes.get_u8();
-
-            if packet_type == 0 {
-                return AudioPacket::AacSequenceHeader(bytes);
-            } else if packet_type == 1 {
-                return AudioPacket::AacRawData(bytes);
-            }
-        }
-    }
-
-    AudioPacket::Unknown(original)
-}
