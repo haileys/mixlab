@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use ringbuf::{RingBuffer, Producer, Consumer};
 
+use crate::codec::avc::AvcPacket;
 use crate::engine::Sample;
 
 #[derive(Clone)]
@@ -18,7 +19,12 @@ struct RegistryInner {
 
 pub struct Source {
     shared: Arc<SourceShared>,
-    tx: Option<Producer<Sample>>,
+    tx: Option<TxPair>,
+}
+
+struct TxPair {
+    audio: Producer<Sample>,
+    video: Producer<AvcPacket>,
 }
 
 #[derive(Debug)]
@@ -41,15 +47,16 @@ pub enum ConnectError {
 pub struct SourceSend {
     registry: Registry,
     shared: Arc<SourceShared>,
-    // this is, regrettably, an Option because we need to take the producer
+    // this is, regrettably, an Option because we need to take the tx pair
     // and put it back in the mountpoints table on drop:
-    tx: Option<Producer<Sample>>,
+    tx: Option<TxPair>,
 }
 
 pub struct SourceRecv {
     registry: Registry,
     shared: Arc<SourceShared>,
-    rx: Consumer<Sample>,
+    audio_rx: Consumer<Sample>,
+    video_rx: Consumer<AvcPacket>,
 }
 
 impl Registry {
@@ -69,7 +76,8 @@ impl Registry {
             return Err(ListenError::AlreadyInUse);
         }
 
-        let (tx, rx) = RingBuffer::<Sample>::new(65536).split();
+        let (audio_tx, audio_rx) = RingBuffer::<Sample>::new(65536).split();
+        let (video_tx, video_rx) = RingBuffer::<AvcPacket>::new(128).split();
 
         let shared = Arc::new(SourceShared {
             channel_name: channel_name.to_owned(),
@@ -79,12 +87,16 @@ impl Registry {
         let recv = SourceRecv {
             registry: self.clone(),
             shared: shared.clone(),
-            rx,
+            audio_rx,
+            video_rx,
         };
 
         let source = Source {
             shared: shared.clone(),
-            tx: Some(tx),
+            tx: Some(TxPair {
+                audio: audio_tx,
+                video: video_tx,
+            }),
         };
 
         registry.channels.insert(channel_name.to_owned(), source);
@@ -101,10 +113,7 @@ impl Registry {
             Some(source) => source,
         };
 
-        let tx = match source.tx.take() {
-            None => { return Err(ConnectError::AlreadyConnected); }
-            Some(tx) => tx,
-        };
+        let tx = source.tx.take().ok_or(ConnectError::AlreadyConnected)?;
 
         Ok(SourceSend {
             registry: self.clone(),
@@ -119,7 +128,7 @@ impl SourceSend {
         self.shared.recv_online.load(Ordering::Relaxed)
     }
 
-    pub fn write(&mut self, data: &[Sample]) -> Result<(), ()> {
+    pub fn write_audio(&mut self, data: &[Sample]) -> Result<(), ()> {
         if self.connected() {
             // tx is always Some for a valid (non-dropped) SourceSend:
             let tx = self.tx.as_mut().unwrap();
@@ -130,7 +139,20 @@ impl SourceSend {
             // side is suffering from serious lag and the best we can do
             // is drop the data
 
-            let _ = tx.push_slice(data);
+            let _ = tx.audio.push_slice(data);
+
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn write_video(&mut self, data: AvcPacket) -> Result<(), ()> {
+        if self.connected() {
+            // tx is always Some for a valid (non-dropped) SourceSend:
+            let tx = self.tx.as_mut().unwrap();
+
+            let _ = tx.video.push(data);
 
             Ok(())
         } else {
@@ -172,8 +194,12 @@ impl SourceRecv {
         &self.shared.channel_name
     }
 
-    pub fn read(&mut self, data: &mut [Sample]) -> usize {
-        self.rx.pop_slice(data)
+    pub fn read_audio(&mut self, data: &mut [Sample]) -> usize {
+        self.audio_rx.pop_slice(data)
+    }
+
+    pub fn read_video(&mut self) -> Option<AvcPacket> {
+        self.video_rx.pop()
     }
 }
 

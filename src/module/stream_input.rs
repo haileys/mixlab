@@ -60,7 +60,7 @@ impl ModuleT for StreamInput {
         let output = outputs[1].expect_stereo();
 
         let samples = self.recv.as_mut()
-            .map(|recv| recv.read(output))
+            .map(|recv| recv.read_audio(output))
             .unwrap_or(0);
 
         util::zero(&mut output[samples..]);
