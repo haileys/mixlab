@@ -1,7 +1,8 @@
 use mixlab_protocol::{MixerParams, LineType, Terminal};
 
-use crate::engine::Sample;
+use crate::engine::{Sample, InputRef, OutputRef};
 use crate::module::ModuleT;
+use crate::util;
 
 #[derive(Debug)]
 pub struct Mixer {
@@ -41,29 +42,26 @@ impl ModuleT for Mixer {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        const MASTER: usize = 0;
-        const CUE: usize = 1;
+    fn run_tick(&mut self, _t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let (master, cue) = match outputs {
+            [master, cue] => (master.expect_stereo(), cue.expect_stereo()),
+            _ => unreachable!(),
+        };
 
-        let len = outputs[0].len();
+        let len = master.len();
+
+        util::zero(master);
+        util::zero(cue);
 
         for (ch, channel) in self.params.channels.iter().enumerate() {
-            self.channel_gain[ch] = channel.fader * channel.gain.to_linear();
+            let input = inputs[ch].expect_stereo();
+            let channel_gain = channel.fader * channel.gain.to_linear();
 
             for i in 0..len {
-                if ch == 0 {
-                    outputs[MASTER][i] = 0.0;
-                    outputs[CUE][i] = 0.0;
-                }
+                master[i] += (input[i] as f64 * channel_gain) as Sample;
 
-                if let Some(input) = &inputs[ch] {
-                    let channel = &self.params.channels[ch];
-
-                    outputs[MASTER][i] += (input[i] as f64 * self.channel_gain[ch]) as Sample;
-
-                    if channel.cue {
-                        outputs[CUE][i] += input[i];
-                    }
+                if channel.cue {
+                    cue[i] += input[i];
                 }
             }
         }

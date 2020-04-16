@@ -9,7 +9,7 @@ use ringbuf::{RingBuffer, Producer};
 
 use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType, Terminal, OutputDeviceWarning};
 
-use crate::engine::{Sample, CHANNELS, ZERO_BUFFER_STEREO};
+use crate::engine::{Sample, InputRef, OutputRef, CHANNELS};
 use crate::module::ModuleT;
 use crate::util;
 
@@ -167,8 +167,8 @@ impl ModuleT for OutputDevice {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], _outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let input = inputs[0].unwrap_or(&ZERO_BUFFER_STEREO);
+    fn run_tick(&mut self, _t: u64, inputs: &[InputRef], _: &mut [OutputRef]) -> Option<Self::Indication> {
+        let input = inputs[0].expect_stereo();
 
         let mut clip = false;
 

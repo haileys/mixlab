@@ -1,6 +1,6 @@
 use mixlab_protocol::{GateState, LineType, Terminal};
 
-use crate::engine::Sample;
+use crate::engine::{InputRef, OutputRef};
 use crate::module::ModuleT;
 
 #[derive(Debug)]
@@ -31,16 +31,16 @@ impl ModuleT for Trigger {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, _inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let len = outputs[0].len();
+    fn run_tick(&mut self, _t: u64, _: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let output = outputs[0].expect_mono();
 
         let value = match self.params {
             GateState::Open => 1.0,
             GateState::Closed => 0.0,
         };
 
-        for i in 0..len {
-            outputs[0][i] = value;
+        for out in output.iter_mut() {
+            *out = value;
         }
 
         None

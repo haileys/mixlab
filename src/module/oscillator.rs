@@ -2,7 +2,7 @@ use std::f64;
 
 use mixlab_protocol::{OscillatorParams, Waveform, LineType, Terminal};
 
-use crate::engine::{Sample, SAMPLE_RATE};
+use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
 
 #[derive(Debug)]
@@ -61,11 +61,13 @@ impl ModuleT for Oscillator {
     }
 
 
-    fn run_tick(&mut self, t: u64, _inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        const MONO: usize = 0;
-        const STEREO: usize = 1;
+    fn run_tick(&mut self, t: u64, _: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let (mono, stereo) = match outputs {
+            [mono, stereo] => (mono.expect_mono(), stereo.expect_stereo()),
+            _ => unreachable!(),
+        };
 
-        let len = outputs[MONO].len();
+        let len = mono.len();
 
         for i in 0..len {
             let t0 = (t + i as u64) as f64 / SAMPLE_RATE as f64;
@@ -80,9 +82,9 @@ impl ModuleT for Oscillator {
                 Waveform::Off => 0.0,
             } as f32;
 
-            outputs[MONO][i] = sample;
-            outputs[STEREO][i * 2 + 0] = sample;
-            outputs[STEREO][i * 2 + 1] = sample;
+            mono[i] = sample;
+            stereo[i * 2 + 0] = sample;
+            stereo[i * 2 + 1] = sample;
         }
 
         None

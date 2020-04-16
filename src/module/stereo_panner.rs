@@ -1,4 +1,4 @@
-use crate::engine::{Sample, ZERO_BUFFER_MONO};
+use crate::engine::{InputRef, OutputRef};
 use crate::module::{ModuleT, LineType, Terminal};
 
 #[derive(Debug)]
@@ -26,10 +26,10 @@ impl ModuleT for StereoPanner {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[Option<&[Sample]>], outputs: &mut [&mut [Sample]]) -> Option<Self::Indication> {
-        let left = &inputs[0].unwrap_or(&ZERO_BUFFER_MONO);
-        let right = &inputs[1].unwrap_or(&ZERO_BUFFER_MONO);
-        let output = &mut outputs[0];
+    fn run_tick(&mut self, _t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let left = inputs[0].expect_mono();
+        let right = inputs[1].expect_mono();
+        let output = outputs[0].expect_stereo();
 
         for i in 0..left.len() {
             output[i * 2 + 0] = left[i];
