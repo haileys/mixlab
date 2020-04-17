@@ -16,7 +16,7 @@ use crate::source::{Registry, ListenError, SourceRecv, SourceSend, Timestamp};
 use crate::throttle::AudioThrottle;
 use crate::util::SyncRead;
 
-use http::ContentType;
+use self::http::ContentType;
 
 lazy_static::lazy_static! {
     static ref MOUNTPOINTS: Registry = Registry::new();

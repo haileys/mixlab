@@ -129,8 +129,8 @@ impl ModuleT for StreamInput {
         *video_out = video_frame.and_then(|frame| {
             let tick_offset = self.source.as_ref()
                 .map(|source| {
-                    println!("[S-INPUT] source.epoch = {}, frame.source_time = {}, engine_time = {}",
-                        util::decimal(source.epoch), util::decimal(frame.source_time), util::decimal(engine_time));
+                    // println!("[S-INPUT] source.epoch = {}, frame.source_time = {}, engine_time = {}",
+                    //     util::decimal(source.epoch), util::decimal(frame.source_time), util::decimal(engine_time));
 
                     (source.epoch + frame.source_time) - engine_time
                 })
@@ -142,8 +142,8 @@ impl ModuleT for StreamInput {
                 self.video_frame = Some(frame);
                 None
             } else {
-                println!("[S-INPUT] tick_offset: {}, tick_duration: {}",
-                    util::decimal(tick_offset), util::decimal(tick_duration));
+                // println!("[S-INPUT] tick_offset: {}, tick_duration: {}",
+                //     util::decimal(tick_offset), util::decimal(tick_duration));
                 Some(AvcFrame {
                     tick_offset,
                     data: frame.data,
