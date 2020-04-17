@@ -273,7 +273,7 @@ fn receive_video_packet(
                 // user-defined epochs - we need to handle rollover
                 let timestamp = Rational64::new(timestamp.value as i64, 1000);
 
-                println!("[RTMP   ] timestamp: {}", util::decimal(timestamp));
+                // println!("[RTMP   ] timestamp: {}", util::decimal(timestamp));
 
                 let _ = ctx.source.write_video(timestamp, AvcFrame {
                     frame_type: packet.frame_type,

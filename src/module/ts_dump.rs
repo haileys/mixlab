@@ -1,7 +1,8 @@
 use std::cmp;
 use std::fs::File;
+use std::io::{self, Write};
 
-use bytes::Buf;
+use bytes::{Buf, Bytes};
 use derive_more::From;
 use fdk_aac::enc as aac;
 use mpeg2ts::es::StreamId;
@@ -16,6 +17,26 @@ use crate::util;
 
 use mixlab_protocol::{LineType, Terminal};
 
+use tokio::sync::broadcast;
+lazy_static::lazy_static! {
+    pub static ref TS_BROADCAST: broadcast::Sender<Bytes> = broadcast::channel(1024).0;
+}
+
+#[derive(Debug)]
+struct Broadcast<W: Write>(W);
+
+impl<W: Write> Write for Broadcast<W> {
+    fn write(&mut self, data: &[u8]) -> Result<usize, io::Error> {
+        let n = self.0.write(data)?;
+        TS_BROADCAST.send(Bytes::copy_from_slice(&data[0..n]));
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> Result<(), io::Error> {
+        self.0.flush()
+    }
+}
+
 #[derive(Debug)]
 pub struct TsDump {
     write_ctx: TsWriteCtx,
@@ -28,7 +49,7 @@ pub struct TsDump {
 
 #[derive(Debug)]
 struct TsWriteCtx {
-    ts: TsPacketWriter<File>,
+    ts: TsPacketWriter<Broadcast<File>>,
     audio_continuity_counter: ContinuityCounter,
     video_continuity_counter: ContinuityCounter,
 }
@@ -45,7 +66,7 @@ impl ModuleT for TsDump {
         };
 
         let file = File::create("dump.ts").unwrap();
-        let mut ts = TsPacketWriter::new(file);
+        let mut ts = TsPacketWriter::new(Broadcast(file));
 
         // write program association table:
         ts.write_ts_packet(&program_association_table()).unwrap();
@@ -267,30 +288,31 @@ enum WriteVideoError {
     Avc(AvcError),
 }
 
-fn write_video(ctx: &mut TsWriteCtx, video: &AvcFrame, timestamp: Rational64) -> Result<(), WriteVideoError> {
+fn write_video(ctx: &mut TsWriteCtx, frame: &AvcFrame, timestamp: Rational64) -> Result<(), WriteVideoError> {
     use mpeg2ts::es::StreamId;
     use mpeg2ts::pes::PesHeader;
     use mpeg2ts::time::ClockReference;
     use mpeg2ts::ts::AdaptationField;
     use mpeg2ts::ts::payload::{Bytes, Pes};
 
-    println!("[TS-DUMP] timestamp: {}, tick_offset: {}, comp_time: {}",
-        util::decimal(timestamp), util::decimal(video.tick_offset), video.data.composition_time.0);
+    // println!("[TS-DUMP] timestamp: {}, tick_offset: {}, comp_time: {}",
+    //     util::decimal(timestamp), util::decimal(frame.tick_offset), frame.data.composition_time.0);
 
-    let frame_data_timestamp = timestamp + video.tick_offset;
-    let frame_presentation_timestamp = frame_data_timestamp + Rational64::new(video.data.composition_time.0 as i64, 1000);
+    let frame_data_timestamp = timestamp + frame.tick_offset;
+    let frame_presentation_timestamp = frame_data_timestamp + Rational64::new(frame.data.composition_time.0 as i64, 1000);
 
     let frame_data_millis = (frame_data_timestamp * 1000).to_integer() as u64;
     let frame_presentation_millis = (frame_presentation_timestamp * 1000).to_integer() as u64;
 
     // println!("frame_data_millis: {}", frame_data_millis);
 
-    let mut buf = video.data.bitstream.into_bytes()?;
+    let mut buf = frame.data.bitstream.into_bytes()?;
     let pes_data_len = cmp::min(153, buf.remaining());
     let pes_data = buf.split_to(pes_data_len);
     let pcr = ClockReference::new(frame_data_millis * 90)?;
 
-    let adaptation_field = if video.data.frame_type.is_key_frame() {
+    let adaptation_field = if frame.data.frame_type.is_key_frame() {
+        println!("[TS-DUMP] key frame!");
         Some(AdaptationField {
             discontinuity_indicator: false,
             random_access_indicator: true,
