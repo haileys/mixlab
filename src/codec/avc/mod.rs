@@ -105,7 +105,6 @@ impl AvcPacket {
 #[derive(Debug)]
 pub struct AvcFrame {
     pub frame_type: AvcFrameType,
-    pub timestamp: Millis,
-    pub presentation_timestamp: Millis,
+    pub composition_time: Millis,
     pub bitstream: Bitstream,
 }

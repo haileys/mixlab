@@ -6,11 +6,12 @@ use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError
 use std::thread;
 use std::time::{Instant, Duration};
 
+use num_rational::Rational64;
 use tokio::sync::{oneshot, broadcast};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ServerUpdate, Indication, LineType, ClientSequence, ClientOp};
 
-use crate::codec::avc::AvcFrame;
+use crate::codec::avc;
 use crate::module::Module;
 use crate::util::Sequence;
 
@@ -430,6 +431,11 @@ impl Engine {
 
         indications
     }
+}
+
+pub struct AvcFrame {
+    pub tick_offset: Rational64,
+    pub data: avc::AvcFrame,
 }
 
 pub enum InputRef<'a> {

@@ -5,16 +5,18 @@ use std::thread;
 
 use bytes::Bytes;
 use derive_more::From;
-use faad2::Decoder;
 use futures::executor::block_on;
-use rml_rtmp::time::RtmpTimestamp;
+use num_rational::Rational64;
 use rml_rtmp::handshake::HandshakeError;
 use rml_rtmp::sessions::{ServerSession, ServerSessionResult, ServerSessionError, ServerSessionEvent};
+use rml_rtmp::time::RtmpTimestamp;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use crate::codec::aac;
 use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketType, AvcFrame, Millis};
 use crate::listen::PeekTcpStream;
-use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError};
+use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError, Timestamp};
+use crate::util;
 
 mod incoming;
 mod packet;
@@ -40,6 +42,8 @@ pub enum RtmpError {
     Session(ServerSessionError),
     SourceConnect(ConnectError),
     SourceSend,
+    Aac(aac::AacError),
+    AacCodec(fdk_aac::dec::DecoderError),
 }
 
 pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
@@ -65,11 +69,19 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
         None => { return Ok(()); }
     };
 
+    let mut audio_codec = fdk_aac::dec::Decoder::new(fdk_aac::dec::Transport::Adts);
+
+    // enable automatic stereo mix-down:
+    audio_codec.set_min_output_channels(2)?;
+    audio_codec.set_max_output_channels(2)?;
+
     let mut ctx = ReceiveContext {
         stream,
         session,
         source,
-        audio_codec: None,
+        audio_codec,
+        audio_asc: None,
+        audio_timestamp: Timestamp::new(0, 1),
         video_dcr: None,
     };
 
@@ -84,7 +96,9 @@ struct ReceiveContext {
     stream: PeekTcpStream,
     session: ServerSession,
     source: SourceSend,
-    audio_codec: Option<faad2::Decoder>,
+    audio_codec: fdk_aac::dec::Decoder,
+    audio_asc: Option<aac::AudioSpecificConfiguration>,
+    audio_timestamp: Timestamp,
     video_dcr: Option<Arc<avc::DecoderConfigurationRecord>>,
 }
 
@@ -146,29 +160,61 @@ fn handle_event(
 fn receive_audio_packet(
     ctx: &mut ReceiveContext,
     data: Bytes,
-    _timestamp: RtmpTimestamp,
+    timestamp: RtmpTimestamp,
 ) -> Result<(), RtmpError> {
     let packet = AudioPacket::parse(data);
 
     match packet {
         AudioPacket::AacSequenceHeader(bytes) => {
-            if ctx.audio_codec.is_some() {
-                eprintln!("rtmp: received second aac sequence header?");
-            }
-
-            println!("bytes: {:?}", bytes);
-
-            // TODO - validate user input before passing it to faad2
-            ctx.audio_codec = Some(Decoder::new(&bytes).expect("Decoder::new"));
+            let asc = aac::AudioSpecificConfiguration::parse(bytes)?;
+            ctx.audio_asc = Some(asc);
         }
         AudioPacket::AacRawData(bytes) => {
-            if let Some(codec) = &mut ctx.audio_codec {
-                let decode_info = codec.decode(&bytes).expect("codec.decode");
-
-                ctx.source.write_audio(decode_info.samples)
-                    .map_err(|()| RtmpError::SourceSend)?;
+            let asc = if let Some(asc) = &ctx.audio_asc {
+                asc
             } else {
                 eprintln!("rtmp: received aac data packet before sequence header, dropping");
+                return Ok(());
+            };
+
+            // AAC standard defines a frame to be 1024 samples per channel:
+            let mut pcm_buffer = vec![0; 2048];
+
+            let adts = aac::AudioDataTransportStream::new(bytes, asc);
+            let adts_bytes = adts.into_bytes();
+
+            let bytes_consumed = ctx.audio_codec.fill(&adts_bytes).unwrap();
+
+            if bytes_consumed < adts_bytes.len() {
+                eprintln!("rtmp: codec did not read all bytes from audio packet");
+                return Ok(());
+            }
+
+            match ctx.audio_codec.decode_frame(&mut pcm_buffer) {
+                Ok(()) => {
+                    let sample_rate = ctx.audio_codec.stream_info().sampleRate;
+
+                    if sample_rate != 44100 {
+                        // TODO fix me
+                        panic!("expected stream sample rate to be 44100");
+                    }
+
+                    let frame_time = Rational64::new(pcm_buffer.len() as i64 / 2, sample_rate as i64);
+
+                    pcm_buffer.truncate(ctx.audio_codec.decoded_frame_size());
+                    // println!("decoded frame! timestamp: {:?}, frame size: {}", timestamp, pcm_buffer.len());
+
+                    // TODO do we use ctx.audio_timestamp or the rtmp timestamp here?
+
+                    ctx.source.write_audio(ctx.audio_timestamp, pcm_buffer)
+                        .map_err(|()| RtmpError::SourceSend)?;
+
+                    ctx.audio_timestamp += frame_time;
+                }
+                Err(e) => {
+                    eprintln!("rtmp: audio codec frame decode error: {:?}", e);
+                    return Ok(());
+                }
             }
         }
         AudioPacket::Unknown(_) => {
@@ -223,10 +269,15 @@ fn receive_video_packet(
                     video_dump.write_all(&bitstream.into_bytes().unwrap()).unwrap();
                 }
 
-                let _ = ctx.source.write_video(AvcFrame {
+                // TODO rtmp timestamps are only 32 bit and have arbitrary
+                // user-defined epochs - we need to handle rollover
+                let timestamp = Rational64::new(timestamp.value as i64, 1000);
+
+                println!("[RTMP   ] timestamp: {}", util::decimal(timestamp));
+
+                let _ = ctx.source.write_video(timestamp, AvcFrame {
                     frame_type: packet.frame_type,
-                    timestamp: Millis(timestamp.value as u64),
-                    presentation_timestamp: Millis(timestamp.value as u64 + packet.composition_time as u64),
+                    composition_time: Millis(packet.composition_time as u64),
                     bitstream: bitstream,
                 });
             }
