@@ -339,24 +339,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "faad2"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c7b6f5b9b7115c3d134e5e7d32a671f68414c2adb5b1690b284ad2a166f462"
-dependencies = [
- "faad2-sys",
-]
-
-[[package]]
-name = "faad2-sys"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64c8e672825b5eeb7c824bfadc986fe2188b86d79fa18f518940aa0635f72edc"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "failure"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -386,18 +368,18 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 
 [[package]]
 name = "fdk-aac"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e653da409b91d79af7d56815b0f6876b2151bb681aa0b532203318630b468fc1"
+checksum = "36cf0a1f94f3ffc88d7e99d55dc29fd6940f7efcd9cdc5928d6a3b29d7240acc"
 dependencies = [
  "fdk-aac-sys",
 ]
 
 [[package]]
 name = "fdk-aac-sys"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b29b69c788169987db61ccfc5ed0f4efc57f237ace2a4fd683ea4966fc5b462"
+checksum = "197a534e2a394433ddc1ddc0b932dac3ad11a183ea57ac2a03c3cf60e3b4357e"
 dependencies = [
  "cc",
 ]
@@ -937,7 +919,6 @@ dependencies = [
  "cpal",
  "derive_more",
  "env_logger",
- "faad2",
  "fdk-aac",
  "futures",
  "httparse",
@@ -945,6 +926,7 @@ dependencies = [
  "lewton",
  "mixlab-protocol",
  "mpeg2ts",
+ "num-rational",
  "ogg",
  "ringbuf",
  "rml_rtmp",
@@ -1007,6 +989,39 @@ checksum = "0b471253da97532da4b61552249c521e01e736071f71c1a4f7ebbfbf0a06aad6"
 dependencies = [
  "memchr",
  "version_check 0.9.1",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
+dependencies = [
+ "autocfg 1.0.0",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6ea62e9d81a77cd3ee9a2a5b9b609447857f3d358704331e4ef39eb247fcba"
+dependencies = [
+ "autocfg 1.0.0",
+ "num-traits",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c000134b5dbf44adc5cb772486d335293351644b801551abe8f75c84cfa4aef"
+dependencies = [
+ "autocfg 1.0.0",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
 ]
 
 [[package]]

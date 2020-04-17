@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use num_rational::Rational64;
 use ringbuf::{RingBuffer, Producer, Consumer};
 
 use crate::codec::avc::AvcFrame;
-use crate::engine::Sample;
+use crate::util::Sequence;
+
+pub type Timestamp = Rational64;
 
 #[derive(Clone)]
 pub struct Registry {
@@ -17,15 +21,19 @@ struct RegistryInner {
     channels: HashMap<String, Source>,
 }
 
-pub struct Source {
+struct Source {
     shared: Arc<SourceShared>,
+    seq: Sequence,
     tx: Option<TxPair>,
 }
 
 struct TxPair {
-    audio: Producer<Sample>,
-    video: Producer<AvcFrame>,
+    audio: Producer<Frame<AudioData>>,
+    video: Producer<Frame<VideoData>>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SourceId(NonZeroUsize);
 
 #[derive(Debug)]
 pub struct SourceShared {
@@ -47,16 +55,27 @@ pub enum ConnectError {
 pub struct SourceSend {
     registry: Registry,
     shared: Arc<SourceShared>,
+    source_id: SourceId,
     // this is, regrettably, an Option because we need to take the tx pair
     // and put it back in the mountpoints table on drop:
     tx: Option<TxPair>,
 }
 
+pub type AudioData = Vec<i16>;
+pub type VideoData = AvcFrame;
+
+#[derive(Debug)]
+pub struct Frame<T> {
+    pub source_id: SourceId,
+    pub source_time: Timestamp,
+    pub data: T,
+}
+
 pub struct SourceRecv {
     registry: Registry,
     shared: Arc<SourceShared>,
-    audio_rx: Consumer<Sample>,
-    video_rx: Consumer<AvcFrame>,
+    audio_rx: Consumer<Frame<AudioData>>,
+    video_rx: Consumer<Frame<VideoData>>,
 }
 
 impl Registry {
@@ -76,8 +95,8 @@ impl Registry {
             return Err(ListenError::AlreadyInUse);
         }
 
-        let (audio_tx, audio_rx) = RingBuffer::<Sample>::new(65536).split();
-        let (video_tx, video_rx) = RingBuffer::<AvcFrame>::new(128).split();
+        let (audio_tx, audio_rx) = RingBuffer::<Frame<AudioData>>::new(65536).split();
+        let (video_tx, video_rx) = RingBuffer::<Frame<VideoData>>::new(65536).split();
 
         let shared = Arc::new(SourceShared {
             channel_name: channel_name.to_owned(),
@@ -93,6 +112,7 @@ impl Registry {
 
         let source = Source {
             shared: shared.clone(),
+            seq: Sequence::new(),
             tx: Some(TxPair {
                 audio: audio_tx,
                 video: video_tx,
@@ -113,12 +133,15 @@ impl Registry {
             Some(source) => source,
         };
 
+        let source_id = SourceId(source.seq.next());
+
         let tx = source.tx.take().ok_or(ConnectError::AlreadyConnected)?;
 
         Ok(SourceSend {
             registry: self.clone(),
             shared: source.shared.clone(),
             tx: Some(tx),
+            source_id,
         })
     }
 }
@@ -128,33 +151,35 @@ impl SourceSend {
         self.shared.recv_online.load(Ordering::Relaxed)
     }
 
-    pub fn write_audio(&mut self, data: &[Sample]) -> Result<(), ()> {
+    pub fn write_audio(&mut self, timestamp: Timestamp, data: AudioData) -> Result<(), ()> {
         if self.connected() {
             // tx is always Some for a valid (non-dropped) SourceSend:
             let tx = self.tx.as_mut().unwrap();
 
-            // we intentionally ignore the return value of write indicating
-            // how many samples were written to the ring buffer. if it's
-            // ever less than the number of samples on hand, the receive
-            // side is suffering from serious lag and the best we can do
-            // is drop the data
+            let frame = Frame {
+                source_id: self.source_id,
+                source_time: timestamp,
+                data,
+            };
 
-            let _ = tx.audio.push_slice(data);
-
-            Ok(())
+            tx.audio.push(frame).map_err(|_| ())
         } else {
             Err(())
         }
     }
 
-    pub fn write_video(&mut self, data: AvcFrame) -> Result<(), ()> {
+    pub fn write_video(&mut self, timestamp: Timestamp, data: VideoData) -> Result<(), ()> {
         if self.connected() {
             // tx is always Some for a valid (non-dropped) SourceSend:
             let tx = self.tx.as_mut().unwrap();
 
-            let _ = tx.video.push(data);
+            let frame = Frame {
+                source_id: self.source_id,
+                source_time: timestamp,
+                data,
+            };
 
-            Ok(())
+            tx.video.push(frame).map_err(|_| ())
         } else {
             Err(())
         }
@@ -194,11 +219,11 @@ impl SourceRecv {
         &self.shared.channel_name
     }
 
-    pub fn read_audio(&mut self, data: &mut [Sample]) -> usize {
-        self.audio_rx.pop_slice(data)
+    pub fn read_audio(&mut self) -> Option<Frame<AudioData>> {
+        self.audio_rx.pop()
     }
 
-    pub fn read_video(&mut self) -> Option<AvcFrame> {
+    pub fn read_video(&mut self) -> Option<Frame<VideoData>> {
         self.video_rx.pop()
     }
 }

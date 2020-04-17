@@ -5,19 +5,21 @@ use bytes::Buf;
 use derive_more::From;
 use fdk_aac::enc as aac;
 use mpeg2ts::es::StreamId;
-use mpeg2ts::time::Timestamp;
+use mpeg2ts::time::Timestamp as MpegTimestamp;
 use mpeg2ts::ts::{self, TsPacketWriter, TsPacket, TsHeader, TsPayload, ProgramAssociation, ContinuityCounter, Pid, VersionNumber, WriteTsPacket};
+use num_rational::Rational64;
 
-use crate::codec::avc::{AvcFrame, AvcError, Millis};
-use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
+use crate::codec::avc::AvcError;
+use crate::engine::{InputRef, OutputRef, AvcFrame, SAMPLE_RATE};
 use crate::module::ModuleT;
+use crate::util;
 
 use mixlab_protocol::{LineType, Terminal};
 
 #[derive(Debug)]
 pub struct TsDump {
     write_ctx: TsWriteCtx,
-    time: Millis,
+    engine_epoch: Option<u64>,
     aac: aac::Encoder,
     aac_output_buff: Vec<u8>,
     audio_pcm_buff: Vec<i16>,
@@ -57,7 +59,7 @@ impl ModuleT for TsDump {
 
         let module = TsDump {
             write_ctx,
-            time: Millis(0),
+            engine_epoch: None,
             aac: aac::Encoder::new(aac_params).expect("aac::Encoder::new"),
             aac_output_buff: Vec::new(),
             audio_pcm_buff: Vec::new(),
@@ -78,11 +80,14 @@ impl ModuleT for TsDump {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[InputRef], _: &mut [OutputRef]) -> Option<Self::Indication> {
+    fn run_tick(&mut self, time: u64, inputs: &[InputRef], _: &mut [OutputRef]) -> Option<Self::Indication> {
         let (video, audio) = match inputs {
             [video, audio] => (video.expect_avc(), audio.expect_stereo()),
             _ => unreachable!()
         };
+
+        let engine_epoch = *self.engine_epoch.get_or_insert(time);
+        let timestamp = Rational64::new((time - engine_epoch) as i64, SAMPLE_RATE as i64);
 
         // convert input audio samples from f32 to i16
         self.audio_pcm_buff.extend(audio.iter().copied().map(|sample| {
@@ -102,7 +107,6 @@ impl ModuleT for TsDump {
 
         const CHUNK_SAMPLES: usize = 2 * SAMPLE_RATE / 100;
         let mut aac_buff = [0u8; 4096];
-        let timestamp = self.time;
 
         while self.audio_pcm_buff.len() > CHUNK_SAMPLES {
             let chunk_pcm = &self.audio_pcm_buff[0..CHUNK_SAMPLES];
@@ -115,7 +119,6 @@ impl ModuleT for TsDump {
             }
 
             self.audio_pcm_buff.drain(0..CHUNK_SAMPLES);
-            self.time.0 += 10; // 10 ms @ 100 hz, see CHUNK_SAMPLES
         }
 
         if self.audio_pcm_buff.len() > 0 {
@@ -124,9 +127,9 @@ impl ModuleT for TsDump {
         }
 
         // process incoming video
-
+        // TODO
         if let Some(frame) = video {
-            write_video(&mut self.write_ctx, frame).unwrap();
+            write_video(&mut self.write_ctx, frame, timestamp).unwrap();
         }
 
         None
@@ -210,13 +213,15 @@ fn program_map_table() -> TsPacket {
     }
 }
 
-fn write_audio(ctx: &mut TsWriteCtx, mut data: &[u8], timestamp: Millis) -> Result<(), mpeg2ts::Error> {
+fn write_audio(ctx: &mut TsWriteCtx, mut data: &[u8], timestamp: Rational64) -> Result<(), mpeg2ts::Error> {
     use mpeg2ts::pes::PesHeader;
     use mpeg2ts::ts::payload::Bytes;
 
     let first_payload_len = cmp::min(153, data.len());
     let (first_payload, rest) = data.split_at(first_payload_len);
     data = rest;
+
+    let millis = (timestamp * 1000).to_integer() as u64;
 
     ctx.ts.write_ts_packet(&TsPacket {
         header: ts_header(AUDIO_ES_PID, ctx.audio_continuity_counter.clone()),
@@ -228,7 +233,7 @@ fn write_audio(ctx: &mut TsWriteCtx, mut data: &[u8], timestamp: Millis) -> Resu
                 data_alignment_indicator: false,
                 copyright: false,
                 original_or_copy: false,
-                pts: Some(Timestamp::new(timestamp.0 * 90)?), // pts is in 90hz or something?
+                pts: Some(MpegTimestamp::new(millis * 90)?), // pts is in 90hz or something?
                 dts: None,
                 escr: None,
             },
@@ -262,19 +267,30 @@ enum WriteVideoError {
     Avc(AvcError),
 }
 
-fn write_video(ctx: &mut TsWriteCtx, video: &AvcFrame) -> Result<(), WriteVideoError> {
+fn write_video(ctx: &mut TsWriteCtx, video: &AvcFrame, timestamp: Rational64) -> Result<(), WriteVideoError> {
     use mpeg2ts::es::StreamId;
     use mpeg2ts::pes::PesHeader;
-    use mpeg2ts::time::{ClockReference, Timestamp};
+    use mpeg2ts::time::ClockReference;
     use mpeg2ts::ts::AdaptationField;
     use mpeg2ts::ts::payload::{Bytes, Pes};
 
-    let mut buf = video.bitstream.into_bytes()?;
+    println!("[TS-DUMP] timestamp: {}, tick_offset: {}, comp_time: {}",
+        util::decimal(timestamp), util::decimal(video.tick_offset), video.data.composition_time.0);
+
+    let frame_data_timestamp = timestamp + video.tick_offset;
+    let frame_presentation_timestamp = frame_data_timestamp + Rational64::new(video.data.composition_time.0 as i64, 1000);
+
+    let frame_data_millis = (frame_data_timestamp * 1000).to_integer() as u64;
+    let frame_presentation_millis = (frame_presentation_timestamp * 1000).to_integer() as u64;
+
+    // println!("frame_data_millis: {}", frame_data_millis);
+
+    let mut buf = video.data.bitstream.into_bytes()?;
     let pes_data_len = cmp::min(153, buf.remaining());
     let pes_data = buf.split_to(pes_data_len);
-    let pcr = ClockReference::new(video.timestamp.0 * 90)?;
+    let pcr = ClockReference::new(frame_data_millis * 90)?;
 
-    let adaptation_field = if video.frame_type.is_key_frame() {
+    let adaptation_field = if video.data.frame_type.is_key_frame() {
         Some(AdaptationField {
             discontinuity_indicator: false,
             random_access_indicator: true,
@@ -289,8 +305,8 @@ fn write_video(ctx: &mut TsWriteCtx, video: &AvcFrame) -> Result<(), WriteVideoE
         None
     };
 
-    let pts = Timestamp::new(video.presentation_timestamp.0 * 90)?;
-    let dts = Timestamp::new(video.timestamp.0 * 90)?;
+    let pts = MpegTimestamp::new(frame_presentation_millis * 90)?;
+    let dts = MpegTimestamp::new(frame_data_millis * 90)?;
 
     let packet = TsPacket {
         header: ts_header(VIDEO_ES_PID, ctx.video_continuity_counter.clone()),

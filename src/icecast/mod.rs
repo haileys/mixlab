@@ -5,13 +5,14 @@ use std::io::{self, Read};
 use std::thread;
 
 use derive_more::From;
+use num_rational::Ratio;
 use tokio::io::AsyncWriteExt;
 
 use crate::codec::ogg::{self, OggStream};
 use crate::codec::{AudioStream, StreamRead, StreamError};
-use crate::engine::{SAMPLE_RATE, Sample};
+use crate::engine::SAMPLE_RATE;
 use crate::listen::PeekTcpStream;
-use crate::source::{Registry, ListenError, SourceRecv, SourceSend};
+use crate::source::{Registry, ListenError, SourceRecv, SourceSend, Timestamp};
 use crate::throttle::AudioThrottle;
 use crate::util::SyncRead;
 
@@ -94,6 +95,7 @@ fn run_decode_thread(mut send: SourceSend, stream: impl io::Read, content_type: 
         return Ok(());
     }
 
+    let mut timestamp = Timestamp::new(0, audio.sample_rate() as i64);
     let mut throttle = AudioThrottle::new();
 
     while let Some(packet) = audio.read().transpose() {
@@ -109,20 +111,20 @@ fn run_decode_thread(mut send: SourceSend, stream: impl io::Read, content_type: 
 
                 if channels == 1 {
                     for sample in pcm[0].iter() {
-                        let sample = convert_sample(*sample);
-                        samples.push(sample);
-                        samples.push(sample);
+                        samples.push(*sample);
+                        samples.push(*sample);
                     }
                 } else {
                     for (left, right) in pcm[0].iter().zip(pcm[1].iter()) {
-                        samples.push(convert_sample(*left));
-                        samples.push(convert_sample(*right));
+                        samples.push(*left);
+                        samples.push(*right);
                     }
                 }
 
-                send.write_audio(&samples)
+                send.write_audio(timestamp, samples)
                     .map_err(|()| DecodeThreadError::ListenerDisconnected)?;
 
+                timestamp += Ratio::new(sample_count as i64, audio.sample_rate() as i64);
                 throttle.send_samples(sample_count);
             }
             Ok(StreamRead::Metadata(_)) => {
@@ -140,12 +142,4 @@ fn run_decode_thread(mut send: SourceSend, stream: impl io::Read, content_type: 
     }
 
     Ok(())
-}
-
-fn convert_sample(sample: i16) -> Sample {
-    // i16::min_value is a greater absolute distance away from 0 than max_value
-    // divide by it rather than max_value to prevent clipping
-    let divisor = -(i16::min_value() as Sample);
-
-    sample as Sample / divisor
 }
