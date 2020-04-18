@@ -1,4 +1,5 @@
 use std::cmp;
+use std::rc::Rc;
 
 use num_rational::Rational64;
 
@@ -18,6 +19,7 @@ pub struct StreamInput {
     source: Option<SourceTiming>,
     audio_frame: Option<Frame<AudioData>>,
     video_frame: Option<Frame<VideoData>>,
+    previous_video_frame: Option<Rc<AvcFrame>>,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
 }
@@ -44,6 +46,7 @@ impl ModuleT for StreamInput {
             source: None,
             audio_frame: None,
             video_frame: None,
+            previous_video_frame: None,
             inputs: vec![],
             outputs: vec![
                 LineType::Avc.labeled("Video"),
@@ -129,9 +132,6 @@ impl ModuleT for StreamInput {
         *video_out = video_frame.and_then(|frame| {
             let tick_offset = self.source.as_ref()
                 .map(|source| {
-                    // println!("[S-INPUT] source.epoch = {}, frame.source_time = {}, engine_time = {}",
-                    //     util::decimal(source.epoch), util::decimal(frame.source_time), util::decimal(engine_time));
-
                     (source.epoch + frame.source_time) - engine_time
                 })
                 .filter(|tick_offset| *tick_offset >= Rational64::new(0, 1))
@@ -142,12 +142,20 @@ impl ModuleT for StreamInput {
                 self.video_frame = Some(frame);
                 None
             } else {
-                // println!("[S-INPUT] tick_offset: {}, tick_duration: {}",
-                //     util::decimal(tick_offset), util::decimal(tick_duration));
-                Some(AvcFrame {
+                let previous = self.previous_video_frame.take()
+                    // only keep link to previous frame if this frame is not a
+                    // key frame:
+                    .filter(|_| !frame.data.frame_type.is_key_frame());
+
+                let frame = Rc::new(AvcFrame {
                     tick_offset,
                     data: frame.data,
-                })
+                    previous,
+                });
+
+                self.previous_video_frame = Some(frame.clone());
+
+                Some(frame)
             }
         });
 
