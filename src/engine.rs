@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::f32;
 use std::num::NonZeroUsize;
+use std::rc::Rc;
 use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError};
 use std::thread;
 use std::time::{Instant, Duration};
@@ -433,16 +434,18 @@ impl Engine {
     }
 }
 
+#[derive(Debug)]
 pub struct AvcFrame {
     pub tick_offset: Rational64,
     pub data: avc::AvcFrame,
+    pub previous: Option<Rc<AvcFrame>>,
 }
 
 pub enum InputRef<'a> {
     Disconnected,
     Mono(&'a [Sample]),
     Stereo(&'a [Sample]),
-    Avc(Option<&'a AvcFrame>),
+    Avc(Option<Rc<AvcFrame>>),
 }
 
 impl<'a> InputRef<'a> {
@@ -473,12 +476,12 @@ impl<'a> InputRef<'a> {
         }
     }
 
-    pub fn expect_avc(&self) -> Option<&'a AvcFrame> {
+    pub fn expect_avc(&self) -> Option<Rc<AvcFrame>> {
         match self {
             InputRef::Disconnected => None,
             InputRef::Stereo(_) => panic!("expected stereo input, got stereo"),
             InputRef::Mono(_) => panic!("expected stereo input, got mono"),
-            InputRef::Avc(frame) => *frame,
+            InputRef::Avc(frame) => frame.as_ref().cloned(),
         }
     }
 }
@@ -486,7 +489,7 @@ impl<'a> InputRef<'a> {
 enum Output {
     Mono(Vec<Sample>),
     Stereo(Vec<Sample>),
-    Avc(Option<AvcFrame>),
+    Avc(Option<Rc<AvcFrame>>),
 }
 
 impl Output {
@@ -502,7 +505,7 @@ impl Output {
         match self {
             Output::Mono(buff) => InputRef::Mono(buff),
             Output::Stereo(buff) => InputRef::Stereo(buff),
-            Output::Avc(packet) => InputRef::Avc(packet.as_ref()),
+            Output::Avc(packet) => InputRef::Avc(packet.clone()),
         }
     }
 
@@ -518,7 +521,7 @@ impl Output {
 pub enum OutputRef<'a> {
     Mono(&'a mut [Sample]),
     Stereo(&'a mut [Sample]),
-    Avc(&'a mut Option<AvcFrame>)
+    Avc(&'a mut Option<Rc<AvcFrame>>)
 }
 
 impl<'a> OutputRef<'a> {
@@ -538,7 +541,7 @@ impl<'a> OutputRef<'a> {
         }
     }
 
-    pub fn expect_avc(&mut self) -> &mut Option<AvcFrame> {
+    pub fn expect_avc(&mut self) -> &mut Option<Rc<AvcFrame>> {
         match self {
             OutputRef::Stereo(_) => panic!("expected stereo output, got avc"),
             OutputRef::Mono(_) => panic!("expected mono input, got avc"),
