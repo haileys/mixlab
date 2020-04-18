@@ -85,6 +85,7 @@ gen_modules!{
     eq_three::EqThree,
     fm_sine::FmSine,
     mixer::Mixer,
+    monitor::Monitor,
     oscillator::Oscillator,
     output_device::OutputDevice,
     plotter::Plotter,
@@ -92,5 +93,4 @@ gen_modules!{
     stereo_splitter::StereoSplitter,
     stream_input::StreamInput,
     trigger::Trigger,
-    ts_dump::TsDump,
 }

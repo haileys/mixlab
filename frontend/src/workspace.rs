@@ -20,6 +20,7 @@ use crate::module::oscillator::Oscillator;
 use crate::module::output_device::OutputDevice;
 use crate::module::plotter::Plotter;
 use crate::module::trigger::Trigger;
+use crate::module::monitor::Monitor;
 use crate::util::{stop_propagation, prevent_default, Sequence};
 use crate::{App, AppMsg, State};
 
@@ -476,7 +477,7 @@ impl Workspace {
             ("Stereo Splitter", ModuleParams::StereoSplitter(())),
             ("Stream Input", ModuleParams::StreamInput(StreamInputParams::default())),
             ("EQ Three", ModuleParams::EqThree(EqThreeParams::default())),
-            ("MPEG-TS Dump", ModuleParams::TsDump(())),
+            ("Monitor", ModuleParams::Monitor(())),
         ];
 
         html! {
@@ -720,8 +721,7 @@ impl Window {
                 html! { <Oscillator id={self.props.id} module={self.link.clone()} params={params} /> }
             }
             ModuleParams::StereoPanner(()) |
-            ModuleParams::StereoSplitter(()) |
-            ModuleParams::TsDump(()) => {
+            ModuleParams::StereoSplitter(()) => {
                 html! {}
             }
             ModuleParams::OutputDevice(params) => {
@@ -758,6 +758,9 @@ impl Window {
             }
             ModuleParams::EqThree(params) => {
                 html! { <EqThree id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
+            }
+            ModuleParams::Monitor(()) => {
+                html! { <Monitor id={self.props.id} /> }
             }
         }
     }

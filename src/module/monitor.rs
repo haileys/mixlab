@@ -38,7 +38,7 @@ impl<W: Write> Write for Broadcast<W> {
 }
 
 #[derive(Debug)]
-pub struct TsDump {
+pub struct Monitor {
     write_ctx: TsWriteCtx,
     engine_epoch: Option<u64>,
     aac: aac::Encoder,
@@ -54,7 +54,7 @@ struct TsWriteCtx {
     video_continuity_counter: ContinuityCounter,
 }
 
-impl ModuleT for TsDump {
+impl ModuleT for Monitor {
     type Params = ();
     type Indication = ();
 
@@ -78,7 +78,7 @@ impl ModuleT for TsDump {
             video_continuity_counter: ContinuityCounter::default(),
         };
 
-        let module = TsDump {
+        let module = Monitor {
             write_ctx,
             engine_epoch: None,
             aac: aac::Encoder::new(aac_params).expect("aac::Encoder::new"),
@@ -150,7 +150,7 @@ impl ModuleT for TsDump {
         // process incoming video
         // TODO
         if let Some(frame) = video {
-            write_video(&mut self.write_ctx, frame, timestamp).unwrap();
+            write_video(&mut self.write_ctx, &frame, timestamp).unwrap();
         }
 
         None

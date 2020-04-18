@@ -147,7 +147,7 @@ pub enum ModuleParams {
     StereoSplitter(()),
     StreamInput(StreamInputParams),
     Trigger(GateState),
-    TsDump(()),
+    Monitor(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -164,7 +164,7 @@ pub enum Indication {
     StereoSplitter(()),
     StreamInput(()),
     Trigger(()),
-    TsDump(()),
+    Monitor(()),
 }
 
 
