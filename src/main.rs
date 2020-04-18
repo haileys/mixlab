@@ -180,7 +180,7 @@ async fn main() {
     let ts_dump = warp::path!("dump.ts")
         .map(|| {
             use futures::stream::TryStreamExt;
-            let stream = module::ts_dump::TS_BROADCAST.subscribe()
+            let stream = module::monitor::TS_BROADCAST.subscribe()
                 .inspect_ok(|x| {
                     eprintln!("packet!");
                 })
