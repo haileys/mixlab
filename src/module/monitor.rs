@@ -1,19 +1,28 @@
 use std::cmp;
+use std::ffi::CString;
 use std::fs::File;
 use std::io::{self, Write};
+use std::mem;
 
 use bytes::{Buf, Bytes};
 use derive_more::From;
 use fdk_aac::enc as aac;
 use mpeg2ts::es::StreamId;
 use mpeg2ts::time::Timestamp as MpegTimestamp;
-use mpeg2ts::ts::{self, TsPacketWriter, TsPacket, TsHeader, TsPayload, ProgramAssociation, ContinuityCounter, Pid, VersionNumber, WriteTsPacket};
+use mpeg2ts::ts::{self, TsPacketWriter, TsPacket, TsHeader, TsPayload, ContinuityCounter, Pid, WriteTsPacket};
+use mse_fmp4::aac::{AacProfile, SamplingFrequency, ChannelConfiguration};
+use mse_fmp4::fmp4::{
+    AacSampleEntry, AvcConfigurationBox, AvcSampleEntry, InitializationSegment, MediaDataBox,
+    MediaSegment, Mp4Box, Mpeg4EsDescriptorBox, Sample, SampleEntry, SampleFlags, TrackBox,
+    TrackExtendsBox, TrackFragmentBox, MovieFragmentHeaderBox, MovieFragmentBox,
+};
+use mse_fmp4::io::WriteTo;
 use num_rational::Rational64;
 
 use crate::codec::avc::AvcError;
 use crate::engine::{InputRef, OutputRef, AvcFrame, SAMPLE_RATE};
 use crate::module::ModuleT;
-use crate::util;
+use crate::util::{self, Sequence};
 
 use mixlab_protocol::{LineType, Terminal};
 
@@ -21,6 +30,9 @@ use tokio::sync::broadcast;
 lazy_static::lazy_static! {
     pub static ref TS_BROADCAST: broadcast::Sender<Bytes> = broadcast::channel(1024).0;
 }
+
+const CHANNELS: usize = 2;
+const SAMPLES_PER_CHANNEL_PER_FRAGMENT: usize = SAMPLE_RATE / 100;
 
 #[derive(Debug)]
 struct Broadcast<W: Write>(W);
@@ -39,19 +51,14 @@ impl<W: Write> Write for Broadcast<W> {
 
 #[derive(Debug)]
 pub struct Monitor {
-    write_ctx: TsWriteCtx,
+    file: File,
+    wrote_init: bool,
+    write_ctx: WriteCtx,
     engine_epoch: Option<u64>,
     aac: aac::Encoder,
     aac_output_buff: Vec<u8>,
     audio_pcm_buff: Vec<i16>,
     inputs: Vec<Terminal>,
-}
-
-#[derive(Debug)]
-struct TsWriteCtx {
-    ts: TsPacketWriter<Broadcast<File>>,
-    audio_continuity_counter: ContinuityCounter,
-    video_continuity_counter: ContinuityCounter,
 }
 
 impl ModuleT for Monitor {
@@ -65,23 +72,21 @@ impl ModuleT for Monitor {
             transport: aac::Transport::Adts,
         };
 
-        let file = File::create("dump.ts").unwrap();
-        let mut ts = TsPacketWriter::new(Broadcast(file));
+        let aac = aac::Encoder::new(aac_params).expect("aac::Encoder::new");
 
-        // write program association table:
-        ts.write_ts_packet(&program_association_table()).unwrap();
-        ts.write_ts_packet(&program_map_table()).unwrap();
+        let file = File::create("dump.mp4").unwrap();
+        // let mut ts = TsPacketWriter::new(Broadcast(file));
 
-        let write_ctx = TsWriteCtx {
-            ts,
-            audio_continuity_counter: ContinuityCounter::default(),
-            video_continuity_counter: ContinuityCounter::default(),
+        let write_ctx = WriteCtx {
+            sequence: Sequence::new(),
         };
 
         let module = Monitor {
+            file,
+            wrote_init: false,
             write_ctx,
             engine_epoch: None,
-            aac: aac::Encoder::new(aac_params).expect("aac::Encoder::new"),
+            aac: aac,
             aac_output_buff: Vec::new(),
             audio_pcm_buff: Vec::new(),
             inputs: vec![
@@ -124,13 +129,26 @@ impl ModuleT for Monitor {
             (sample * i16::max_value() as f32) as i16
         }));
 
+        // write mp4 init segment
+        if !self.wrote_init {
+            let init = make_mp4_init_segment(
+                None,
+                None,
+            );
+
+            println!("writing init");
+            init.write_to(&mut self.file).unwrap();
+
+            self.wrote_init = true;
+        }
+
         // process incoming audio
 
-        const CHUNK_SAMPLES: usize = 2 * SAMPLE_RATE / 100;
         let mut aac_buff = [0u8; 4096];
 
-        while self.audio_pcm_buff.len() > CHUNK_SAMPLES {
-            let chunk_pcm = &self.audio_pcm_buff[0..CHUNK_SAMPLES];
+        let audio_frame_sample_count = CHANNELS * SAMPLES_PER_CHANNEL_PER_FRAGMENT;
+        if self.audio_pcm_buff.len() > audio_frame_sample_count {
+            let chunk_pcm = &self.audio_pcm_buff[0..audio_frame_sample_count];
             let mut chunk_offset = 0;
 
             while chunk_offset < chunk_pcm.len() {
@@ -139,18 +157,33 @@ impl ModuleT for Monitor {
                 self.aac_output_buff.extend(&aac_buff[0..encode_result.output_size]);
             }
 
-            self.audio_pcm_buff.drain(0..CHUNK_SAMPLES);
+            self.audio_pcm_buff.drain(0..audio_frame_sample_count);
         }
 
-        if self.audio_pcm_buff.len() > 0 {
-            write_audio(&mut self.write_ctx, &self.aac_output_buff, timestamp).unwrap();
-            self.aac_output_buff.truncate(0);
+        let aac_frame =
+            if self.aac_output_buff.len() > 0 {
+                println!("aac_output_buf.len: {}", self.aac_output_buff.len());
+                // write_audio(&mut self.write_ctx, &self.aac_output_buff, timestamp).unwrap();
+                Some(mem::take(&mut self.aac_output_buff))
+            } else {
+                None
+            };
+
+        if aac_frame.is_some() {
+            let segment = make_mp4_media_segment(
+                &mut self.write_ctx,
+                None,
+                aac_frame,
+                timestamp,
+            ).unwrap();
+
+            segment.write_to(&mut self.file).unwrap();
         }
 
         // process incoming video
         // TODO
         if let Some(frame) = video {
-            write_video(&mut self.write_ctx, &frame, timestamp).unwrap();
+            // write_video(&mut self.write_ctx, &frame, timestamp).unwrap();
         }
 
         None
@@ -165,7 +198,181 @@ impl ModuleT for Monitor {
     }
 }
 
-const PMT_PID: u16 = 256;
+#[derive(Debug)]
+struct WriteCtx {
+    sequence: Sequence,
+}
+
+#[derive(From, Debug)]
+enum MakeSegmentError {
+    MseFmp4(mse_fmp4::Error),
+}
+
+const AUDIO_TRACK: u32 = 1;
+const VIDEO_TRACK: u32 = 2;
+
+fn make_mp4_init_segment(
+    mut avc_frame: Option<&AvcFrame>,
+    mut aac_frame: Option<&Vec<u8>>,
+) -> InitializationSegment {
+    use mse_fmp4::fmp4::{
+        FileTypeBox, MovieBox, MovieHeaderBox, TrackHeaderBox, MovieExtendsBox,
+        MediaBox, MediaHeaderBox, HandlerReferenceBox, MediaInformationBox,
+        SoundMediaHeaderBox, DataInformationBox, DataReferenceBox, DataEntryUrlBox,
+        SampleTableBox, SampleDescriptionBox, TimeToSampleBox, SampleToChunkBox,
+        SampleSizeBox, ChunkOffsetBox,
+    };
+
+    InitializationSegment {
+        ftyp_box: FileTypeBox,
+        moov_box: MovieBox {
+            mvhd_box: MovieHeaderBox {
+                // units of time in this MOV are 1/SAMPLE_RATE seconds:
+                timescale: SAMPLE_RATE as u32,
+                // no duration outside of extension fragments:
+                duration: 0,
+            },
+            trak_boxes: vec![
+                // audio track:
+                TrackBox {
+                    tkhd_box: TrackHeaderBox {
+                        track_id: AUDIO_TRACK,
+                        // ISO/IEC 14496-14:2003(E) 5.3:
+                        // If the duration of a track cannot be determined,
+                        // then the duration is set to all 1s (32-bit maxint)
+                        duration: u32::max_value(),
+                        volume: 0x0100, // 16.16 fixed point, 0x0100 = 1.0
+                        width: 0,
+                        height: 0,
+                    },
+                    edts_box: None,
+                    mdia_box: MediaBox {
+                        mdhd_box: MediaHeaderBox {
+                            timescale: SAMPLE_RATE as u32,
+                            duration: 0,
+                        },
+                        hdlr_box: HandlerReferenceBox {
+                            handler_type: *b"soun",
+                            name: CString::new("Mixlab Audio").unwrap(),
+                        },
+                        minf_box: MediaInformationBox {
+                            vmhd_box: None,
+                            smhd_box: Some(SoundMediaHeaderBox),
+                            dinf_box: DataInformationBox {
+                                dref_box: DataReferenceBox {
+                                    url_box: DataEntryUrlBox,
+                                },
+                            },
+                            stbl_box: SampleTableBox {
+                                stsd_box: SampleDescriptionBox {
+                                    sample_entries: vec![
+                                        SampleEntry::Aac(AacSampleEntry {
+                                            esds_box: Mpeg4EsDescriptorBox {
+                                                // TODO set these from ADTS header - or are they always constant?
+                                                profile: AacProfile::Lc,
+                                                frequency: SamplingFrequency::Hz44100,
+                                                channel_configuration: ChannelConfiguration::TwoChannels,
+                                            },
+                                        }),
+                                    ],
+                                },
+                                stts_box: TimeToSampleBox,
+                                stsc_box: SampleToChunkBox,
+                                stsz_box: SampleSizeBox,
+                                stco_box: ChunkOffsetBox,
+                            },
+                        }
+                    },
+                },
+            ],
+            mvex_box: MovieExtendsBox {
+                mehd_box: None,
+                trex_boxes: vec![TrackExtendsBox {
+                    track_id: AUDIO_TRACK,
+                    default_sample_description_index: 1,
+                    default_sample_duration: 0,
+                    default_sample_size: 0,
+                    default_sample_flags: 0,
+                }],
+            }
+        },
+    }
+}
+
+fn make_mp4_media_segment(
+    ctx: &mut WriteCtx,
+    mut avc_frame: Option<&AvcFrame>,
+    mut aac_frame: Option<Vec<u8>>,
+    tick_timestamp: Rational64,
+) -> Result<MediaSegment, MakeSegmentError> {
+    use mse_fmp4::fmp4::{TrackFragmentHeaderBox, TrackRunBox};
+
+    let mut segment = MediaSegment {
+        moof_box: MovieFragmentBox {
+            mfhd_box: MovieFragmentHeaderBox {
+                sequence_number: ctx.sequence.next().get() as u32,
+            },
+            traf_boxes: Vec::new(),
+        },
+        mdat_boxes: Vec::new(),
+    };
+
+    // do video traf here
+
+    if let Some(aac_frame) = &mut aac_frame {
+        aac_frame.drain(0..7); // snip off 7 byte ADTS header
+
+        let mut audio_frag = TrackFragmentBox {
+            tfhd_box: TrackFragmentHeaderBox {
+                track_id: AUDIO_TRACK,
+                duration_is_empty: false,
+                default_base_is_moof: true,
+                base_data_offset: None,
+                sample_description_index: None,
+                default_sample_duration: None,
+                default_sample_size: None,
+                default_sample_flags: None,
+            },
+            tfdt_box: None,
+            trun_box: TrackRunBox {
+                data_offset: Some(0), // dummy for length calculation
+                first_sample_flags: None,
+                samples: vec![Sample {
+                    duration: Some(SAMPLES_PER_CHANNEL_PER_FRAGMENT as u32),
+                    size: Some(aac_frame.len() as u32),
+                    composition_time_offset: None,
+                    flags: None,
+                }],
+            }
+        };
+
+        segment.moof_box.traf_boxes.push(audio_frag);
+    }
+
+    // do video mdat here
+
+    if let Some(aac_frame) = aac_frame {
+        let mut temp_buff = Vec::new();
+        segment.moof_box.write_box(&mut temp_buff)?;
+        segment.moof_box.traf_boxes[0].trun_box.data_offset = Some(temp_buff.len() as i32 + 8);
+        segment.mdat_boxes.push(MediaDataBox {
+            data: aac_frame,
+        });
+    }
+
+    Ok(segment)
+}
+
+//////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////
+
+#[cfg(feature="mpeg_ts")]
+mod ts {
+
 const VIDEO_ES_PID: u16 = 257;
 const AUDIO_ES_PID: u16 = 258;
 
@@ -185,56 +392,7 @@ fn ts_header(pid: u16, continuity_counter: ContinuityCounter) -> TsHeader {
     }
 }
 
-fn program_association_table() -> TsPacket {
-    use mpeg2ts::ts::payload::Pat;
-    TsPacket {
-        header: ts_header(0, ContinuityCounter::default()),
-        adaptation_field: None,
-        payload: Some(
-            TsPayload::Pat(Pat {
-                transport_stream_id: 1,
-                version_number: VersionNumber::default(),
-                table: vec![
-                    ProgramAssociation {
-                        program_num: 1,
-                        program_map_pid: Pid::new(PMT_PID).unwrap(),
-                    }
-                ]
-            })),
-    }
-}
-
-fn program_map_table() -> TsPacket {
-    use mpeg2ts::{
-        ts::{VersionNumber, payload::Pmt, EsInfo},
-        es::StreamType,
-    };
-
-    TsPacket {
-        header: ts_header(PMT_PID, ContinuityCounter::default()),
-        adaptation_field: None,
-        payload: Some(
-            TsPayload::Pmt(Pmt {
-                program_num: 1,
-                pcr_pid: Some(Pid::new(VIDEO_ES_PID).unwrap()),
-                version_number: VersionNumber::default(),
-                table: vec![
-                    EsInfo {
-                        stream_type: StreamType::H264,
-                        elementary_pid: Pid::new(VIDEO_ES_PID).unwrap(),
-                        descriptors: vec![],
-                    },
-                    EsInfo {
-                        stream_type: StreamType::AdtsAac,
-                        elementary_pid: Pid::new(AUDIO_ES_PID).unwrap(),
-                        descriptors: vec![],
-                    }
-                ]
-            })),
-    }
-}
-
-fn write_audio(ctx: &mut TsWriteCtx, mut data: &[u8], timestamp: Rational64) -> Result<(), mpeg2ts::Error> {
+fn write_audio(ctx: &mut WriteCtx, mut data: &[u8], timestamp: Rational64) -> Result<(), mpeg2ts::Error> {
     use mpeg2ts::pes::PesHeader;
     use mpeg2ts::ts::payload::Bytes;
 
@@ -288,15 +446,12 @@ enum WriteVideoError {
     Avc(AvcError),
 }
 
-fn write_video(ctx: &mut TsWriteCtx, frame: &AvcFrame, timestamp: Rational64) -> Result<(), WriteVideoError> {
+fn write_video(ctx: &mut WriteCtx, frame: &AvcFrame, timestamp: Rational64) -> Result<(), WriteVideoError> {
     use mpeg2ts::es::StreamId;
     use mpeg2ts::pes::PesHeader;
     use mpeg2ts::time::ClockReference;
     use mpeg2ts::ts::AdaptationField;
     use mpeg2ts::ts::payload::{Bytes, Pes};
-
-    // println!("[TS-DUMP] timestamp: {}, tick_offset: {}, comp_time: {}",
-    //     util::decimal(timestamp), util::decimal(frame.tick_offset), frame.data.composition_time.0);
 
     let frame_data_timestamp = timestamp + frame.tick_offset;
     let frame_presentation_timestamp = frame_data_timestamp + Rational64::new(frame.data.composition_time.0 as i64, 1000);
@@ -304,15 +459,12 @@ fn write_video(ctx: &mut TsWriteCtx, frame: &AvcFrame, timestamp: Rational64) ->
     let frame_data_millis = (frame_data_timestamp * 1000).to_integer() as u64;
     let frame_presentation_millis = (frame_presentation_timestamp * 1000).to_integer() as u64;
 
-    // println!("frame_data_millis: {}", frame_data_millis);
-
     let mut buf = frame.data.bitstream.into_bytes()?;
     let pes_data_len = cmp::min(153, buf.remaining());
     let pes_data = buf.split_to(pes_data_len);
     let pcr = ClockReference::new(frame_data_millis * 90)?;
 
     let adaptation_field = if frame.data.frame_type.is_key_frame() {
-        println!("[TS-DUMP] key frame!");
         Some(AdaptationField {
             discontinuity_indicator: false,
             random_access_indicator: true,
@@ -367,4 +519,6 @@ fn write_video(ctx: &mut TsWriteCtx, frame: &AvcFrame, timestamp: Rational64) ->
     }
 
     Ok(())
+}
+
 }

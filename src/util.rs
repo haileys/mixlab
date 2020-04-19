@@ -5,6 +5,7 @@ use num_rational::Rational64;
 use futures::executor::block_on;
 use tokio::io::AsyncRead;
 
+#[derive(Debug)]
 pub struct Sequence(usize);
 
 impl Sequence {

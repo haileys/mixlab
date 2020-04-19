@@ -1,8 +1,10 @@
 use bytes::{Bytes, Buf};
+use derive_more::From;
 
 pub mod bitstream;
 pub mod dcr;
 pub mod nal;
+pub mod sps;
 
 pub use dcr::DecoderConfigurationRecord;
 pub use bitstream::Bitstream;
@@ -10,12 +12,14 @@ pub use bitstream::Bitstream;
 #[derive(Debug, Clone, Copy)]
 pub struct Millis(pub u64);
 
-#[derive(Debug)]
+#[derive(Debug, From)]
 pub enum AvcError {
     NotEnoughData,
-    UnsupportedConfigurationRecordVersion(u8),
-    ReservedNalUnitType(u8),
-    UnknownNalUnitType(u8),
+    #[from(ignore)] UnsupportedConfigurationRecordVersion(u8),
+    #[from(ignore)] ReservedNalUnitType(u8),
+    #[from(ignore)] UnknownNalUnitType(u8),
+    NoSps,
+    Sps(sps::SpsReadError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

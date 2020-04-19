@@ -7,6 +7,7 @@
 
 use bytes::{Bytes, Buf};
 use super::{nal, AvcError};
+use super::sps::SpsSummary;
 
 
 /// AVC decoder configuration record
@@ -27,7 +28,7 @@ use super::{nal, AvcError};
 /// 16   | PPS Length
 /// var  | PPS
 ///
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DecoderConfigurationRecord {
     pub version: u8,
     pub profile_indication: u8,
@@ -36,6 +37,7 @@ pub struct DecoderConfigurationRecord {
     pub nalu_size: u8,
     pub sps: Vec<nal::Unit>,
     pub pps: Vec<nal::Unit>,
+    sps_summary: SpsSummary,
 }
 
 impl DecoderConfigurationRecord {
@@ -92,6 +94,16 @@ impl DecoderConfigurationRecord {
             pps.push(nal::Unit::parse(tmp)?);
         }
 
+        let sps_summary = SpsSummary::read_from(
+            sps.get(0)
+                .ok_or(AvcError::NoSps)?
+                .data
+                .clone())?;
+
+        println!("SPS DATA: {:?}", sps[0].data);
+
+        println!("video dimensions: {}x{}", sps_summary.width(), sps_summary.height());
+
         Ok(Self {
             version,
             profile_indication,
@@ -100,6 +112,7 @@ impl DecoderConfigurationRecord {
             nalu_size,
             sps,
             pps,
+            sps_summary,
         })
     }
 }
