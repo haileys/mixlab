@@ -181,9 +181,6 @@ async fn main() {
         .map(|| {
             use futures::stream::TryStreamExt;
             let stream = module::monitor::TS_BROADCAST.subscribe()
-                .inspect_ok(|x| {
-                    eprintln!("packet!");
-                })
                 .inspect_err(|e| {
                     eprintln!("there was an error: {:?}", e);
                 });

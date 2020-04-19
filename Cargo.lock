@@ -928,6 +928,7 @@ dependencies = [
  "lewton",
  "mixlab-protocol",
  "mpeg2ts",
+ "mse_fmp4",
  "num-rational",
  "ogg",
  "ringbuf",
@@ -951,6 +952,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a38c92bbb0d15f62ed915c392f2d675e3c0889c98be7ad418ae660bfcb7f3b2"
 dependencies = [
  "byteorder",
+ "trackable",
+]
+
+[[package]]
+name = "mse_fmp4"
+version = "0.1.3"
+source = "git+https://github.com/charliesome/mse_fmp4?rev=24a92c24f16a2ea350edf4b4be78c84bad647165#24a92c24f16a2ea350edf4b4be78c84bad647165"
+dependencies = [
+ "byteorder",
+ "mpeg2ts",
  "trackable",
 ]
 
