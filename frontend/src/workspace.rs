@@ -725,17 +725,17 @@ impl Window {
                 html! {}
             }
             ModuleParams::OutputDevice(params) => {
-                if let Some(Indication::OutputDevice(indic)) = &self.props.indication {
-                    html! { <OutputDevice id={self.props.id} module={self.link.clone()} params={params} indication={indic} /> }
+                if let Some(Indication::OutputDevice(indication)) = &self.props.indication {
+                    html! { <OutputDevice id={self.props.id} module={self.link.clone()} params={params} indication={indication} /> }
                 } else {
-                    html! {}
+                    unreachable!()
                 }
             }
             ModuleParams::Plotter(_) => {
-                if let Some(Indication::Plotter(indic)) = &self.props.indication {
-                    html! { <Plotter id={self.props.id} indication={indic} /> }
+                if let Some(Indication::Plotter(indication)) = &self.props.indication {
+                    html! { <Plotter id={self.props.id} indication={indication} /> }
                 } else {
-                    html! {}
+                    unreachable!()
                 }
             }
             ModuleParams::FmSine(params) => {
@@ -760,7 +760,11 @@ impl Window {
                 html! { <EqThree id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
             ModuleParams::Monitor(()) => {
-                html! { <Monitor id={self.props.id} /> }
+                if let Some(Indication::Monitor(indication)) = &self.props.indication {
+                    html! { <Monitor id={self.props.id} indication={indication} /> }
+                } else {
+                    unreachable!()
+                }
             }
         }
     }

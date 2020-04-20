@@ -2,6 +2,7 @@ use std::fmt;
 use std::num::NonZeroUsize;
 
 use serde_derive::{Deserialize, Serialize};
+use uuid::Uuid;
 
 pub type Sample = f32;
 
@@ -140,6 +141,7 @@ pub enum ModuleParams {
     EqThree(EqThreeParams),
     FmSine(FmSineParams),
     Mixer(MixerParams),
+    Monitor(()),
     Oscillator(OscillatorParams),
     OutputDevice(OutputDeviceParams),
     Plotter(()),
@@ -147,7 +149,6 @@ pub enum ModuleParams {
     StereoSplitter(()),
     StreamInput(StreamInputParams),
     Trigger(GateState),
-    Monitor(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -157,6 +158,7 @@ pub enum Indication {
     EqThree(()),
     FmSine(()),
     Mixer(()),
+    Monitor(MonitorIndication),
     Oscillator(()),
     OutputDevice(OutputDeviceIndication),
     Plotter(PlotterIndication),
@@ -164,7 +166,6 @@ pub enum Indication {
     StereoSplitter(()),
     StreamInput(()),
     Trigger(()),
-    Monitor(()),
 }
 
 
@@ -182,6 +183,11 @@ pub enum Waveform {
 pub struct OscillatorParams {
     pub freq: f64,
     pub waveform: Waveform,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MonitorIndication {
+    pub socket_id: Uuid,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

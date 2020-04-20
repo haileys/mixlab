@@ -8,12 +8,14 @@ mod source;
 mod throttle;
 mod util;
 
-use std::sync::Arc;
+use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use futures::{StreamExt, SinkExt, stream};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
@@ -177,20 +179,31 @@ async fn main() {
             })
         });
 
-    let ts_dump = warp::path!("dump.ts")
-        .map(|| {
-            use futures::stream::TryStreamExt;
-            let stream = module::monitor::TS_BROADCAST.subscribe()
-                .inspect_err(|e| {
-                    eprintln!("there was an error: {:?}", e);
-                });
-            let response = http::Response::new(hyper::Body::wrap_stream(stream));
-            reply::with_header(response, "content-type", "video/mp2t")
+    let monitor_mp4 = warp::get()
+        .and(warp::path!("_monitor_mp4" / Uuid))
+        .map(move |socket_id: Uuid| {
+            use module::monitor::ClientKind;
+            let (tx, rx) = mpsc::channel(1024);
+            let rx = rx.map(Ok::<_, Infallible>);
+            tokio::task::spawn(module::monitor::stream(socket_id, ClientKind::Http(tx)));
+            let response = http::Response::new(hyper::Body::wrap_stream(rx));
+            reply::with_header(response, "content-type", "video/mp4")
+        });
+
+    let monitor_socket = warp::get()
+        .and(warp::path!("_monitor" / Uuid))
+        .and(warp::ws())
+        .map(move |socket_id: Uuid, ws: Ws| {
+            ws.on_upgrade(move |websocket| {
+                use module::monitor::ClientKind;
+                module::monitor::stream(socket_id, ClientKind::Ws(websocket))
+            })
         });
 
     let routes = static_content
         .or(websocket)
-        .or(ts_dump)
+        .or(monitor_mp4)
+        .or(monitor_socket)
         .with(warp::log("mixlab-http"));
 
     let warp = warp::serve(routes);

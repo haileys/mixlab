@@ -24,6 +24,7 @@ ogg = "0.7"
 ringbuf = "0.2"
 tokio = { version = "0.2", features = ["macros", "process"] }
 warp = "0.2"
+uuid = { version = "0.8", features = ["v4"] }
 
 # we rely on changes made in cpal master since release of 0.11.0:
 cpal = { git = "https://github.com/rustaudio/cpal", rev = "f3e7c462055004d0841cbb78d3f43585af3e8567" }
