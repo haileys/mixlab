@@ -1,12 +1,16 @@
 use std::cmp;
+use std::collections::HashMap;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::{self, Write};
 use std::mem;
+use std::sync::{Arc, Mutex};
 
-use bytes::{Buf, Bytes};
+use bytes::{Buf, Bytes, BytesMut, BufMut};
+use bytes::buf::BufMutExt;
 use derive_more::From;
 use fdk_aac::enc as aac;
+use futures::sink::SinkExt;
 use mpeg2ts::es::StreamId;
 use mpeg2ts::time::Timestamp as MpegTimestamp;
 use mpeg2ts::ts::{self, TsPacketWriter, TsPacket, TsHeader, TsPayload, ContinuityCounter, Pid, WriteTsPacket};
@@ -18,54 +22,123 @@ use mse_fmp4::fmp4::{
 };
 use mse_fmp4::io::WriteTo;
 use num_rational::Rational64;
+use tokio::sync::{broadcast, watch, mpsc};
+use uuid::Uuid;
+use warp::ws::{self, Ws, WebSocket};
 
 use crate::codec::avc::AvcError;
 use crate::engine::{InputRef, OutputRef, AvcFrame, SAMPLE_RATE};
 use crate::module::ModuleT;
 use crate::util::{self, Sequence};
 
-use mixlab_protocol::{LineType, Terminal};
+use mixlab_protocol::{LineType, Terminal, MonitorIndication};
 
-use tokio::sync::broadcast;
 lazy_static::lazy_static! {
-    pub static ref TS_BROADCAST: broadcast::Sender<Bytes> = broadcast::channel(1024).0;
+    static ref SOCKETS: Mutex<HashMap<Uuid, Stream>> = Mutex::new(HashMap::new());
+}
+
+struct Stream {
+    init: watch::Receiver<Option<Bytes>>,
+    segments: Arc<broadcast::Sender<Bytes>>,
+}
+
+pub enum ClientKind {
+    Ws(WebSocket),
+    Http(mpsc::Sender<Bytes>),
+}
+
+impl ClientKind {
+    pub async fn send(&mut self, data: Bytes) {
+        match self {
+            ClientKind::Ws(sock) => {
+                // TODO it would be great if we didn't need the copy here
+                let data = data.to_vec();
+                sock.send(ws::Message::binary(data)).await;
+            }
+            ClientKind::Http(tx) => {
+                tx.send(data).await;
+            }
+        }
+    }
+}
+
+pub async fn stream(socket_id: Uuid, mut client: ClientKind) {
+    let rx = (*SOCKETS).lock()
+        .unwrap()
+        .get(&socket_id)
+        .map(|stream| (stream.init.clone(), stream.segments.subscribe()));
+
+    if let Some((mut init, mut stream)) = rx {
+        // get initialisation segment, possibly waiting for it
+        loop {
+            match init.recv().await {
+                None => {
+                    // sender half dropped
+                    return;
+                }
+                Some(None) => {
+                    // initialisation segment not yet ready
+                    continue;
+                }
+                Some(Some(init)) => {
+                    // send initialisation segment to client
+                    client.send(init.into()).await;
+                    break;
+                }
+            }
+        }
+
+        // TODO if we lag we should catch up to the start of the stream rather
+        // than disconnecting the client
+        while let Ok(packet) = stream.recv().await {
+            client.send(packet).await;
+        }
+    }
 }
 
 const CHANNELS: usize = 2;
-const SAMPLES_PER_CHANNEL_PER_FRAGMENT: usize = SAMPLE_RATE / 100;
+
+// must match AAC encoder's granule size
+const SAMPLES_PER_CHANNEL_PER_FRAGMENT: usize = 1024;
 
 #[derive(Debug)]
-struct Broadcast<W: Write>(W);
-
-impl<W: Write> Write for Broadcast<W> {
-    fn write(&mut self, data: &[u8]) -> Result<usize, io::Error> {
-        let n = self.0.write(data)?;
-        TS_BROADCAST.send(Bytes::copy_from_slice(&data[0..n]));
-        Ok(n)
-    }
-
-    fn flush(&mut self) -> Result<(), io::Error> {
-        self.0.flush()
-    }
+struct AacFrame {
+    data: Vec<u8>,
+    timestamp: u64,
 }
 
 #[derive(Debug)]
 pub struct Monitor {
+    socket_id: Uuid,
+    init_tx: watch::Sender<Option<Bytes>>,
+    segments_tx: Arc<broadcast::Sender<Bytes>>,
     file: File,
     wrote_init: bool,
     write_ctx: WriteCtx,
     engine_epoch: Option<u64>,
     aac: aac::Encoder,
-    aac_output_buff: Vec<u8>,
     audio_pcm_buff: Vec<i16>,
+    audio_pcm_buff_sample_time: u64,
     inputs: Vec<Terminal>,
 }
 
 impl ModuleT for Monitor {
     type Params = ();
-    type Indication = ();
+    type Indication = MonitorIndication;
 
     fn create(_: Self::Params) -> (Self, Self::Indication) {
+        let (init_tx, init_rx) = watch::channel(None);
+
+        // register socket
+        let socket_id = Uuid::new_v4();
+        let (segments_tx, _) = broadcast::channel(1024);
+        let segments_tx = Arc::new(segments_tx);
+        (*SOCKETS).lock().unwrap().insert(socket_id, Stream {
+            init: init_rx,
+            segments: segments_tx.clone(),
+        });
+
+        // setup codecs
         let aac_params = aac::EncoderParams {
             bit_rate: aac::BitRate::VbrVeryHigh,
             sample_rate: 44100,
@@ -75,27 +148,29 @@ impl ModuleT for Monitor {
         let aac = aac::Encoder::new(aac_params).expect("aac::Encoder::new");
 
         let file = File::create("dump.mp4").unwrap();
-        // let mut ts = TsPacketWriter::new(Broadcast(file));
 
         let write_ctx = WriteCtx {
             sequence: Sequence::new(),
         };
 
         let module = Monitor {
+            socket_id,
+            init_tx,
+            segments_tx,
             file,
             wrote_init: false,
             write_ctx,
             engine_epoch: None,
             aac: aac,
-            aac_output_buff: Vec::new(),
             audio_pcm_buff: Vec::new(),
+            audio_pcm_buff_sample_time: 0,
             inputs: vec![
                 LineType::Avc.labeled("Video"),
                 LineType::Stereo.labeled("Audio"),
             ]
         };
 
-        (module, ())
+        (module, MonitorIndication { socket_id })
     }
 
     fn params(&self) -> Self::Params {
@@ -137,34 +212,40 @@ impl ModuleT for Monitor {
             );
 
             println!("writing init");
-            init.write_to(&mut self.file).unwrap();
+            let mut init_bytes = BytesMut::new();
+            init.write_to((&mut init_bytes).writer()).unwrap();
+            let init_bytes = init_bytes.freeze();
+            self.file.write_all(&init_bytes).unwrap();
+            let _ = self.init_tx.broadcast(Some(init_bytes));
 
             self.wrote_init = true;
         }
 
         // process incoming audio
-
-        let mut aac_buff = [0u8; 4096];
-
         let audio_frame_sample_count = CHANNELS * SAMPLES_PER_CHANNEL_PER_FRAGMENT;
-        if self.audio_pcm_buff.len() > audio_frame_sample_count {
-            let chunk_pcm = &self.audio_pcm_buff[0..audio_frame_sample_count];
-            let mut chunk_offset = 0;
-
-            while chunk_offset < chunk_pcm.len() {
-                let encode_result = self.aac.encode(&chunk_pcm[chunk_offset..], &mut aac_buff).expect("aac.encode");
-                chunk_offset += encode_result.input_consumed;
-                self.aac_output_buff.extend(&aac_buff[0..encode_result.output_size]);
-            }
-
-            self.audio_pcm_buff.drain(0..audio_frame_sample_count);
-        }
 
         let aac_frame =
-            if self.aac_output_buff.len() > 0 {
-                println!("aac_output_buf.len: {}", self.aac_output_buff.len());
-                // write_audio(&mut self.write_ctx, &self.aac_output_buff, timestamp).unwrap();
-                Some(mem::take(&mut self.aac_output_buff))
+            if self.audio_pcm_buff.len() > audio_frame_sample_count {
+                let fragment_pcm = &self.audio_pcm_buff[0..audio_frame_sample_count];
+
+                let mut aac_buff = [0u8; 4096];
+
+                let encode_result = self.aac.encode(&fragment_pcm, &mut aac_buff).expect("aac.encode");
+
+                if encode_result.input_consumed != audio_frame_sample_count {
+                    eprintln!("monitor: aac encoder did not consume exactly {} samples (consumed {})",
+                        audio_frame_sample_count, encode_result.input_consumed);
+                }
+
+                let frame = AacFrame {
+                    data: aac_buff[0..encode_result.output_size].to_vec(),
+                    timestamp: self.audio_pcm_buff_sample_time,
+                };
+
+                self.audio_pcm_buff_sample_time += SAMPLES_PER_CHANNEL_PER_FRAGMENT as u64;
+                self.audio_pcm_buff.drain(0..audio_frame_sample_count);
+
+                Some(frame)
             } else {
                 None
             };
@@ -177,7 +258,12 @@ impl ModuleT for Monitor {
                 timestamp,
             ).unwrap();
 
-            segment.write_to(&mut self.file).unwrap();
+            let mut segment_bytes = BytesMut::new();
+            segment.write_to((&mut segment_bytes).writer()).unwrap();
+            let segment_bytes = segment_bytes.freeze();
+            self.file.write_all(&segment_bytes).unwrap();
+            // only fails if no active receives
+            let _ = self.segments_tx.send(segment_bytes);
         }
 
         // process incoming video
@@ -213,7 +299,7 @@ const VIDEO_TRACK: u32 = 2;
 
 fn make_mp4_init_segment(
     mut avc_frame: Option<&AvcFrame>,
-    mut aac_frame: Option<&Vec<u8>>,
+    mut aac_frame: Option<&AacFrame>,
 ) -> InitializationSegment {
     use mse_fmp4::fmp4::{
         FileTypeBox, MovieBox, MovieHeaderBox, TrackHeaderBox, MovieExtendsBox,
@@ -302,7 +388,7 @@ fn make_mp4_init_segment(
 fn make_mp4_media_segment(
     ctx: &mut WriteCtx,
     mut avc_frame: Option<&AvcFrame>,
-    mut aac_frame: Option<Vec<u8>>,
+    mut aac_frame: Option<AacFrame>,
     tick_timestamp: Rational64,
 ) -> Result<MediaSegment, MakeSegmentError> {
     use mse_fmp4::fmp4::{TrackFragmentHeaderBox, TrackRunBox};
@@ -320,7 +406,7 @@ fn make_mp4_media_segment(
     // do video traf here
 
     if let Some(aac_frame) = &mut aac_frame {
-        aac_frame.drain(0..7); // snip off 7 byte ADTS header
+        aac_frame.data.drain(0..7); // snip off 7 byte ADTS header
 
         let mut audio_frag = TrackFragmentBox {
             tfhd_box: TrackFragmentHeaderBox {
@@ -339,7 +425,7 @@ fn make_mp4_media_segment(
                 first_sample_flags: None,
                 samples: vec![Sample {
                     duration: Some(SAMPLES_PER_CHANNEL_PER_FRAGMENT as u32),
-                    size: Some(aac_frame.len() as u32),
+                    size: Some(aac_frame.data.len() as u32),
                     composition_time_offset: None,
                     flags: None,
                 }],
@@ -356,7 +442,7 @@ fn make_mp4_media_segment(
         segment.moof_box.write_box(&mut temp_buff)?;
         segment.moof_box.traf_boxes[0].trun_box.data_offset = Some(temp_buff.len() as i32 + 8);
         segment.mdat_boxes.push(MediaDataBox {
-            data: aac_frame,
+            data: aac_frame.data,
         });
     }
 
