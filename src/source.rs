@@ -7,8 +7,9 @@ use std::sync::{Arc, Mutex};
 use num_rational::Rational64;
 use ringbuf::{RingBuffer, Producer, Consumer};
 
-use crate::codec::avc::AvcFrame;
+use crate::engine::VideoFrame;
 use crate::util::Sequence;
+use crate::video;
 
 pub type Timestamp = Rational64;
 
@@ -62,7 +63,7 @@ pub struct SourceSend {
 }
 
 pub type AudioData = Vec<i16>;
-pub type VideoData = AvcFrame;
+pub type VideoData = video::Frame;
 
 #[derive(Debug)]
 pub struct Frame<T> {

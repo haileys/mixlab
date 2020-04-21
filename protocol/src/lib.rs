@@ -121,7 +121,7 @@ impl Terminal {
 pub enum LineType {
     Mono,
     Stereo,
-    Avc,
+    Video,
 }
 
 impl LineType {

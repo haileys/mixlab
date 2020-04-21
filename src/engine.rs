@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::f32;
 use std::num::NonZeroUsize;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError};
 use std::thread;
 use std::time::{Instant, Duration};
@@ -15,6 +16,7 @@ use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, Wo
 use crate::codec::avc;
 use crate::module::Module;
 use crate::util::Sequence;
+use crate::video;
 
 pub type Sample = f32;
 
@@ -435,17 +437,18 @@ impl Engine {
 }
 
 #[derive(Debug)]
-pub struct AvcFrame {
+pub struct VideoFrame {
+    pub data: Arc<video::Frame>,
+
+    // frame timestamp in fractional seconds after enclosing tick begins:
     pub tick_offset: Rational64,
-    pub data: avc::AvcFrame,
-    pub previous: Option<Rc<AvcFrame>>,
 }
 
 pub enum InputRef<'a> {
     Disconnected,
     Mono(&'a [Sample]),
     Stereo(&'a [Sample]),
-    Avc(Option<Rc<AvcFrame>>),
+    Video(Option<&'a VideoFrame>),
 }
 
 impl<'a> InputRef<'a> {
@@ -454,7 +457,7 @@ impl<'a> InputRef<'a> {
             InputRef::Disconnected => false,
             InputRef::Mono(_) |
             InputRef::Stereo(_) |
-            InputRef::Avc(_) => true,
+            InputRef::Video(_) => true,
         }
     }
 
@@ -463,7 +466,7 @@ impl<'a> InputRef<'a> {
             InputRef::Disconnected => &ZERO_BUFFER_MONO,
             InputRef::Mono(buff) => buff,
             InputRef::Stereo(_) => panic!("expected mono input, got stereo"),
-            InputRef::Avc(_) => panic!("expected mono input, got avc"),
+            InputRef::Video(_) => panic!("expected mono input, got avc"),
         }
     }
 
@@ -472,16 +475,16 @@ impl<'a> InputRef<'a> {
             InputRef::Disconnected => &ZERO_BUFFER_STEREO,
             InputRef::Stereo(buff) => buff,
             InputRef::Mono(_) => panic!("expected stereo input, got mono"),
-            InputRef::Avc(_) => panic!("expected stereo input, got avc"),
+            InputRef::Video(_) => panic!("expected stereo input, got avc"),
         }
     }
 
-    pub fn expect_avc(&self) -> Option<Rc<AvcFrame>> {
+    pub fn expect_video(&self) -> Option<&VideoFrame> {
         match self {
             InputRef::Disconnected => None,
             InputRef::Stereo(_) => panic!("expected stereo input, got stereo"),
             InputRef::Mono(_) => panic!("expected stereo input, got mono"),
-            InputRef::Avc(frame) => frame.as_ref().cloned(),
+            InputRef::Video(frame) => *frame,
         }
     }
 }
@@ -489,7 +492,7 @@ impl<'a> InputRef<'a> {
 enum Output {
     Mono(Vec<Sample>),
     Stereo(Vec<Sample>),
-    Avc(Option<Rc<AvcFrame>>),
+    Video(Option<VideoFrame>),
 }
 
 impl Output {
@@ -497,7 +500,7 @@ impl Output {
         match line_type {
             LineType::Mono => Output::Mono(vec![0.0; SAMPLES_PER_TICK]),
             LineType::Stereo => Output::Stereo(vec![0.0; SAMPLES_PER_TICK * CHANNELS]),
-            LineType::Avc => Output::Avc(None),
+            LineType::Video => Output::Video(None),
         }
     }
 
@@ -505,7 +508,7 @@ impl Output {
         match self {
             Output::Mono(buff) => InputRef::Mono(buff),
             Output::Stereo(buff) => InputRef::Stereo(buff),
-            Output::Avc(packet) => InputRef::Avc(packet.clone()),
+            Output::Video(packet) => InputRef::Video(packet.as_ref()),
         }
     }
 
@@ -513,7 +516,7 @@ impl Output {
         match self {
             Output::Mono(buff) => OutputRef::Mono(buff),
             Output::Stereo(buff) => OutputRef::Stereo(buff),
-            Output::Avc(frame) => OutputRef::Avc(frame),
+            Output::Video(frame) => OutputRef::Video(frame),
         }
     }
 }
@@ -521,7 +524,7 @@ impl Output {
 pub enum OutputRef<'a> {
     Mono(&'a mut [Sample]),
     Stereo(&'a mut [Sample]),
-    Avc(&'a mut Option<Rc<AvcFrame>>)
+    Video(&'a mut Option<VideoFrame>)
 }
 
 impl<'a> OutputRef<'a> {
@@ -529,7 +532,7 @@ impl<'a> OutputRef<'a> {
         match self {
             OutputRef::Mono(buff) => buff,
             OutputRef::Stereo(_) => panic!("expected mono output, got stereo"),
-            OutputRef::Avc(_) => panic!("expected mono output, got avc"),
+            OutputRef::Video(_) => panic!("expected mono output, got video"),
         }
     }
 
@@ -537,15 +540,15 @@ impl<'a> OutputRef<'a> {
         match self {
             OutputRef::Stereo(buff) => buff,
             OutputRef::Mono(_) => panic!("expected stereo output, got mono"),
-            OutputRef::Avc(_) => panic!("expected mono output, got avc"),
+            OutputRef::Video(_) => panic!("expected mono output, got video"),
         }
     }
 
-    pub fn expect_avc(&mut self) -> &mut Option<Rc<AvcFrame>> {
+    pub fn expect_video(&mut self) -> &mut Option<VideoFrame> {
         match self {
-            OutputRef::Stereo(_) => panic!("expected stereo output, got avc"),
-            OutputRef::Mono(_) => panic!("expected mono input, got avc"),
-            OutputRef::Avc(frame) => frame,
+            OutputRef::Stereo(_) => panic!("expected stereo output, got video"),
+            OutputRef::Mono(_) => panic!("expected mono input, got video"),
+            OutputRef::Video(frame) => *frame,
         }
     }
 }

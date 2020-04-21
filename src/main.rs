@@ -7,6 +7,7 @@ mod rtmp;
 mod source;
 mod throttle;
 mod util;
+mod video;
 
 use std::convert::Infallible;
 use std::net::SocketAddr;

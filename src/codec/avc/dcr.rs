@@ -102,8 +102,6 @@ impl DecoderConfigurationRecord {
 
         println!("SPS DATA: {:?}", sps[0].data);
 
-        println!("video dimensions: {}x{}", sps_summary.width(), sps_summary.height());
-
         Ok(Self {
             version,
             profile_indication,
@@ -114,6 +112,14 @@ impl DecoderConfigurationRecord {
             pps,
             sps_summary,
         })
+    }
+
+    pub fn width(&self) -> usize {
+        self.sps_summary.width()
+    }
+
+    pub fn height(&self) -> usize {
+        self.sps_summary.height()
     }
 
     pub fn write_to(&self, mut out: impl BufMut) {

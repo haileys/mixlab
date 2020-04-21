@@ -7,9 +7,10 @@
 
 use std::sync::Arc;
 
-use bytes::{Bytes, BytesMut, Buf};
+use bytes::{Bytes, BytesMut, Buf, BufMut};
 
-use super::{nal, AvcError, DecoderConfigurationRecord};
+use super::{AvcError, DecoderConfigurationRecord};
+use super::nal::{self, UnitType};
 
 
 #[derive(Debug)]
@@ -49,16 +50,12 @@ impl Bitstream {
         Ok(Self { nal_units, dcr })
     }
 
-    pub fn into_bytes(&self) -> Result<Bytes, AvcError> {
-        use self::nal::UnitType;
-
-        let mut tmp = BytesMut::new();
+    pub fn write_byte_stream(&self, mut out: impl BufMut) -> Result<(), AvcError> {
         let mut aud_appended = false;
         let mut sps_and_pps_appended = false;
-        let nalus = self.nal_units.clone();
         let dcr = &self.dcr;
 
-        for nalu in nalus {
+        for nalu in &self.nal_units {
             match &nalu.kind {
                 | UnitType::SequenceParameterSet
                 | UnitType::PictureParameterSet
@@ -69,27 +66,25 @@ impl Bitstream {
                 | UnitType::NonIdrPicture
                 | UnitType::SupplementaryEnhancementInformation => {
                     if !aud_appended {
-                        tmp.extend(Self::ACCESS_UNIT_DELIMITER);
+                        out.put(Self::ACCESS_UNIT_DELIMITER);
                         aud_appended = true;
                     }
                 }
                 UnitType::IdrPicture => {
                     if !aud_appended {
-                        tmp.extend(Self::ACCESS_UNIT_DELIMITER);
+                        out.put(Self::ACCESS_UNIT_DELIMITER);
                         aud_appended = true;
                     }
 
                     if !sps_and_pps_appended {
                         if let Some(sps) = dcr.sps.first() {
-                            tmp.extend(Self::DELIMITER2);
-                            let unit: Bytes = sps.clone().into();
-                            tmp.extend(unit);
+                            out.put(Self::DELIMITER2);
+                            sps.write_to(&mut out);
                         }
 
                         if let Some(pps) = dcr.pps.first() {
-                            tmp.extend(Self::DELIMITER2);
-                            let unit: Bytes = pps.clone().into();
-                            tmp.extend(unit);
+                            out.put(Self::DELIMITER2);
+                            pps.write_to(&mut out);
                         }
 
                         sps_and_pps_appended = true;
@@ -103,11 +98,25 @@ impl Bitstream {
                 return Err(AvcError::NotEnoughData);
             }
 
-            tmp.extend(Self::DELIMITER1);
-            let nalu_data: Bytes = nalu.into();
-            tmp.extend(nalu_data);
+            out.put(Self::DELIMITER1);
+            nalu.write_to(&mut out);
         }
 
-        Ok(tmp.freeze())
+        Ok(())
+    }
+
+    pub fn write_to(&self, mut out: impl BufMut) {
+        for nalu in &self.nal_units {
+            match &nalu.kind {
+                | UnitType::SequenceParameterSet
+                | UnitType::PictureParameterSet
+                | UnitType::AccessUnitDelimiter
+                | UnitType::FillerData => {}
+                _ => {
+                    out.put_u32(nalu.byte_size() as u32);
+                    nalu.write_to(&mut out);
+                }
+            }
+        }
     }
 }

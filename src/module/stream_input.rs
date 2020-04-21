@@ -1,11 +1,12 @@
 use std::cmp;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use num_rational::Rational64;
 
 use mixlab_protocol::{StreamInputParams, LineType, Terminal, StreamProtocol};
 
-use crate::engine::{InputRef, OutputRef, Sample, AvcFrame, SAMPLE_RATE};
+use crate::engine::{InputRef, OutputRef, Sample, VideoFrame, SAMPLE_RATE};
 use crate::icecast;
 use crate::module::ModuleT;
 use crate::rtmp;
@@ -19,7 +20,6 @@ pub struct StreamInput {
     source: Option<SourceTiming>,
     audio_frame: Option<Frame<AudioData>>,
     video_frame: Option<Frame<VideoData>>,
-    previous_video_frame: Option<Rc<AvcFrame>>,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
 }
@@ -46,10 +46,9 @@ impl ModuleT for StreamInput {
             source: None,
             audio_frame: None,
             video_frame: None,
-            previous_video_frame: None,
             inputs: vec![],
             outputs: vec![
-                LineType::Avc.labeled("Video"),
+                LineType::Video.labeled("Video"),
                 LineType::Stereo.labeled("Audio"),
             ],
         };
@@ -79,7 +78,7 @@ impl ModuleT for StreamInput {
         let engine_time = Timestamp::new(engine_time as i64, SAMPLE_RATE as i64);
 
         let (video_out, mut audio_out) = match outputs {
-            [video, audio] => (video.expect_avc(), audio.expect_stereo()),
+            [video, audio] => (video.expect_video(), audio.expect_stereo()),
             _ => unimplemented!(),
         };
 
@@ -142,20 +141,18 @@ impl ModuleT for StreamInput {
                 self.video_frame = Some(frame);
                 None
             } else {
-                let previous = self.previous_video_frame.take()
-                    // only keep link to previous frame if this frame is not a
-                    // key frame:
-                    .filter(|_| !frame.data.frame_type.is_key_frame());
+                // TODO
+                // let frame = Rc::new(AvcFrame {
+                //     data: frame.data,
+                //     tick_offset,
+                //     duration,
+                //     previous,
+                // });
 
-                let frame = Rc::new(AvcFrame {
+                Some(VideoFrame {
+                    data: Arc::new(frame.data),
                     tick_offset,
-                    data: frame.data,
-                    previous,
-                });
-
-                self.previous_video_frame = Some(frame.clone());
-
-                Some(frame)
+                })
             }
         });
 
