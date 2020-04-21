@@ -91,7 +91,7 @@ impl Component for Monitor {
             MonitorMsg::SourceOpen => {
                 let source_buffer = self.media_source
                     // .add_source_buffer(r#"video/mp4; codecs="avc1.42E01E, mp4a.40.2""#)
-                    .add_source_buffer(r#"video/mp4; codecs="mp4a.40.2""#)
+                    .add_source_buffer(r#"video/mp4; codecs="avc1.42E01E, mp4a.40.2""#)
                     .unwrap();
 
                 // source_buffer.set_mode(SourceBufferAppendMode::Sequence);

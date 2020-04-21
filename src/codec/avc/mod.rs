@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bytes::{Bytes, Buf};
 use derive_more::From;
 
@@ -111,4 +113,13 @@ pub struct AvcFrame {
     pub frame_type: AvcFrameType,
     pub composition_time: Millis,
     pub bitstream: Bitstream,
+
+    // linked list of the last frames terminating at the preceding keyframe:
+    pub previous: Option<Arc<AvcFrame>>,
+}
+
+pub struct AvcStreamInfo {
+    pub frame_rate: f64,
+    pub width: usize,
+    pub height: usize,
 }

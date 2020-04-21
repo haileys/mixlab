@@ -27,7 +27,7 @@ use uuid::Uuid;
 use warp::ws::{self, Ws, WebSocket};
 
 use crate::codec::avc::AvcError;
-use crate::engine::{InputRef, OutputRef, AvcFrame, SAMPLE_RATE};
+use crate::engine::{InputRef, OutputRef, VideoFrame, SAMPLE_RATE};
 use crate::module::ModuleT;
 use crate::util::{self, Sequence};
 
@@ -165,7 +165,7 @@ impl ModuleT for Monitor {
             audio_pcm_buff: Vec::new(),
             audio_pcm_buff_sample_time: 0,
             inputs: vec![
-                LineType::Avc.labeled("Video"),
+                LineType::Video.labeled("Video"),
                 LineType::Stereo.labeled("Audio"),
             ]
         };
@@ -183,12 +183,33 @@ impl ModuleT for Monitor {
 
     fn run_tick(&mut self, time: u64, inputs: &[InputRef], _: &mut [OutputRef]) -> Option<Self::Indication> {
         let (video, audio) = match inputs {
-            [video, audio] => (video.expect_avc(), audio.expect_stereo()),
+            [video, audio] => (video.expect_video(), audio.expect_stereo()),
             _ => unreachable!()
         };
 
         let engine_epoch = *self.engine_epoch.get_or_insert(time);
         let timestamp = Rational64::new((time - engine_epoch) as i64, SAMPLE_RATE as i64);
+
+        // write mp4 init segment
+        if !self.wrote_init {
+            // init segment requires information from the DCR, so we can't do
+            // anything until we've received the first video frame:
+            let avc_frame = match video {
+                Some(frame) => frame,
+                None => { return None; }
+            };
+
+            let init = make_mp4_init_segment(&avc_frame);
+
+            println!("writing init");
+            let mut init_bytes = BytesMut::new();
+            init.write_to((&mut init_bytes).writer()).unwrap();
+            let init_bytes = init_bytes.freeze();
+            self.file.write_all(&init_bytes).unwrap();
+            let _ = self.init_tx.broadcast(Some(init_bytes));
+
+            self.wrote_init = true;
+        }
 
         // convert input audio samples from f32 to i16
         self.audio_pcm_buff.extend(audio.iter().copied().map(|sample| {
@@ -203,23 +224,6 @@ impl ModuleT for Monitor {
 
             (sample * i16::max_value() as f32) as i16
         }));
-
-        // write mp4 init segment
-        if !self.wrote_init {
-            let init = make_mp4_init_segment(
-                None,
-                None,
-            );
-
-            println!("writing init");
-            let mut init_bytes = BytesMut::new();
-            init.write_to((&mut init_bytes).writer()).unwrap();
-            let init_bytes = init_bytes.freeze();
-            self.file.write_all(&init_bytes).unwrap();
-            let _ = self.init_tx.broadcast(Some(init_bytes));
-
-            self.wrote_init = true;
-        }
 
         // process incoming audio
         let audio_frame_sample_count = CHANNELS * SAMPLES_PER_CHANNEL_PER_FRAGMENT;
@@ -250,26 +254,23 @@ impl ModuleT for Monitor {
                 None
             };
 
-        if aac_frame.is_some() {
-            let segment = make_mp4_media_segment(
-                &mut self.write_ctx,
-                None,
-                aac_frame,
-                timestamp,
-            ).unwrap();
+        let avc_frame = video;
 
+        let segment = make_mp4_media_segment(
+            &mut self.write_ctx,
+            avc_frame,
+            aac_frame,
+            timestamp,
+        ).unwrap();
+
+        // only output segment if there is any data to send:
+        if segment.mdat_boxes.len() > 0 {
             let mut segment_bytes = BytesMut::new();
             segment.write_to((&mut segment_bytes).writer()).unwrap();
             let segment_bytes = segment_bytes.freeze();
             self.file.write_all(&segment_bytes).unwrap();
             // only fails if no active receives
             let _ = self.segments_tx.send(segment_bytes);
-        }
-
-        // process incoming video
-        // TODO
-        if let Some(frame) = video {
-            // write_video(&mut self.write_ctx, &frame, timestamp).unwrap();
         }
 
         None
@@ -298,16 +299,18 @@ const AUDIO_TRACK: u32 = 1;
 const VIDEO_TRACK: u32 = 2;
 
 fn make_mp4_init_segment(
-    mut avc_frame: Option<&AvcFrame>,
-    mut aac_frame: Option<&AacFrame>,
+    mut video_frame: &VideoFrame,
 ) -> InitializationSegment {
+    use mse_fmp4::avc::AvcDecoderConfigurationRecord;
     use mse_fmp4::fmp4::{
         FileTypeBox, MovieBox, MovieHeaderBox, TrackHeaderBox, MovieExtendsBox,
         MediaBox, MediaHeaderBox, HandlerReferenceBox, MediaInformationBox,
         SoundMediaHeaderBox, DataInformationBox, DataReferenceBox, DataEntryUrlBox,
         SampleTableBox, SampleDescriptionBox, TimeToSampleBox, SampleToChunkBox,
-        SampleSizeBox, ChunkOffsetBox,
+        SampleSizeBox, ChunkOffsetBox, AvcConfigurationBox, VideoMediaHeaderBox,
     };
+
+    let video_dcr = &video_frame.data.specific.bitstream.dcr;
 
     InitializationSegment {
         ftyp_box: FileTypeBox,
@@ -328,8 +331,8 @@ fn make_mp4_init_segment(
                         // then the duration is set to all 1s (32-bit maxint)
                         duration: u32::max_value(),
                         volume: 0x0100, // 16.16 fixed point, 0x0100 = 1.0
-                        width: 0,
-                        height: 0,
+                        width: video_dcr.width() as u32,
+                        height: video_dcr.height() as u32,
                     },
                     edts_box: None,
                     mdia_box: MediaBox {
@@ -370,16 +373,78 @@ fn make_mp4_init_segment(
                         }
                     },
                 },
+                // video track:
+                TrackBox {
+                    tkhd_box: TrackHeaderBox {
+                        track_id: VIDEO_TRACK,
+                        // ISO/IEC 14496-14:2003(E) 5.3:
+                        // If the duration of a track cannot be determined,
+                        // then the duration is set to all 1s (32-bit maxint)
+                        duration: u32::max_value(),
+                        volume: 0x0100, // 16.16 fixed point, 0x0100 = 1.0
+                        width: video_dcr.width() as u32,
+                        height: video_dcr.height() as u32,
+                    },
+                    edts_box: None,
+                    mdia_box: MediaBox {
+                        mdhd_box: MediaHeaderBox {
+                            timescale: SAMPLE_RATE as u32,
+                            duration: 0,
+                        },
+                        hdlr_box: HandlerReferenceBox {
+                            handler_type: *b"vide",
+                            name: CString::new("Mixlab Video").unwrap(),
+                        },
+                        minf_box: MediaInformationBox {
+                            vmhd_box: Some(VideoMediaHeaderBox),
+                            smhd_box: None,
+                            dinf_box: DataInformationBox {
+                                dref_box: DataReferenceBox {
+                                    url_box: DataEntryUrlBox,
+                                },
+                            },
+                            stbl_box: SampleTableBox {
+                                stsd_box: SampleDescriptionBox {
+                                    sample_entries: vec![
+                                        SampleEntry::Avc(AvcSampleEntry {
+                                            width: 1120, // TOOD set to proper value
+                                            height: 720,
+                                            avcc_box: AvcConfigurationBox::Raw({
+                                                let mut dcr = BytesMut::new();
+                                                video_frame.data.specific.bitstream.dcr.write_to(&mut dcr);
+                                                println!("DCR: {:?}", dcr);
+                                                dcr.freeze().to_vec()
+                                            }),
+                                        }),
+                                    ],
+                                },
+                                stts_box: TimeToSampleBox,
+                                stsc_box: SampleToChunkBox,
+                                stsz_box: SampleSizeBox,
+                                stco_box: ChunkOffsetBox,
+                            },
+                        }
+                    },
+                },
             ],
             mvex_box: MovieExtendsBox {
                 mehd_box: None,
-                trex_boxes: vec![TrackExtendsBox {
-                    track_id: AUDIO_TRACK,
-                    default_sample_description_index: 1,
-                    default_sample_duration: 0,
-                    default_sample_size: 0,
-                    default_sample_flags: 0,
-                }],
+                trex_boxes: vec![
+                    TrackExtendsBox {
+                        track_id: AUDIO_TRACK,
+                        default_sample_description_index: 1,
+                        default_sample_duration: 0,
+                        default_sample_size: 0,
+                        default_sample_flags: 0,
+                    },
+                    TrackExtendsBox {
+                        track_id: VIDEO_TRACK,
+                        default_sample_description_index: 1,
+                        default_sample_duration: 0,
+                        default_sample_size: 0,
+                        default_sample_flags: 0,
+                    },
+                ],
             }
         },
     }
@@ -387,7 +452,7 @@ fn make_mp4_init_segment(
 
 fn make_mp4_media_segment(
     ctx: &mut WriteCtx,
-    mut avc_frame: Option<&AvcFrame>,
+    mut avc_frame: Option<&VideoFrame>,
     mut aac_frame: Option<AacFrame>,
     tick_timestamp: Rational64,
 ) -> Result<MediaSegment, MakeSegmentError> {
@@ -403,12 +468,81 @@ fn make_mp4_media_segment(
         mdat_boxes: Vec::new(),
     };
 
-    // do video traf here
+    struct Track {
+        traf_idx: usize,
+        mdat: MediaDataBox,
+    }
 
-    if let Some(aac_frame) = &mut aac_frame {
+    let mut avc_track = None;
+    let mut aac_track = None;
+
+    // write AVC track metadata:
+    if let Some(avc_frame) = avc_frame {
+        // TODO keep a running total of durations/frame timestamps and correct
+        // for compounding inaccuracy over time:
+        let duration = (avc_frame.data.duration_hint * SAMPLE_RATE as i64).to_integer();
+
+        let mut raw_data = Vec::new();
+        avc_frame.data.specific.bitstream.write_to(&mut raw_data);
+
+        let composition_time_offset = (avc_frame.data.specific.composition_time.0 * SAMPLE_RATE as u64) / 1000;
+
+        let sample_flags = SampleFlags {
+            is_leading: 0,
+            // ISO/IEC 14496-12 8.40.2.3, other samples depend on this:
+            sample_depends_on: 1,
+            // ISO/IEC 14496-12 8.31.1, false signals a key frame:
+            sample_is_non_sync_sample: !avc_frame.data.specific.frame_type.is_key_frame(),
+            // should this be 1?
+            sample_is_depdended_on: 0,
+            sample_has_redundancy: 0,
+            sample_padding_value: 0,
+            sample_degradation_priority: 0,
+        };
+
+        let video_frag = TrackFragmentBox {
+            tfhd_box: TrackFragmentHeaderBox {
+                track_id: VIDEO_TRACK,
+                duration_is_empty: false,
+                default_base_is_moof: true,
+                base_data_offset: None,
+                sample_description_index: None,
+                default_sample_duration: None,
+                default_sample_size: None,
+                default_sample_flags: None,
+            },
+            tfdt_box: None,
+            trun_box: TrackRunBox {
+                data_offset: Some(0), // dummy for length calculation
+                first_sample_flags: None,
+                samples: vec![Sample {
+                    duration: Some(duration as u32),
+                    size: Some(raw_data.len() as u32),
+                    composition_time_offset: Some(composition_time_offset as i32),
+                    flags: Some(sample_flags),
+                }],
+            }
+        };
+
+        let mdat = MediaDataBox {
+            data: raw_data.to_vec(),
+        };
+
+        let traf_idx = segment.moof_box.traf_boxes.len();
+
+        segment.moof_box.traf_boxes.push(video_frag);
+
+        avc_track = Some(Track {
+            traf_idx,
+            mdat,
+        });
+    }
+
+    // write AAC track metadata:
+    if let Some(mut aac_frame) = aac_frame {
         aac_frame.data.drain(0..7); // snip off 7 byte ADTS header
 
-        let mut audio_frag = TrackFragmentBox {
+        let audio_frag = TrackFragmentBox {
             tfhd_box: TrackFragmentHeaderBox {
                 track_id: AUDIO_TRACK,
                 duration_is_empty: false,
@@ -432,18 +566,48 @@ fn make_mp4_media_segment(
             }
         };
 
+        let mdat = MediaDataBox {
+            data: aac_frame.data,
+        };
+
+        let traf_idx = segment.moof_box.traf_boxes.len();
+
         segment.moof_box.traf_boxes.push(audio_frag);
+
+        aac_track = Some(Track {
+            traf_idx,
+            mdat,
+        });
     }
 
-    // do video mdat here
+    // write AVC track data and correct data offset in header
+    if let Some(avc_track) = avc_track {
+        let moof_size = segment.moof_box.box_size().unwrap();
 
-    if let Some(aac_frame) = aac_frame {
-        let mut temp_buff = Vec::new();
-        segment.moof_box.write_box(&mut temp_buff)?;
-        segment.moof_box.traf_boxes[0].trun_box.data_offset = Some(temp_buff.len() as i32 + 8);
-        segment.mdat_boxes.push(MediaDataBox {
-            data: aac_frame.data,
-        });
+        let mdat_size = segment.mdat_boxes.iter()
+            .fold(0, |sz, mdat| sz + mdat.box_size().unwrap());
+
+        let data_offset = moof_size + mdat_size + 8; // account for header in new mdat box
+
+        segment.moof_box.traf_boxes[avc_track.traf_idx]
+            .trun_box.data_offset = Some(data_offset as i32);
+
+        segment.mdat_boxes.push(avc_track.mdat);
+    }
+
+    // write AAC track data and correct data offset in header
+    if let Some(aac_track) = aac_track {
+        let moof_size = segment.moof_box.box_size().unwrap();
+
+        let mdat_size = segment.mdat_boxes.iter()
+            .fold(0, |sz, mdat| sz + mdat.box_size().unwrap());
+
+        let data_offset = moof_size + mdat_size + 8; // account for header in new mdat box
+
+        segment.moof_box.traf_boxes[aac_track.traf_idx]
+            .trun_box.data_offset = Some(data_offset as i32);
+
+        segment.mdat_boxes.push(aac_track.mdat);
     }
 
     Ok(segment)

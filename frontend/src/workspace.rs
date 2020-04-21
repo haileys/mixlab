@@ -823,7 +823,7 @@ impl Component for Terminal {
                         LineType::Stereo => html! {
                             <polygon points="0,16 16,16 16,0" fill={ if self.hover { "#f0b5b3" } else { "#e0a5a3" } } />
                         },
-                        LineType::Avc => html! {
+                        LineType::Video => html! {
                             <rect width="16" height="16" fill={ if self.hover { "#fef8e1" } else { "#fdf1bf" } } />
                         }
                     } }

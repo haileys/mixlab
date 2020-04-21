@@ -14,9 +14,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::codec::aac;
 use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketType, AvcFrame, Millis};
+use crate::engine;
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError, Timestamp};
 use crate::util;
+use crate::video;
 
 mod incoming;
 mod packet;
@@ -41,6 +43,8 @@ pub enum RtmpError {
     Handshake(HandshakeError),
     Session(ServerSessionError),
     SourceConnect(ConnectError),
+    MetadataNotYetSent,
+    UnsupportedStream,
     SourceSend,
     Aac(aac::AacError),
     AacCodec(fdk_aac::dec::DecoderError),
@@ -79,10 +83,12 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
         stream,
         session,
         source,
+        meta: None,
         audio_codec,
         audio_asc: None,
         audio_timestamp: Timestamp::new(0, 1),
         video_dcr: None,
+        video_previous_frame: None,
     };
 
     thread::spawn(move || {
@@ -96,10 +102,16 @@ struct ReceiveContext {
     stream: PeekTcpStream,
     session: ServerSession,
     source: SourceSend,
+    meta: Option<StreamMeta>,
     audio_codec: fdk_aac::dec::Decoder,
     audio_asc: Option<aac::AudioSpecificConfiguration>,
     audio_timestamp: Timestamp,
     video_dcr: Option<Arc<avc::DecoderConfigurationRecord>>,
+    video_previous_frame: Option<Arc<avc::AvcFrame>>,
+}
+
+struct StreamMeta {
+    video_frame_duration: Rational64,
 }
 
 fn run_receive_thread(ctx: &mut ReceiveContext, mut buff: Vec<u8>) -> Result<(), RtmpError> {
@@ -148,6 +160,22 @@ fn handle_event(
         }
         ServerSessionEvent::VideoDataReceived { data, timestamp, .. } => {
             receive_video_packet(ctx, data, timestamp)?;
+            Ok(())
+        }
+        ServerSessionEvent::StreamMetadataChanged { app_name: _, stream_key: _, metadata } => {
+            let video_frame_duration =
+                if let Some(frame_rate) = metadata.video_frame_rate {
+                    let frame_rate = Rational64::new((frame_rate * 100.0) as i64, 100);
+                    frame_rate.recip()
+                } else {
+                    eprintln!("rtmp: no frame rate in metadata");
+                    return Err(RtmpError::UnsupportedStream);
+                };
+
+            ctx.meta = Some(StreamMeta {
+                video_frame_duration,
+            });
+
             Ok(())
         }
         _ => {
@@ -230,6 +258,8 @@ fn receive_video_packet(
     data: Bytes,
     timestamp: RtmpTimestamp,
 ) -> Result<(), RtmpError> {
+    let meta = ctx.meta.as_ref().ok_or(RtmpError::MetadataNotYetSent)?;
+
     let mut packet = match AvcPacket::parse(data) {
         Ok(packet) => packet,
         Err(e) => {
@@ -254,7 +284,7 @@ fn receive_video_packet(
     }
 
     if let Some(dcr) = ctx.video_dcr.clone() {
-        match Bitstream::parse(packet.data, dcr) {
+        match Bitstream::parse(packet.data.clone(), dcr) {
             Ok(bitstream) => {
                 // dump bit stream:
                 {
@@ -266,7 +296,10 @@ fn receive_video_packet(
                         .open("dump.h264")
                         .unwrap();
 
-                    video_dump.write_all(&bitstream.into_bytes().unwrap()).unwrap();
+                    let mut buff = Vec::new();
+                    bitstream.write_byte_stream(&mut buff);
+
+                    video_dump.write_all(&buff);
                 }
 
                 // TODO rtmp timestamps are only 32 bit and have arbitrary
@@ -275,11 +308,25 @@ fn receive_video_packet(
 
                 // println!("[RTMP   ] timestamp: {}", util::decimal(timestamp));
 
-                let _ = ctx.source.write_video(timestamp, AvcFrame {
+                let previous = ctx.video_previous_frame.take()
+                    // only link previous frame if this frame is not a key frame:
+                    .filter(|_| !packet.frame_type.is_key_frame());
+
+                let specific = Arc::new(avc::AvcFrame {
                     frame_type: packet.frame_type,
                     composition_time: Millis(packet.composition_time as u64),
                     bitstream: bitstream,
+                    previous,
                 });
+
+                ctx.video_previous_frame = Some(specific.clone());
+
+                let frame = video::Frame {
+                    specific,
+                    duration_hint: meta.video_frame_duration,
+                };
+
+                let _ = ctx.source.write_video(timestamp, frame);
             }
             Err(e) => {
                 eprintln!("rtmp: could not read avc bitstream: {:?}", e);
