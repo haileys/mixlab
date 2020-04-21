@@ -34,5 +34,5 @@ rml_rtmp = { git = "https://github.com/KallDrexx/rust-media-libs", rev = "eb7f41
 
 # we rely on changes not yet merged into mse_fmp4 upstream:
 # https://github.com/sile/mse_fmp4/pull/5
-mse_fmp4 = { git = "https://github.com/charliesome/mse_fmp4", rev = "046b5f9417993252ed8d9d5df1f1fb0caa132f19" }
+mse_fmp4 = { git = "https://github.com/charliesome/mse_fmp4", rev = "59b19c8fc715e118a98b758456dad22b0bcf7614" }
 # mse_fmp4 = { path = "../mse_fmp4" }
