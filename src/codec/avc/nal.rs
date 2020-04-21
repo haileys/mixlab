@@ -6,10 +6,10 @@
 // https://github.com/charliesome/mixlab
 
 use std::fmt;
-use bytes::{Bytes, BytesMut, Buf};
+use bytes::{Bytes, BytesMut, Buf, BufMut};
 use super::AvcError;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
 pub enum UnitType {
     NonIdrPicture = 1,
     DataPartitionA = 2,
@@ -84,18 +84,24 @@ impl Unit {
 
         Ok(Self { ref_idc, kind, data: buf })
     }
+
+    pub fn byte_size(&self) -> usize {
+        1 + self.data.len()
+    }
+
+    pub fn write_to(&self, mut buf: impl BufMut) {
+        let header = ((self.ref_idc & 0x03) << 5)
+                   | ((self.kind as u8) & 0x1f);
+
+        buf.put_u8(header);
+        buf.put(self.data.clone());
+    }
 }
 
 impl Into<Bytes> for Unit {
     fn into(self) -> Bytes {
-        use bytes::BufMut;
-
-        let mut tmp = BytesMut::with_capacity(self.data.len() + 1);
-
-        let header = (self.ref_idc << 5) | (self.kind as u8);
-        tmp.put_u8(header);
-        tmp.put(self.data);
-
+        let mut tmp = BytesMut::with_capacity(self.byte_size());
+        self.write_to(&mut tmp);
         tmp.freeze()
     }
 }
