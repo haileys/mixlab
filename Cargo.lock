@@ -960,7 +960,7 @@ dependencies = [
 [[package]]
 name = "mse_fmp4"
 version = "0.1.3"
-source = "git+https://github.com/charliesome/mse_fmp4?rev=046b5f9417993252ed8d9d5df1f1fb0caa132f19#046b5f9417993252ed8d9d5df1f1fb0caa132f19"
+source = "git+https://github.com/charliesome/mse_fmp4?rev=59b19c8fc715e118a98b758456dad22b0bcf7614#59b19c8fc715e118a98b758456dad22b0bcf7614"
 dependencies = [
  "byteorder",
  "mpeg2ts",
