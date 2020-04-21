@@ -151,6 +151,8 @@ impl ModuleT for Monitor {
 
         let write_ctx = WriteCtx {
             sequence: Sequence::new(),
+            cumulative_audio_duration: 0,
+            cumulative_video_duration: 0,
         };
 
         let module = Monitor {
@@ -288,6 +290,8 @@ impl ModuleT for Monitor {
 #[derive(Debug)]
 struct WriteCtx {
     sequence: Sequence,
+    cumulative_audio_duration: u32,
+    cumulative_video_duration: u32,
 }
 
 #[derive(From, Debug)]
@@ -456,7 +460,9 @@ fn make_mp4_media_segment(
     mut aac_frame: Option<AacFrame>,
     tick_timestamp: Rational64,
 ) -> Result<MediaSegment, MakeSegmentError> {
-    use mse_fmp4::fmp4::{TrackFragmentHeaderBox, TrackRunBox};
+    use mse_fmp4::fmp4::{
+        TrackFragmentHeaderBox, TrackRunBox, TrackFragmentBaseMediaDecodeTimeBox,
+    };
 
     let mut segment = MediaSegment {
         moof_box: MovieFragmentBox {
@@ -511,7 +517,9 @@ fn make_mp4_media_segment(
                 default_sample_size: None,
                 default_sample_flags: None,
             },
-            tfdt_box: None,
+            tfdt_box: Some(TrackFragmentBaseMediaDecodeTimeBox {
+                base_media_decode_time: ctx.cumulative_video_duration,
+            }),
             trun_box: TrackRunBox {
                 data_offset: Some(0), // dummy for length calculation
                 first_sample_flags: None,
@@ -523,6 +531,8 @@ fn make_mp4_media_segment(
                 }],
             }
         };
+
+        ctx.cumulative_video_duration += duration as u32;
 
         let mdat = MediaDataBox {
             data: raw_data.to_vec(),
@@ -553,7 +563,9 @@ fn make_mp4_media_segment(
                 default_sample_size: None,
                 default_sample_flags: None,
             },
-            tfdt_box: None,
+            tfdt_box: Some(TrackFragmentBaseMediaDecodeTimeBox {
+                base_media_decode_time: ctx.cumulative_audio_duration,
+            }),
             trun_box: TrackRunBox {
                 data_offset: Some(0), // dummy for length calculation
                 first_sample_flags: None,
@@ -565,6 +577,8 @@ fn make_mp4_media_segment(
                 }],
             }
         };
+
+        ctx.cumulative_audio_duration += SAMPLES_PER_CHANNEL_PER_FRAGMENT as u32;
 
         let mdat = MediaDataBox {
             data: aac_frame.data,
