@@ -125,8 +125,8 @@ impl DecoderConfigurationRecord {
         let nalu_size = (self.nalu_size - 1) & 0x03;
         out.put_u8(0b1111_1100 /* reserved */ | nalu_size);
 
-        let sps_count = self.sps.len() & 0x1f;
-        out.put_u8(0b1110_0000 /* reserved */ | 0x1f);
+        let sps_count = self.sps.len() as u8 & 0x1f;
+        out.put_u8(0b1110_0000 /* reserved */ | sps_count);
 
         for sps in &self.sps {
             out.put_u16(sps.byte_size() as u16);
