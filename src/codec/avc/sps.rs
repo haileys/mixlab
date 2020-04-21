@@ -76,12 +76,60 @@ impl SpsSummary {
         let mut reader = AvcBitReader::new(reader);
         let _seq_parameter_set_id = reader.read_ue()?;
 
-        // match profile_idc {
-        //     100 | 110 | 122 | 244 | 44 | 83 | 86 | 118 | 128 => {
-        //         return Err(SpsReadError::UnsupportedProfile { idc: profile_idc });
-        //     }
-        //     _ => {}
-        // }
+        match profile_idc {
+            // does profile have chroma information?
+            100 | 110 | 122 | 244 | 44 | 83 | 86 | 118 | 128 | 138 | 139 | 134 => {
+                let chroma_format_idc = reader.read_ue()?;
+
+                println!("chroma format: {}", chroma_format_idc);
+
+                if chroma_format_idc == 3 {
+                    let _separate_colour_plane_flag = reader.read_bit()?;
+                }
+
+                let _bit_depth_luma_minus8 = reader.read_ue()?;
+                let _bit_depth_chroma_minus8 = reader.read_ue()?;
+                let _qpprime_y_zero_transform_bypass_flag = reader.read_bit()?;
+
+                let seq_scaling_matrix_present_flag = reader.read_bit()?;
+
+                if seq_scaling_matrix_present_flag != 0 {
+                    let scaling_list_count =
+                        if chroma_format_idc == 3 {
+                            12
+                        } else {
+                            8
+                        };
+
+                    for i in 0..scaling_list_count {
+                        let seq_scaling_list_present_flags = reader.read_bit()?;
+
+                        if seq_scaling_list_present_flags != 0 {
+                            let mut last_scale = 8;
+                            let mut next_scale = 8;
+                            let size_of_scaling_list =
+                                if i < 6 {
+                                    16
+                                } else {
+                                    64
+                                };
+
+                            for j in 0..size_of_scaling_list {
+                                if next_scale != 0 {
+                                    let delta_scale = reader.read_ie()?;
+
+                                    next_scale = (last_scale + delta_scale + 256) % 256;
+                                }
+                                if next_scale != 0 {
+                                    last_scale = next_scale;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
 
         let _log2_max_frame_num_minus4 = reader.read_ue()?;
         let pic_order_cnt_type = reader.read_ue()?;
@@ -176,6 +224,23 @@ impl<R: Buf> AvcBitReader<R> {
 
     pub fn read_ue(&mut self) -> Result<u64, Eof> {
         self.read_exp_golomb_code()
+    }
+
+    pub fn read_ie(&mut self) -> Result<i64, Eof> {
+        // https://en.wikipedia.org/wiki/Exponential-Golomb_coding#Extension_to_negative_numbers
+
+        let ue = self.read_ue()?;
+
+        let ie =
+            if (ue & 1) == 1 {
+                // positive integer
+                ((ue + 1) / 2) as i64
+            } else {
+                // negative integer
+                -((ue / 2) as i64)
+            };
+
+        Ok(ie)
     }
 
     fn read_exp_golomb_code(&mut self) -> Result<u64, Eof> {
