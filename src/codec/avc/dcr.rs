@@ -5,7 +5,7 @@
 // Modified by Charlie Somerville for Mixlab
 // https://github.com/charliesome/mixlab
 
-use bytes::{Bytes, Buf};
+use bytes::{Bytes, BytesMut, Buf, BufMut};
 use super::{nal, AvcError};
 use super::sps::SpsSummary;
 
@@ -32,7 +32,7 @@ use super::sps::SpsSummary;
 pub struct DecoderConfigurationRecord {
     pub version: u8,
     pub profile_indication: u8,
-    pub profile_compatability: u8,
+    pub profile_compatibility: u8,
     pub level_indication: u8,
     pub nalu_size: u8,
     pub sps: Vec<nal::Unit>,
@@ -52,7 +52,7 @@ impl DecoderConfigurationRecord {
         }
 
         let profile_indication = buf.get_u8();
-        let profile_compatability = buf.get_u8();
+        let profile_compatibility = buf.get_u8();
         let level_indication = buf.get_u8();
         let nalu_size = (buf.get_u8() & 0x03) + 1;
 
@@ -107,12 +107,38 @@ impl DecoderConfigurationRecord {
         Ok(Self {
             version,
             profile_indication,
-            profile_compatability,
+            profile_compatibility,
             level_indication,
             nalu_size,
             sps,
             pps,
             sps_summary,
         })
+    }
+
+    pub fn write_to(&self, mut out: impl BufMut) {
+        out.put_u8(self.version);
+        out.put_u8(self.profile_indication);
+        out.put_u8(self.profile_compatibility);
+        out.put_u8(self.level_indication);
+
+        let nalu_size = (self.nalu_size - 1) & 0x03;
+        out.put_u8(0b1111_1100 /* reserved */ | nalu_size);
+
+        let sps_count = self.sps.len() & 0x1f;
+        out.put_u8(0b1110_0000 /* reserved */ | 0x1f);
+
+        for sps in &self.sps {
+            out.put_u16(sps.byte_size() as u16);
+            sps.write_to(&mut out);
+        }
+
+        let pps_count = self.pps.len() as u8;
+        out.put_u8(pps_count);
+
+        for pps in &self.pps {
+            out.put_u16(pps.byte_size() as u16);
+            pps.write_to(&mut out);
+        }
     }
 }
