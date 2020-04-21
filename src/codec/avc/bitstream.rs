@@ -28,11 +28,16 @@ impl Bitstream {
 
         while buf.has_remaining() {
             if buf.remaining() < dcr.nalu_size as usize {
-                return Err(AvcError::NotEnoughData)
+                return Err(AvcError::NotEnoughData);
             };
 
             // TODO nalu size could be > 8... validate
             let nalu_length = buf.get_uint(dcr.nalu_size as usize) as usize;
+
+            if buf.remaining() < nalu_length {
+                return Err(AvcError::NotEnoughData);
+            }
+
             let nalu_data = buf.split_to(nalu_length);
             nal_units.push(nal::Unit::parse(nalu_data)?)
         };
