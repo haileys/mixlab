@@ -12,8 +12,9 @@ use rml_rtmp::sessions::{ServerSession, ServerSessionResult, ServerSessionError,
 use rml_rtmp::time::RtmpTimestamp;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::codec::aac;
-use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketType, Millis};
+use mixlab_codec::aac;
+use mixlab_codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketType, Millis};
+
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError, Timestamp};
 use crate::video;

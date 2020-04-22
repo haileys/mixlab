@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use num_rational::Rational64;
-
-use crate::codec::avc::AvcFrame;
+use mixlab_codec::avc::AvcFrame;
 
 #[derive(Debug)]
 pub struct Frame {
