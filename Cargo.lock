@@ -925,17 +925,27 @@ dependencies = [
  "httparse",
  "hyper",
  "lazy_static",
- "lewton",
+ "mixlab-codec",
  "mixlab-protocol",
  "mpeg2ts",
  "mse_fmp4",
  "num-rational",
- "ogg",
  "ringbuf",
  "rml_rtmp",
  "tokio",
  "uuid",
  "warp",
+]
+
+[[package]]
+name = "mixlab-codec"
+version = "0.0.0"
+dependencies = [
+ "bytes",
+ "derive_more",
+ "futures",
+ "lewton",
+ "ogg",
 ]
 
 [[package]]

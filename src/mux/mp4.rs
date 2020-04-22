@@ -10,7 +10,8 @@ use mse_fmp4::fmp4::{
 };
 use mse_fmp4::io::WriteTo;
 
-use crate::codec::avc::{self, AvcFrame, Millis};
+use mixlab_codec::avc::{self, AvcFrame, Millis};
+
 use crate::util::Sequence;
 
 #[derive(Debug)]

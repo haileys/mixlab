@@ -8,8 +8,9 @@ use derive_more::From;
 use num_rational::Ratio;
 use tokio::io::AsyncWriteExt;
 
-use crate::codec::ogg::{self, OggStream};
-use crate::codec::{AudioStream, StreamRead, StreamError};
+use mixlab_codec::ogg::{self, OggStream};
+use mixlab_codec::{AudioStream, StreamRead, StreamError};
+
 use crate::engine::SAMPLE_RATE;
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ListenError, SourceRecv, SourceSend, Timestamp};

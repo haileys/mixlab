@@ -7,7 +7,7 @@ use lewton::inside_ogg::read_headers;
 use lewton::audio::{read_audio_packet, PreviousWindowRight, AudioReadError};
 use lewton::header::{read_header_comment, IdentHeader, CommentHeader, SetupHeader};
 
-use crate::codec::{AudioStream, StreamRead, StreamError, Metadata};
+use crate::{AudioStream, StreamRead, StreamError, Metadata};
 
 struct NonSeekStream<T: io::Read> {
     stream: T,
