@@ -1,4 +1,5 @@
 use bytes::Buf;
+use serde_derive::{Deserialize, Serialize};
 
 // Copyright (c) 2018 Takeru Ohta <phjgt308@gmail.com>
 
@@ -20,7 +21,7 @@ use bytes::Buf;
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SpsSummary {
     pub profile_idc: u8,
     pub constraint_set_flag: u8,

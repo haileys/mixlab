@@ -5,8 +5,10 @@ authors = ["Charlie Somerville <charlie@charlie.bz>"]
 edition = "2018"
 
 [dependencies]
-bytes = "0.5"
+bytes = { version = "0.5", features = ["serde"] }
 derive_more = "0.99"
 futures = "0.3"
 lewton = "0.10"
 ogg = "0.7"
+serde = "1.0"
+serde_derive = "1.0"

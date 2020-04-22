@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ffi::CString;
 
 use bytes::{Bytes, BytesMut};
@@ -9,8 +10,9 @@ use mse_fmp4::fmp4::{
     TrackExtendsBox, TrackFragmentBox, MovieFragmentHeaderBox, MovieFragmentBox,
 };
 use mse_fmp4::io::WriteTo;
+use serde::{Deserialize, Serialize};
 
-use mixlab_codec::avc::{self, AvcFrame, Millis};
+use mixlab_codec::avc;
 
 #[derive(Debug)]
 pub struct Mp4Mux {
@@ -20,11 +22,20 @@ pub struct Mp4Mux {
     cumulative_video_duration: u32,
 }
 
-pub struct AdtsFrame<'a>(pub &'a [u8]);
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AdtsFrame(pub Bytes);
 
-pub enum TrackData<'a> {
-    Audio(AdtsFrame<'a>),
-    Video(&'a AvcFrame),
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AvcFrame {
+    pub is_key_frame: bool,
+    pub composition_time: u32,
+    pub data: Bytes,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum TrackData {
+    Audio(AdtsFrame),
+    Video(AvcFrame),
 }
 
 impl Mp4Mux {
@@ -44,7 +55,7 @@ impl Mp4Mux {
         (mux, to_bytes(init))
     }
 
-    pub fn write_track(&mut self, duration: u32, data: TrackData) -> Bytes {
+    pub fn write_track(&mut self, duration: u32, data: &TrackData) -> Bytes {
         let media = make_media_segment(self, duration, data);
 
         to_bytes(media)
@@ -214,7 +225,7 @@ fn make_init_segment(
 fn make_media_segment(
     mux: &mut Mp4Mux,
     duration: u32,
-    track_data: TrackData,
+    track_data: &TrackData,
 ) -> MediaSegment {
     use mse_fmp4::fmp4::{
         TrackFragmentHeaderBox, TrackRunBox, TrackFragmentBaseMediaDecodeTimeBox,
@@ -222,7 +233,7 @@ fn make_media_segment(
 
     let (traf, mdat) = match track_data {
         TrackData::Audio(adts_frame) => {
-            let raw_aac = &adts_frame.0[7..]; // snip off 7 byte ADTS header
+            let raw_aac = &(adts_frame.0)[7..]; // snip off 7 byte ADTS header
 
             let audio_frag = TrackFragmentBox {
                 tfhd_box: TrackFragmentHeaderBox {
@@ -258,18 +269,12 @@ fn make_media_segment(
             })
         }
         TrackData::Video(avc_frame) => {
-            let mut raw_data = Vec::new();
-            avc_frame.bitstream.write_to(&mut raw_data);
-
-            let Millis(composition_time_ms) = avc_frame.composition_time;
-            let composition_time_offset = (composition_time_ms * mux.timescale as u64) / 1000;
-
             let sample_flags = SampleFlags {
                 is_leading: 0,
                 // ISO/IEC 14496-12 8.40.2.3, other samples depend on this:
                 sample_depends_on: 1,
                 // ISO/IEC 14496-12 8.31.1, false signals a key frame:
-                sample_is_non_sync_sample: !avc_frame.frame_type.is_key_frame(),
+                sample_is_non_sync_sample: !avc_frame.is_key_frame,
                 // should this be 1?
                 sample_is_depdended_on: 0,
                 sample_has_redundancy: 0,
@@ -296,8 +301,8 @@ fn make_media_segment(
                     first_sample_flags: None,
                     samples: vec![Sample {
                         duration: Some(duration),
-                        size: Some(raw_data.len() as u32),
-                        composition_time_offset: Some(composition_time_offset as i32),
+                        size: Some(avc_frame.data.len() as u32),
+                        composition_time_offset: Some(avc_frame.composition_time as i32),
                         flags: Some(sample_flags),
                     }],
                 }
@@ -306,7 +311,7 @@ fn make_media_segment(
             mux.cumulative_video_duration += duration;
 
             (video_frag, MediaDataBox {
-                data: raw_data,
+                data: avc_frame.data.to_vec(),
             })
         }
     };

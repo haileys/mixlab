@@ -187,6 +187,9 @@ name = "bytes"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "130aac562c0dd69c56b3b1cc8ffd2e17be31d0b6c25b61c96b76231aa23e39e1"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "cc"
@@ -932,6 +935,7 @@ dependencies = [
  "num-rational",
  "ringbuf",
  "rml_rtmp",
+ "serde",
  "tokio",
  "uuid",
  "warp",
@@ -946,6 +950,8 @@ dependencies = [
  "futures",
  "lewton",
  "ogg",
+ "serde",
+ "serde_derive",
 ]
 
 [[package]]
@@ -955,12 +961,16 @@ dependencies = [
  "bytes",
  "mixlab-codec",
  "mse_fmp4",
+ "serde",
+ "serde_derive",
 ]
 
 [[package]]
 name = "mixlab-protocol"
 version = "0.0.0"
 dependencies = [
+ "mixlab-codec",
+ "mixlab-mux",
  "serde",
  "serde_derive",
  "uuid",

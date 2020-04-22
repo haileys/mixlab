@@ -6,7 +6,8 @@ use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};
 
-use mixlab_protocol::{ModuleId, MonitorIndication};
+use mixlab_mux::mp4::Mp4Mux;
+use mixlab_protocol::{ModuleId, MonitorIndication, MonitorTransportPacket};
 
 #[derive(Properties, Clone, Debug)]
 pub struct MonitorProps {
@@ -20,6 +21,7 @@ pub struct Monitor {
     socket: WebSocketTask,
     media_source: MediaSource,
     source_buffer: Option<SourceBuffer>,
+    mux: Option<Mp4Mux>,
     fragment: Vec<u8>,
     ready: bool,
     source_url: String,
@@ -31,7 +33,7 @@ pub struct Monitor {
 pub enum MonitorMsg {
     SourceOpen,
     SourceBufferUpdate,
-    FragmentReceive(Vec<u8>),
+    PacketReceive(Vec<u8>),
 }
 
 impl Component for Monitor {
@@ -48,7 +50,7 @@ impl Component for Monitor {
                 move |msg: Binary| {
                     match msg {
                         Ok(buff) => {
-                            link.send_message(MonitorMsg::FragmentReceive(buff));
+                            link.send_message(MonitorMsg::PacketReceive(buff));
                         }
                         Err(e) => {
                             crate::log!("monitor recv error: {:?}", e);
@@ -75,6 +77,7 @@ impl Component for Monitor {
             socket,
             media_source,
             source_buffer: None,
+            mux: None,
             fragment: Vec::new(),
             ready: false,
             source_url,
@@ -111,9 +114,30 @@ impl Component for Monitor {
                 self.ready();
                 false
             }
-            MonitorMsg::FragmentReceive(fragment) => {
-                self.fragment.extend(fragment);
-                self.ready();
+            MonitorMsg::PacketReceive(packet) => {
+                let packet = bincode::deserialize::<MonitorTransportPacket>(&packet).unwrap();
+
+                match packet {
+                    MonitorTransportPacket::Init { timescale, dcr } => {
+                        if self.mux.is_some() {
+                            panic!("protocol violation: received >1 init packet");
+                        }
+
+                        let (mux, init) = Mp4Mux::new(timescale, &dcr);
+                        self.mux = Some(mux);
+                        self.fragment.extend(init);
+                        self.ready()
+                    }
+                    MonitorTransportPacket::Frame { duration, track_data } => {
+                        let mux = self.mux.as_mut()
+                            .expect("protocol violation: received frame before init packet");
+
+                        let segment = mux.write_track(duration, &track_data);
+                        self.fragment.extend(segment);
+                        self.ready()
+                    }
+                }
+
                 false
             }
         }
