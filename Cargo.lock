@@ -926,9 +926,9 @@ dependencies = [
  "hyper",
  "lazy_static",
  "mixlab-codec",
+ "mixlab-mux",
  "mixlab-protocol",
  "mpeg2ts",
- "mse_fmp4",
  "num-rational",
  "ringbuf",
  "rml_rtmp",
@@ -946,6 +946,15 @@ dependencies = [
  "futures",
  "lewton",
  "ogg",
+]
+
+[[package]]
+name = "mixlab-mux"
+version = "0.0.0"
+dependencies = [
+ "bytes",
+ "mixlab-codec",
+ "mse_fmp4",
 ]
 
 [[package]]
