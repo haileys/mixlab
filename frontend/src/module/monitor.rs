@@ -21,7 +21,6 @@ pub struct Monitor {
     media_source: MediaSource,
     source_buffer: Option<SourceBuffer>,
     fragment: Vec<u8>,
-    received: usize,
     ready: bool,
     source_url: String,
     video_element: NodeRef,
@@ -77,7 +76,6 @@ impl Component for Monitor {
             media_source,
             source_buffer: None,
             fragment: Vec::new(),
-            received: 0,
             ready: false,
             source_url,
             video_element: NodeRef::default(),
@@ -114,7 +112,6 @@ impl Component for Monitor {
                 false
             }
             MonitorMsg::FragmentReceive(fragment) => {
-                self.received += fragment.len();
                 self.fragment.extend(fragment);
                 self.ready();
                 false
@@ -140,7 +137,7 @@ impl Component for Monitor {
 
 impl Monitor {
     fn ready(&mut self) {
-        if self.ready /*&& self.received >= 8*1024*/ {
+        if self.ready {
             let mut fragment = mem::take(&mut self.fragment);
             self.append_buffer(&mut fragment);
             self.ready = false;
