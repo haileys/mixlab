@@ -1,7 +1,4 @@
-use derive_more::From;
 use bytes::Buf;
-use byteorder::ReadBytesExt;
-use std::io::{self, Read};
 
 // Copyright (c) 2018 Takeru Ohta <phjgt308@gmail.com>
 
@@ -41,7 +38,6 @@ pub struct SpsSummary {
 pub enum SpsReadError {
     EarlyEof,
     InvalidInput,
-    UnsupportedProfile { idc: u8 },
 }
 
 impl From<Eof> for SpsReadError {
@@ -114,7 +110,7 @@ impl SpsSummary {
                                     64
                                 };
 
-                            for j in 0..size_of_scaling_list {
+                            for _ in 0..size_of_scaling_list {
                                 if next_scale != 0 {
                                     let delta_scale = reader.read_ie()?;
 

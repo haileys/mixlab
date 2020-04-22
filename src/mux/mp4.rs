@@ -1,11 +1,11 @@
 use std::ffi::CString;
 
-use bytes::{Bytes, BytesMut, Buf, BufMut};
+use bytes::{Bytes, BytesMut};
 use bytes::buf::BufMutExt;
 use mse_fmp4::aac::{AacProfile, SamplingFrequency, ChannelConfiguration};
 use mse_fmp4::fmp4::{
-    AacSampleEntry, AvcConfigurationBox, AvcSampleEntry, InitializationSegment, MediaDataBox,
-    MediaSegment, Mp4Box, Mpeg4EsDescriptorBox, Sample, SampleEntry, SampleFlags, TrackBox,
+    AacSampleEntry, AvcSampleEntry, InitializationSegment, MediaDataBox, MediaSegment,
+    Mp4Box, Mpeg4EsDescriptorBox, Sample, SampleEntry, SampleFlags, TrackBox,
     TrackExtendsBox, TrackFragmentBox, MovieFragmentHeaderBox, MovieFragmentBox,
 };
 use mse_fmp4::io::WriteTo;
@@ -66,9 +66,8 @@ const VIDEO_TRACK: u32 = 2;
 
 fn make_init_segment(
     mux: &Mp4Mux,
-    mut dcr: &avc::DecoderConfigurationRecord,
+    dcr: &avc::DecoderConfigurationRecord,
 ) -> InitializationSegment {
-    use mse_fmp4::avc::AvcDecoderConfigurationRecord;
     use mse_fmp4::fmp4::{
         FileTypeBox, MovieBox, MovieHeaderBox, TrackHeaderBox, MovieExtendsBox,
         MediaBox, MediaHeaderBox, HandlerReferenceBox, MediaInformationBox,

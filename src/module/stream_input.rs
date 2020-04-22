@@ -1,5 +1,4 @@
 use std::cmp;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use num_rational::Rational64;

@@ -1,36 +1,19 @@
-use std::cmp;
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::fs::File;
-use std::io::{self, Write};
-use std::mem;
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 
-use bytes::{Buf, Bytes, BytesMut, BufMut};
-use bytes::buf::BufMutExt;
-use derive_more::From;
+use bytes::Bytes;
 use fdk_aac::enc as aac;
 use futures::sink::SinkExt;
-use mpeg2ts::es::StreamId;
-use mpeg2ts::time::Timestamp as MpegTimestamp;
-use mpeg2ts::ts::{self, TsPacketWriter, TsPacket, TsHeader, TsPayload, ContinuityCounter, Pid, WriteTsPacket};
-use mse_fmp4::aac::{AacProfile, SamplingFrequency, ChannelConfiguration};
-use mse_fmp4::fmp4::{
-    AacSampleEntry, AvcConfigurationBox, AvcSampleEntry, InitializationSegment, MediaDataBox,
-    MediaSegment, Mp4Box, Mpeg4EsDescriptorBox, Sample, SampleEntry, SampleFlags, TrackBox,
-    TrackExtendsBox, TrackFragmentBox, MovieFragmentHeaderBox, MovieFragmentBox,
-};
-use mse_fmp4::io::WriteTo;
 use num_rational::Rational64;
 use tokio::sync::{broadcast, watch, mpsc};
 use uuid::Uuid;
-use warp::ws::{self, Ws, WebSocket};
+use warp::ws::{self, WebSocket};
 
-use crate::codec::avc::AvcError;
-use crate::engine::{InputRef, OutputRef, VideoFrame, SAMPLE_RATE};
+use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
 use crate::mux::mp4::{Mp4Mux, TrackData, AdtsFrame};
-use crate::util::{self, Sequence};
 
 use mixlab_protocol::{LineType, Terminal, MonitorIndication};
 
@@ -49,15 +32,16 @@ pub enum ClientKind {
 }
 
 impl ClientKind {
-    pub async fn send(&mut self, data: Bytes) {
+    pub async fn send(&mut self, data: Bytes) -> Result<(), ()> {
         match self {
             ClientKind::Ws(sock) => {
                 // TODO it would be great if we didn't need the copy here
                 let data = data.to_vec();
-                sock.send(ws::Message::binary(data)).await;
+                sock.send(ws::Message::binary(data)).await
+                    .map_err(|_| ())
             }
             ClientKind::Http(tx) => {
-                tx.send(data).await;
+                tx.send(data).await.map_err(|_| ())
             }
         }
     }
@@ -83,7 +67,10 @@ pub async fn stream(socket_id: Uuid, mut client: ClientKind) {
                 }
                 Some(Some(init)) => {
                     // send initialisation segment to client
-                    client.send(init.into()).await;
+                    if let Err(_) = client.send(init.into()).await {
+                        return;
+                    }
+
                     break;
                 }
             }
@@ -92,7 +79,9 @@ pub async fn stream(socket_id: Uuid, mut client: ClientKind) {
         // TODO if we lag we should catch up to the start of the stream rather
         // than disconnecting the client
         while let Ok(packet) = stream.recv().await {
-            client.send(packet).await;
+            if let Err(_) = client.send(packet).await {
+                return;
+            }
         }
     }
 }
@@ -234,7 +223,7 @@ impl ModuleT for Monitor {
 
             let adts = AdtsFrame(&aac_buff[0..encode_result.output_size]);
             let segment = mux.write_track(SAMPLES_PER_CHANNEL_PER_FRAGMENT as u32, TrackData::Audio(adts));
-            self.file.write_all(&segment);
+            let _ = self.file.write_all(&segment);
             // only fails if no active receives:
             let _ = self.segments_tx.send(segment);
 
@@ -252,7 +241,7 @@ impl ModuleT for Monitor {
                 TrackData::Video(&video_frame.data.specific),
             );
 
-            self.file.write_all(&segment);
+            let _ = self.file.write_all(&segment);
             // only fails if no active receives:
             let _ = self.segments_tx.send(segment);
         }
@@ -278,6 +267,10 @@ impl ModuleT for Monitor {
 
 #[cfg(feature="mpeg_ts")]
 mod ts {
+
+use mpeg2ts::es::StreamId;
+use mpeg2ts::time::Timestamp as MpegTimestamp;
+use mpeg2ts::ts::{self, TsPacketWriter, TsPacket, TsHeader, TsPayload, ContinuityCounter, Pid, WriteTsPacket};
 
 const VIDEO_ES_PID: u16 = 257;
 const AUDIO_ES_PID: u16 = 258;

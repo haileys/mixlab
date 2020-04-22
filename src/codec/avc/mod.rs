@@ -117,9 +117,3 @@ pub struct AvcFrame {
     // linked list of the last frames terminating at the preceding keyframe:
     pub previous: Option<Arc<AvcFrame>>,
 }
-
-pub struct AvcStreamInfo {
-    pub frame_rate: f64,
-    pub width: usize,
-    pub height: usize,
-}

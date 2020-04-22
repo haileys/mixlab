@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex};
 use num_rational::Rational64;
 use ringbuf::{RingBuffer, Producer, Consumer};
 
-use crate::engine::VideoFrame;
 use crate::util::Sequence;
 use crate::video;
 

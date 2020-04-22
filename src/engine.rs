@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::f32;
 use std::num::NonZeroUsize;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError};
 use std::thread;
@@ -13,7 +12,6 @@ use tokio::sync::{oneshot, broadcast};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ServerUpdate, Indication, LineType, ClientSequence, ClientOp};
 
-use crate::codec::avc;
 use crate::module::Module;
 use crate::util::Sequence;
 use crate::video;

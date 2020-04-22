@@ -1,7 +1,7 @@
 use std::mem;
 
 use gloo_events::EventListener;
-use web_sys::{MediaSource, SourceBuffer, Url, SourceBufferAppendMode, HtmlVideoElement};
+use web_sys::{MediaSource, SourceBuffer, Url, HtmlVideoElement};
 use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};
@@ -93,8 +93,6 @@ impl Component for Monitor {
                     // .add_source_buffer(r#"video/mp4; codecs="avc1.42E01E, mp4a.40.2""#)
                     .add_source_buffer(r#"video/mp4; codecs="avc1.42E01E, mp4a.40.2""#)
                     .unwrap();
-
-                // source_buffer.set_mode(SourceBufferAppendMode::Sequence);
 
                 self._buffer_ready_event = Some(EventListener::new(
                     &source_buffer, "update", {

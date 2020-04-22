@@ -13,11 +13,9 @@ use rml_rtmp::time::RtmpTimestamp;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::codec::aac;
-use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketType, AvcFrame, Millis};
-use crate::engine;
+use crate::codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketType, Millis};
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError, Timestamp};
-use crate::util;
 use crate::video;
 
 mod incoming;
@@ -297,9 +295,8 @@ fn receive_video_packet(
                         .unwrap();
 
                     let mut buff = Vec::new();
-                    bitstream.write_byte_stream(&mut buff);
-
-                    video_dump.write_all(&buff);
+                    bitstream.write_byte_stream(&mut buff).unwrap();
+                    video_dump.write_all(&buff).unwrap();
                 }
 
                 // TODO rtmp timestamps are only 32 bit and have arbitrary
