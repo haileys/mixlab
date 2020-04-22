@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use bytes::{Bytes, BytesMut, Buf, BufMut};
+use bytes::{Bytes, Buf, BufMut};
 
 use super::{AvcError, DecoderConfigurationRecord};
 use super::nal::{self, UnitType};

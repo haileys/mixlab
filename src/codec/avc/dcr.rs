@@ -5,7 +5,7 @@
 // Modified by Charlie Somerville for Mixlab
 // https://github.com/charliesome/mixlab
 
-use bytes::{Bytes, BytesMut, Buf, BufMut};
+use bytes::{Bytes, Buf, BufMut};
 use super::{nal, AvcError};
 use super::sps::SpsSummary;
 
