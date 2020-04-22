@@ -2,7 +2,6 @@ mod engine;
 mod icecast;
 mod listen;
 mod module;
-mod mux;
 mod rtmp;
 mod source;
 mod throttle;

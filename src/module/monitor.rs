@@ -11,9 +11,10 @@ use tokio::sync::{broadcast, watch, mpsc};
 use uuid::Uuid;
 use warp::ws::{self, WebSocket};
 
+use mixlab_mux::mp4::{Mp4Mux, TrackData, AdtsFrame};
+
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
-use crate::mux::mp4::{Mp4Mux, TrackData, AdtsFrame};
 
 use mixlab_protocol::{LineType, Terminal, MonitorIndication};
 

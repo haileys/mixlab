@@ -12,11 +12,9 @@ use mse_fmp4::io::WriteTo;
 
 use mixlab_codec::avc::{self, AvcFrame, Millis};
 
-use crate::util::Sequence;
-
 #[derive(Debug)]
 pub struct Mp4Mux {
-    sequence: Sequence,
+    sequence: u32,
     timescale: u32,
     cumulative_audio_duration: u32,
     cumulative_video_duration: u32,
@@ -35,7 +33,7 @@ impl Mp4Mux {
         dcr: &avc::DecoderConfigurationRecord,
     ) -> (Self, Bytes) {
         let mux = Mp4Mux {
-            sequence: Sequence::new(),
+            sequence: 0,
             timescale,
             cumulative_audio_duration: 0,
             cumulative_video_duration: 0,
@@ -316,7 +314,10 @@ fn make_media_segment(
     let mut segment = MediaSegment {
         moof_box: MovieFragmentBox {
             mfhd_box: MovieFragmentHeaderBox {
-                sequence_number: mux.sequence.next().get() as u32,
+                sequence_number: {
+                    mux.sequence += 1;
+                    mux.sequence
+                },
             },
             traf_boxes: vec![traf],
         },
