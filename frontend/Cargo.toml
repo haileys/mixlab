@@ -16,6 +16,7 @@ bincode = "1.2"
 gloo-events = "0.1"
 js-sys = "0.3"
 lazy_static = "1.4"
+mixlab-mux = { path = "../mux" }
 mixlab-protocol = { path = "../protocol" }
 uuid = "0.8"
 wasm-bindgen = "0.2"

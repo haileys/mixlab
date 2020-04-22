@@ -1,6 +1,8 @@
 use std::fmt;
 use std::num::NonZeroUsize;
 
+use mixlab_codec::avc;
+use mixlab_mux::mp4;
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -188,6 +190,18 @@ pub struct OscillatorParams {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MonitorIndication {
     pub socket_id: Uuid,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum MonitorTransportPacket {
+    Init {
+        timescale: u32,
+        dcr: avc::DecoderConfigurationRecord,
+    },
+    Frame {
+        duration: u32,
+        track_data: mp4::TrackData,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

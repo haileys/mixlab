@@ -5,6 +5,9 @@ authors = ["Charlie Somerville <charlie@charlie.bz>"]
 edition = "2018"
 
 [dependencies]
+mixlab-codec = { path = "../codec" }
+mixlab-mux = { path = "../mux" }
+
 serde = "1.0"
 serde_derive = "1.0"
 uuid = { version = "0.8", features = ["serde"] }

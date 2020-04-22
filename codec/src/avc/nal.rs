@@ -7,9 +7,10 @@
 
 use std::fmt;
 use bytes::{Bytes, BytesMut, Buf, BufMut};
+use serde_derive::{Deserialize, Serialize};
 use super::AvcError;
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Deserialize, Serialize)]
 pub enum UnitType {
     NonIdrPicture = 1,
     DataPartitionA = 2,
@@ -64,7 +65,7 @@ impl UnitType {
 
 
 /// Network Abstraction Layer Unit (aka NALU) of a H.264 bitstream.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Unit {
     pub ref_idc: u8,
     pub kind: UnitType,

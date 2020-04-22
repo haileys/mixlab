@@ -5,8 +5,11 @@ authors = ["Charlie Somerville <charlie@charlie.bz>"]
 edition = "2018"
 
 [dependencies]
-bytes = "0.5"
 mixlab-codec = { path = "../codec" }
+
+bytes = "0.5"
+serde = "1.0"
+serde_derive = "1.0"
 
 # we rely on changes not yet merged into mse_fmp4 upstream:
 # https://github.com/sile/mse_fmp4/pull/5

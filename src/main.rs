@@ -179,30 +179,17 @@ async fn main() {
             })
         });
 
-    let monitor_mp4 = warp::get()
-        .and(warp::path!("_monitor_mp4" / Uuid))
-        .map(move |socket_id: Uuid| {
-            use module::monitor::ClientKind;
-            let (tx, rx) = mpsc::channel(1024);
-            let rx = rx.map(Ok::<_, Infallible>);
-            tokio::task::spawn(module::monitor::stream(socket_id, ClientKind::Http(tx)));
-            let response = http::Response::new(hyper::Body::wrap_stream(rx));
-            reply::with_header(response, "content-type", "video/mp4")
-        });
-
     let monitor_socket = warp::get()
         .and(warp::path!("_monitor" / Uuid))
         .and(warp::ws())
         .map(move |socket_id: Uuid, ws: Ws| {
             ws.on_upgrade(move |websocket| {
-                use module::monitor::ClientKind;
-                module::monitor::stream(socket_id, ClientKind::Ws(websocket))
+                module::monitor::stream(socket_id, websocket)
             })
         });
 
     let routes = static_content
         .or(websocket)
-        .or(monitor_mp4)
         .or(monitor_socket)
         .with(warp::log("mixlab-http"));
 

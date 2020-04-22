@@ -6,6 +6,8 @@
 // https://github.com/charliesome/mixlab
 
 use bytes::{Bytes, Buf, BufMut};
+use serde_derive::{Deserialize, Serialize};
+
 use super::{nal, AvcError};
 use super::sps::SpsSummary;
 
@@ -28,7 +30,7 @@ use super::sps::SpsSummary;
 /// 16   | PPS Length
 /// var  | PPS
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DecoderConfigurationRecord {
     pub version: u8,
     pub profile_indication: u8,
