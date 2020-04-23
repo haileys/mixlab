@@ -19,6 +19,7 @@ use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPac
 
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
+use crate::video;
 
 lazy_static::lazy_static! {
     static ref SOCKETS: Mutex<HashMap<Uuid, Stream>> = Mutex::new(HashMap::new());
@@ -43,7 +44,7 @@ struct AudioSegment {
 #[derive(Clone)]
 struct VideoSegment {
     duration: u32,
-    frame: Arc<avc::AvcFrame>,
+    frame: Arc<video::Frame>,
 }
 
 pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
@@ -67,7 +68,7 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
             StreamSegment::Video(video) => {
                 // send initialisation segment with dcr to client
 
-                let dcr = video.frame.bitstream.dcr.clone();
+                let dcr = video.frame.specific.bitstream.dcr.clone();
 
                 send_packet(&mut client, MonitorTransportPacket::Init {
                     timescale: SAMPLE_RATE as u32,
@@ -76,20 +77,18 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
 
                 // catch up client with last seen keyframe
 
-                let key_frame = iter::successors(Some(video.frame.as_ref()), |frame| {
-                    frame.previous.as_deref()
-                }).last().unwrap();
-
-                send_packet(&mut client, MonitorTransportPacket::Frame {
-                    duration: 0,
-                    track_data: TrackData::Video(avc_frame_to_mp4(key_frame)),
-                }).await?;
+                if let Some(key_frame) = video.frame.key_frame.as_deref() {
+                    send_packet(&mut client, MonitorTransportPacket::Frame {
+                        duration: 0,
+                        track_data: TrackData::Video(avc_frame_to_mp4(&key_frame.specific))
+                    }).await?;
+                }
 
                 // send this video packet
 
                 send_packet(&mut client, MonitorTransportPacket::Frame {
                     duration: video.duration,
-                    track_data: TrackData::Video(avc_frame_to_mp4(&video.frame)),
+                    track_data: TrackData::Video(avc_frame_to_mp4(&video.frame.specific)),
                 }).await?;
 
                 // drop into main loop
@@ -112,7 +111,7 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
             StreamSegment::Video(video) => {
                 MonitorTransportPacket::Frame {
                     duration: video.duration,
-                    track_data: TrackData::Video(avc_frame_to_mp4(&video.frame)),
+                    track_data: TrackData::Video(avc_frame_to_mp4(&video.frame.specific)),
                 }
             }
         };
@@ -287,15 +286,14 @@ impl ModuleT for Monitor {
             // for compounding inaccuracy over time:
             let duration = (video_frame.data.duration_hint * SAMPLE_RATE as i64).to_integer() as u32;
 
-            let avc_frame = &video_frame.data.specific;
-
-            let segment = mux.write_track(duration, &TrackData::Video(avc_frame_to_mp4(avc_frame)));
+            let track_data = TrackData::Video(avc_frame_to_mp4(&video_frame.data.specific));
+            let segment = mux.write_track(duration, &track_data);
             let _ = self.file.write_all(&segment);
 
             // only fails if no active receives:
             let _ = self.segments_tx.send(StreamSegment::Video(VideoSegment {
                 duration: duration,
-                frame: avc_frame.clone(),
+                frame: video_frame.data.clone(),
             }));
         }
 

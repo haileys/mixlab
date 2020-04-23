@@ -62,7 +62,7 @@ pub struct SourceSend {
 }
 
 pub type AudioData = Vec<i16>;
-pub type VideoData = video::Frame;
+pub type VideoData = Arc<video::Frame>;
 
 #[derive(Debug)]
 pub struct Frame<T> {

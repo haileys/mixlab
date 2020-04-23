@@ -149,7 +149,7 @@ impl ModuleT for StreamInput {
                 // });
 
                 Some(VideoFrame {
-                    data: Arc::new(frame.data),
+                    data: frame.data,
                     tick_offset,
                 })
             }

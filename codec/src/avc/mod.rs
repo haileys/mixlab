@@ -113,7 +113,4 @@ pub struct AvcFrame {
     pub frame_type: AvcFrameType,
     pub composition_time: Millis,
     pub bitstream: Bitstream,
-
-    // linked list of the last frames terminating at the preceding keyframe:
-    pub previous: Option<Arc<AvcFrame>>,
 }
