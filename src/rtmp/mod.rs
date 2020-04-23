@@ -87,7 +87,7 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
         audio_asc: None,
         audio_timestamp: Timestamp::new(0, 1),
         video_dcr: None,
-        video_previous_frame: None,
+        video_key_frame: None,
     };
 
     thread::spawn(move || {
@@ -106,7 +106,7 @@ struct ReceiveContext {
     audio_asc: Option<aac::AudioSpecificConfiguration>,
     audio_timestamp: Timestamp,
     video_dcr: Option<Arc<avc::DecoderConfigurationRecord>>,
-    video_previous_frame: Option<Arc<avc::AvcFrame>>,
+    video_key_frame: Option<Arc<video::Frame>>,
 }
 
 struct StreamMeta {
@@ -306,23 +306,26 @@ fn receive_video_packet(
 
                 // println!("[RTMP   ] timestamp: {}", util::decimal(timestamp));
 
-                let previous = ctx.video_previous_frame.take()
-                    // only link previous frame if this frame is not a key frame:
-                    .filter(|_| !packet.frame_type.is_key_frame());
+                let key_frame =
+                    if packet.frame_type.is_key_frame() {
+                        None
+                    } else {
+                        ctx.video_key_frame.clone()
+                    };
 
-                let specific = Arc::new(avc::AvcFrame {
-                    frame_type: packet.frame_type,
-                    composition_time: Millis(packet.composition_time as u64),
-                    bitstream: bitstream,
-                    previous,
+                let frame = Arc::new(video::Frame {
+                    specific: avc::AvcFrame {
+                        frame_type: packet.frame_type,
+                        composition_time: Millis(packet.composition_time as u64),
+                        bitstream: bitstream,
+                    },
+                    duration_hint: meta.video_frame_duration,
+                    key_frame,
                 });
 
-                ctx.video_previous_frame = Some(specific.clone());
-
-                let frame = video::Frame {
-                    specific,
-                    duration_hint: meta.video_frame_duration,
-                };
+                if packet.frame_type.is_key_frame() {
+                    ctx.video_key_frame = Some(frame.clone());
+                }
 
                 let _ = ctx.source.write_video(timestamp, frame);
             }
