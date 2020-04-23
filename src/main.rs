@@ -183,8 +183,8 @@ async fn main() {
         .and(warp::path!("_monitor" / Uuid))
         .and(warp::ws())
         .map(move |socket_id: Uuid, ws: Ws| {
-            ws.on_upgrade(move |websocket| {
-                module::monitor::stream(socket_id, websocket)
+            ws.on_upgrade(move |websocket| async move {
+                let _ = module::monitor::stream(socket_id, websocket).await;
             })
         });
 

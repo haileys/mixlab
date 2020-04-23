@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use std::iter;
 use std::sync::{Arc, Mutex};
 
 use bytes::{Bytes, BytesMut, Buf, BufMut};
@@ -45,82 +46,81 @@ struct VideoSegment {
     frame: Arc<avc::AvcFrame>,
 }
 
-pub async fn stream(socket_id: Uuid, mut client: WebSocket) {
-    let stream = (*SOCKETS).lock()
+pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
+    let mut stream = (*SOCKETS).lock()
         .unwrap()
         .get(&socket_id)
-        .map(|stream| stream.live.subscribe());
+        .map(|stream| stream.live.subscribe())
+        .ok_or(())?;
 
-    if let Some(mut stream) = stream {
-        // get initialisation segment, possibly waiting for it
-        loop {
-            match stream.recv().await {
-                Err(_) => {
-                    // sender half dropped
-                    return;
-                }
-                Ok(StreamSegment::Audio(_)) => {
-                    // nothing we can do with an audio segment until a video segment arrives
-                    // TODO what happens if a video segment is set to start part way through this audio segment?
-                    continue;
-                }
-                Ok(StreamSegment::Video(video)) if video.frame.frame_type.is_key_frame() => {
-                    // send initialisation segment with dcr to client
+    // get initialisation segment, possibly waiting for it
+    loop {
+        let segment = stream.recv().await
+            .map_err(|_| ())?;
 
-                    let dcr = video.frame.bitstream.dcr.clone();
-
-                    let packet = MonitorTransportPacket::Init {
-                        timescale: SAMPLE_RATE as u32,
-                        dcr: (*dcr).clone(),
-                    };
-
-                    if let Err(_) = send_packet(&mut client, packet).await {
-                        return;
-                    }
-
-                    // send this video packet
-
-                    let packet = MonitorTransportPacket::Frame {
-                        duration: video.duration,
-                        track_data: TrackData::Video(avc_frame_to_mp4(&video.frame)),
-                    };
-
-                    if let Err(_) = send_packet(&mut client, packet).await {
-                        return;
-                    }
-
-                    break;
-                }
-                Ok(StreamSegment::Video(_)) => {
-                    // wait for key frame
-                    continue;
-                }
+        match segment {
+            StreamSegment::Audio(_) => {
+                // nothing we can do with an audio segment until a video segment arrives
+                // TODO what happens if a video segment is set to start part way through this audio segment?
+                continue;
             }
-        }
+            StreamSegment::Video(video) => {
+                // send initialisation segment with dcr to client
 
-        // TODO if we lag we should catch up to the start of the stream rather
-        // than disconnecting the client
-        while let Ok(segment) = stream.recv().await {
-            let packet = match segment {
-                StreamSegment::Audio(audio) => {
-                    MonitorTransportPacket::Frame {
-                        duration: audio.duration,
-                        track_data: TrackData::Audio(audio.frame.clone()),
-                    }
-                }
-                StreamSegment::Video(video) => {
-                    MonitorTransportPacket::Frame {
-                        duration: video.duration,
-                        track_data: TrackData::Video(avc_frame_to_mp4(&video.frame)),
-                    }
-                }
-            };
+                let dcr = video.frame.bitstream.dcr.clone();
 
-            if let Err(_) = send_packet(&mut client, packet).await {
-                return;
+                send_packet(&mut client, MonitorTransportPacket::Init {
+                    timescale: SAMPLE_RATE as u32,
+                    dcr: (*dcr).clone(),
+                }).await?;
+
+                // catch up client with last seen keyframe
+
+                let key_frame = iter::successors(Some(video.frame.as_ref()), |frame| {
+                    frame.previous.as_deref()
+                }).last().unwrap();
+
+                send_packet(&mut client, MonitorTransportPacket::Frame {
+                    duration: 0,
+                    track_data: TrackData::Video(avc_frame_to_mp4(key_frame)),
+                }).await?;
+
+                // send this video packet
+
+                send_packet(&mut client, MonitorTransportPacket::Frame {
+                    duration: video.duration,
+                    track_data: TrackData::Video(avc_frame_to_mp4(&video.frame)),
+                }).await?;
+
+                // drop into main loop
+
+                break;
             }
         }
     }
+
+    // TODO if we lag we should catch up to the start of the stream rather
+    // than disconnecting the client
+    while let Ok(segment) = stream.recv().await {
+        let packet = match segment {
+            StreamSegment::Audio(audio) => {
+                MonitorTransportPacket::Frame {
+                    duration: audio.duration,
+                    track_data: TrackData::Audio(audio.frame.clone()),
+                }
+            }
+            StreamSegment::Video(video) => {
+                MonitorTransportPacket::Frame {
+                    duration: video.duration,
+                    track_data: TrackData::Video(avc_frame_to_mp4(&video.frame)),
+                }
+            }
+        };
+
+        send_packet(&mut client, packet).await?;
+    }
+
+    Ok(())
 }
 
 async fn send_packet(websocket: &mut WebSocket, packet: MonitorTransportPacket) -> Result<(), ()> {
