@@ -19,7 +19,7 @@ use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPac
 
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
-use crate::video;
+use crate::video::{self, FrameId};
 
 lazy_static::lazy_static! {
     static ref SOCKETS: Mutex<HashMap<Uuid, Stream>> = Mutex::new(HashMap::new());
@@ -54,69 +54,55 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
         .map(|stream| stream.live.subscribe())
         .ok_or(())?;
 
-    // get initialisation segment, possibly waiting for it
-    loop {
-        let segment = stream.recv().await
-            .map_err(|_| ())?;
+    let mut active_key_frame: Option<FrameId> = None;
 
+    // TODO if we lag we should catch up to the start of the stream rather
+    // than disconnecting the client
+    while let Ok(segment) = stream.recv().await {
         match segment {
-            StreamSegment::Audio(_) => {
-                // nothing we can do with an audio segment until a video segment arrives
-                // TODO what happens if a video segment is set to start part way through this audio segment?
-                continue;
+            StreamSegment::Audio(audio) => {
+                // only send audio data if we've sent init packet
+                // init packet is sent on receipt of the first video frame, at
+                // which point active_key_frame will be Some:
+                if active_key_frame.is_some() {
+                    send_packet(&mut client, MonitorTransportPacket::Frame {
+                        duration: audio.duration,
+                        track_data: TrackData::Audio(audio.frame.clone()),
+                    }).await?;
+                }
             }
             StreamSegment::Video(video) => {
-                // send initialisation segment with dcr to client
+                if active_key_frame.is_none() {
+                    // send DCR if this is the first video frame received
+                    let dcr = video.frame.specific.bitstream.dcr.clone();
 
-                let dcr = video.frame.specific.bitstream.dcr.clone();
-
-                send_packet(&mut client, MonitorTransportPacket::Init {
-                    timescale: SAMPLE_RATE as u32,
-                    dcr: (*dcr).clone(),
-                }).await?;
-
-                // catch up client with last seen keyframe
-
-                if let Some(key_frame) = video.frame.key_frame.as_deref() {
-                    send_packet(&mut client, MonitorTransportPacket::Frame {
-                        duration: 0,
-                        track_data: TrackData::Video(avc_frame_to_mp4(&key_frame.specific))
+                    send_packet(&mut client, MonitorTransportPacket::Init {
+                        timescale: SAMPLE_RATE as u32,
+                        dcr: (*dcr).clone(),
                     }).await?;
                 }
 
-                // send this video packet
+                if video.frame.is_key_frame() {
+                    active_key_frame = Some(video.frame.id());
+                } else {
+                    if let Some(key_frame) = &video.frame.key_frame {
+                        if active_key_frame != Some(key_frame.id()) {
+                            send_packet(&mut client, MonitorTransportPacket::Frame {
+                                duration: 0,
+                                track_data: TrackData::Video(avc_frame_to_mp4(&key_frame.specific)),
+                            }).await?;
+
+                            active_key_frame = Some(key_frame.id());
+                        }
+                    }
+                }
 
                 send_packet(&mut client, MonitorTransportPacket::Frame {
                     duration: video.duration,
                     track_data: TrackData::Video(avc_frame_to_mp4(&video.frame.specific)),
                 }).await?;
-
-                // drop into main loop
-
-                break;
             }
         }
-    }
-
-    // TODO if we lag we should catch up to the start of the stream rather
-    // than disconnecting the client
-    while let Ok(segment) = stream.recv().await {
-        let packet = match segment {
-            StreamSegment::Audio(audio) => {
-                MonitorTransportPacket::Frame {
-                    duration: audio.duration,
-                    track_data: TrackData::Audio(audio.frame.clone()),
-                }
-            }
-            StreamSegment::Video(video) => {
-                MonitorTransportPacket::Frame {
-                    duration: video.duration,
-                    track_data: TrackData::Video(avc_frame_to_mp4(&video.frame.specific)),
-                }
-            }
-        };
-
-        send_packet(&mut client, packet).await?;
     }
 
     Ok(())
