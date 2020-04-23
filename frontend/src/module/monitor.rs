@@ -6,7 +6,7 @@ use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback};
 
-use mixlab_mux::mp4::Mp4Mux;
+use mixlab_mux::mp4::{self, Mp4Mux};
 use mixlab_protocol::{ModuleId, MonitorIndication, MonitorTransportPacket};
 
 #[derive(Properties, Clone, Debug)]

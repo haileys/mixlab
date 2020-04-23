@@ -24,30 +24,51 @@ lazy_static::lazy_static! {
 }
 
 struct Stream {
-    init: watch::Receiver<Option<Arc<avc::DecoderConfigurationRecord>>>,
-    segments: Arc<broadcast::Sender<(u32, TrackData)>>,
+    live: Arc<broadcast::Sender<StreamSegment>>,
+}
+
+#[derive(Clone)]
+enum StreamSegment {
+    Audio(AudioSegment),
+    Video(VideoSegment),
+}
+
+#[derive(Clone)]
+struct AudioSegment {
+    duration: u32,
+    frame: mp4::AdtsFrame,
+}
+
+#[derive(Clone)]
+struct VideoSegment {
+    duration: u32,
+    frame: Arc<avc::AvcFrame>,
 }
 
 pub async fn stream(socket_id: Uuid, mut client: WebSocket) {
-    let rx = (*SOCKETS).lock()
+    let stream = (*SOCKETS).lock()
         .unwrap()
         .get(&socket_id)
-        .map(|stream| (stream.init.clone(), stream.segments.subscribe()));
+        .map(|stream| stream.live.subscribe());
 
-    if let Some((mut init, mut stream)) = rx {
+    if let Some(mut stream) = stream {
         // get initialisation segment, possibly waiting for it
         loop {
-            match init.recv().await {
-                None => {
+            match stream.recv().await {
+                Err(_) => {
                     // sender half dropped
                     return;
                 }
-                Some(None) => {
-                    // initialisation segment not yet ready
+                Ok(StreamSegment::Audio(_)) => {
+                    // nothing we can do with an audio segment until a video segment arrives
+                    // TODO what happens if a video segment is set to start part way through this audio segment?
                     continue;
                 }
-                Some(Some(dcr)) => {
-                    // send initialisation segment to client
+                Ok(StreamSegment::Video(video)) if video.frame.frame_type.is_key_frame() => {
+                    // send initialisation segment with dcr to client
+
+                    let dcr = video.frame.bitstream.dcr.clone();
+
                     let packet = MonitorTransportPacket::Init {
                         timescale: SAMPLE_RATE as u32,
                         dcr: (*dcr).clone(),
@@ -57,17 +78,42 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) {
                         return;
                     }
 
+                    // send this video packet
+
+                    let packet = MonitorTransportPacket::Frame {
+                        duration: video.duration,
+                        track_data: TrackData::Video(avc_frame_to_mp4(&video.frame)),
+                    };
+
+                    if let Err(_) = send_packet(&mut client, packet).await {
+                        return;
+                    }
+
                     break;
+                }
+                Ok(StreamSegment::Video(_)) => {
+                    // wait for key frame
+                    continue;
                 }
             }
         }
 
         // TODO if we lag we should catch up to the start of the stream rather
         // than disconnecting the client
-        while let Ok((duration, track_data)) = stream.recv().await {
-            let packet = MonitorTransportPacket::Frame {
-                duration,
-                track_data,
+        while let Ok(segment) = stream.recv().await {
+            let packet = match segment {
+                StreamSegment::Audio(audio) => {
+                    MonitorTransportPacket::Frame {
+                        duration: audio.duration,
+                        track_data: TrackData::Audio(audio.frame.clone()),
+                    }
+                }
+                StreamSegment::Video(video) => {
+                    MonitorTransportPacket::Frame {
+                        duration: video.duration,
+                        track_data: TrackData::Video(avc_frame_to_mp4(&video.frame)),
+                    }
+                }
             };
 
             if let Err(_) = send_packet(&mut client, packet).await {
@@ -101,7 +147,7 @@ pub struct Monitor {
     mux: Option<Mp4Mux>,
     socket_id: Uuid,
     init_tx: watch::Sender<Option<Arc<avc::DecoderConfigurationRecord>>>,
-    segments_tx: Arc<broadcast::Sender<(u32, TrackData)>>,
+    segments_tx: Arc<broadcast::Sender<StreamSegment>>,
     file: File,
     engine_epoch: Option<u64>,
     aac: aac::Encoder,
@@ -121,8 +167,7 @@ impl ModuleT for Monitor {
         let (segments_tx, _) = broadcast::channel(1024);
         let segments_tx = Arc::new(segments_tx);
         (*SOCKETS).lock().unwrap().insert(socket_id, Stream {
-            init: init_rx,
-            segments: segments_tx.clone(),
+            live: segments_tx.clone(),
         });
 
         // setup codecs
@@ -224,11 +269,14 @@ impl ModuleT for Monitor {
 
             let adts = AdtsFrame(Bytes::copy_from_slice(&aac_buff[0..encode_result.output_size]));
             let duration = SAMPLES_PER_CHANNEL_PER_FRAGMENT as u32;
-            let track_data = TrackData::Audio(adts);
+            let track_data = TrackData::Audio(adts.clone());
             let segment = mux.write_track(duration, &track_data);
             let _ = self.file.write_all(&segment);
             // only fails if no active receives:
-            let _ = self.segments_tx.send((duration, track_data));
+            let _ = self.segments_tx.send(StreamSegment::Audio(AudioSegment {
+                duration: duration,
+                frame: adts,
+            }));
 
             self.audio_pcm_buff.drain(0..audio_frame_sample_count);
         }
@@ -241,25 +289,14 @@ impl ModuleT for Monitor {
 
             let avc_frame = &video_frame.data.specific;
 
-            let Millis(composition_time_ms) = avc_frame.composition_time;
-            let composition_time = (composition_time_ms * SAMPLE_RATE as u64) / 1000;
-
-
-            let track_data = TrackData::Video(mp4::AvcFrame {
-                is_key_frame: avc_frame.frame_type.is_key_frame(),
-                composition_time: composition_time as u32,
-                data: {
-                    let mut data = BytesMut::new();
-                    avc_frame.bitstream.write_to(&mut data);
-                    data.freeze()
-                },
-            });
-
-            let segment = mux.write_track(duration, &track_data);
-
+            let segment = mux.write_track(duration, &TrackData::Video(avc_frame_to_mp4(avc_frame)));
             let _ = self.file.write_all(&segment);
+
             // only fails if no active receives:
-            let _ = self.segments_tx.send((duration, track_data));
+            let _ = self.segments_tx.send(StreamSegment::Video(VideoSegment {
+                duration: duration,
+                frame: avc_frame.clone(),
+            }));
         }
 
         None
@@ -271,6 +308,21 @@ impl ModuleT for Monitor {
 
     fn outputs(&self)-> &[Terminal] {
         &[]
+    }
+}
+
+fn avc_frame_to_mp4(frame: &avc::AvcFrame) -> mp4::AvcFrame {
+    let Millis(composition_time_ms) = frame.composition_time;
+    let composition_time = (composition_time_ms * SAMPLE_RATE as u64) / 1000;
+
+    mp4::AvcFrame {
+        is_key_frame: frame.frame_type.is_key_frame(),
+        composition_time: composition_time as u32,
+        data: {
+            let mut data = BytesMut::new();
+            frame.bitstream.write_to(&mut data);
+            data.freeze()
+        }
     }
 }
 
