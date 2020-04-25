@@ -31,20 +31,9 @@ struct Stream {
 
 #[derive(Clone)]
 enum StreamSegment {
-    Audio(AudioSegment),
-    Video(VideoSegment),
-}
-
-#[derive(Clone)]
-struct AudioSegment {
-    duration: u32,
-    frame: mp4::AdtsFrame,
-}
-
-#[derive(Clone)]
-struct VideoSegment {
-    duration: u32,
-    frame: Arc<video::Frame>,
+    Audio { duration: u32, frame: mp4::AdtsFrame },
+    Video { duration: u32, frame: Arc<video::Frame> },
+    RawAvc { duration: u32, frame: mp4::AvcFrame },
 }
 
 pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
@@ -60,21 +49,21 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
     // than disconnecting the client
     while let Ok(segment) = stream.recv().await {
         match segment {
-            StreamSegment::Audio(audio) => {
+            StreamSegment::Audio { duration, frame } => {
                 // only send audio data if we've sent init packet
                 // init packet is sent on receipt of the first video frame, at
                 // which point active_key_frame will be Some:
                 if active_key_frame.is_some() {
                     send_packet(&mut client, MonitorTransportPacket::Frame {
-                        duration: audio.duration,
-                        track_data: TrackData::Audio(audio.frame.clone()),
+                        duration,
+                        track_data: TrackData::Audio(frame.clone()),
                     }).await?;
                 }
             }
-            StreamSegment::Video(video) => {
+            StreamSegment::Video { duration, frame } => {
                 if active_key_frame.is_none() {
                     // send DCR if this is the first video frame received
-                    let dcr = video.frame.specific.bitstream.dcr.clone();
+                    let dcr = frame.specific.bitstream.dcr.clone();
 
                     send_packet(&mut client, MonitorTransportPacket::Init {
                         timescale: SAMPLE_RATE as u32,
@@ -82,10 +71,10 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
                     }).await?;
                 }
 
-                if video.frame.is_key_frame() {
-                    active_key_frame = Some(video.frame.id());
+                if frame.is_key_frame() {
+                    active_key_frame = Some(frame.id());
                 } else {
-                    if let Some(key_frame) = &video.frame.key_frame {
+                    if let Some(key_frame) = &frame.key_frame {
                         if active_key_frame != Some(key_frame.id()) {
                             send_packet(&mut client, MonitorTransportPacket::Frame {
                                 duration: 0,
@@ -98,9 +87,17 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
                 }
 
                 send_packet(&mut client, MonitorTransportPacket::Frame {
-                    duration: video.duration,
-                    track_data: TrackData::Video(avc_frame_to_mp4(&video.frame.specific)),
+                    duration,
+                    track_data: TrackData::Video(avc_frame_to_mp4(&frame.specific)),
                 }).await?;
+            }
+            StreamSegment::RawAvc { duration, frame } => {
+                if active_key_frame.is_some() {
+                    send_packet(&mut client, MonitorTransportPacket::Frame {
+                        duration,
+                        track_data: TrackData::Video(frame),
+                    }).await?;
+                }
             }
         }
     }
@@ -121,6 +118,14 @@ const CHANNELS: usize = 2;
 // must match AAC encoder's granule size
 const SAMPLES_PER_CHANNEL_PER_FRAGMENT: usize = 1024;
 
+static FILLER_BYTES: &[u8] = &[0, 0, 0, 1, 12];
+
+static FILL_FRAME: mp4::AvcFrame = mp4::AvcFrame {
+    is_key_frame: false,
+    composition_time: 0,
+    data: Bytes::from_static(FILLER_BYTES),
+};
+
 #[derive(Debug)]
 struct AacFrame {
     data: Vec<u8>,
@@ -137,6 +142,8 @@ pub struct Monitor {
     engine_epoch: Option<u64>,
     aac: aac::Encoder,
     audio_pcm_buff: Vec<i16>,
+    filled_video_to: Rational64,
+    previous_video_frame: Option<Arc<video::Frame>>,
     inputs: Vec<Terminal>,
 }
 
@@ -175,6 +182,8 @@ impl ModuleT for Monitor {
             engine_epoch: None,
             aac: aac,
             audio_pcm_buff: Vec::new(),
+            filled_video_to: Rational64::new(0, 1),
+            previous_video_frame: None,
             inputs: vec![
                 LineType::Video.labeled("Video"),
                 LineType::Stereo.labeled("Audio"),
@@ -200,6 +209,8 @@ impl ModuleT for Monitor {
 
         let engine_epoch = *self.engine_epoch.get_or_insert(time);
         let timestamp = Rational64::new((time - engine_epoch) as i64, SAMPLE_RATE as i64);
+        let tick_len = Rational64::new(audio.len() as i64 / 2, SAMPLE_RATE as i64);
+        let end_of_tick = timestamp + tick_len;
 
         // initialise muxer and write init segment
         let mux = match (self.mux.as_mut(), video) {
@@ -258,15 +269,41 @@ impl ModuleT for Monitor {
             let segment = mux.write_track(duration, &track_data);
             let _ = self.file.write_all(&segment);
             // only fails if no active receives:
-            let _ = self.segments_tx.send(StreamSegment::Audio(AudioSegment {
+            let _ = self.segments_tx.send(StreamSegment::Audio {
                 duration: duration,
                 frame: adts,
-            }));
+            });
 
             self.audio_pcm_buff.drain(0..audio_frame_sample_count);
         }
 
         // process incoming video
+        let fill_to = video.as_ref()
+            .map(|frame| timestamp + frame.tick_offset)
+            .unwrap_or(end_of_tick);
+
+        if self.filled_video_to < fill_to {
+            let fill_duration = fill_to - self.filled_video_to;
+
+            // round out to samples for video segment:
+            let fill_duration = (fill_duration * SAMPLE_RATE as i64).to_integer();
+
+            if let Some(frame) = self.previous_video_frame.clone() {
+                let _ = self.segments_tx.send(StreamSegment::Video {
+                    duration: fill_duration as u32,
+                    frame: frame.clone(),
+                });
+            } else {
+                let _ = self.segments_tx.send(StreamSegment::RawAvc {
+                    duration: fill_duration as u32,
+                    frame: FILL_FRAME.clone(),
+                });
+            }
+
+            // and use the rounded samples as numerator in new fraction to ensure precision:
+            self.filled_video_to += Rational64::new(fill_duration, 44100);
+        }
+
         if let Some(video_frame) = video {
             // TODO keep a running total of durations/frame timestamps and correct
             // for compounding inaccuracy over time:
@@ -277,10 +314,13 @@ impl ModuleT for Monitor {
             let _ = self.file.write_all(&segment);
 
             // only fails if no active receives:
-            let _ = self.segments_tx.send(StreamSegment::Video(VideoSegment {
+            let _ = self.segments_tx.send(StreamSegment::Video {
                 duration: duration,
                 frame: video_frame.data.clone(),
-            }));
+            });
+
+            self.previous_video_frame = Some(video_frame.data.clone());
+            self.filled_video_to += Rational64::new(duration as i64, SAMPLE_RATE as i64);
         }
 
         None

@@ -283,56 +283,51 @@ fn receive_video_packet(
     }
 
     if let Some(dcr) = ctx.video_dcr.clone() {
-        match Bitstream::parse(packet.data.clone(), dcr) {
-            Ok(bitstream) => {
-                // dump bit stream:
-                {
-                    use std::io::Write;
+        let bitstream = Bitstream::new(packet.data.clone(), dcr);
 
-                    let mut video_dump = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open("dump.h264")
-                        .unwrap();
+        // dump bit stream:
+        {
+            use std::io::Write;
 
-                    let mut buff = Vec::new();
-                    bitstream.write_byte_stream(&mut buff).unwrap();
-                    video_dump.write_all(&buff).unwrap();
-                }
+            let mut video_dump = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open("dump.h264")
+                .unwrap();
 
-                // TODO rtmp timestamps are only 32 bit and have arbitrary
-                // user-defined epochs - we need to handle rollover
-                let timestamp = Rational64::new(timestamp.value as i64, 1000);
-
-                // println!("[RTMP   ] timestamp: {}", util::decimal(timestamp));
-
-                let key_frame =
-                    if packet.frame_type.is_key_frame() {
-                        None
-                    } else {
-                        ctx.video_key_frame.clone()
-                    };
-
-                let frame = Arc::new(video::Frame {
-                    specific: avc::AvcFrame {
-                        frame_type: packet.frame_type,
-                        composition_time: Millis(packet.composition_time as u64),
-                        bitstream: bitstream,
-                    },
-                    duration_hint: meta.video_frame_duration,
-                    key_frame,
-                });
-
-                if packet.frame_type.is_key_frame() {
-                    ctx.video_key_frame = Some(frame.clone());
-                }
-
-                let _ = ctx.source.write_video(timestamp, frame);
-            }
-            Err(e) => {
-                eprintln!("rtmp: could not read avc bitstream: {:?}", e);
-            }
+            let mut buff = Vec::new();
+            bitstream.write_byte_stream(&mut buff).unwrap();
+            video_dump.write_all(&buff).unwrap();
         }
+
+        // TODO rtmp timestamps are only 32 bit and have arbitrary
+        // user-defined epochs - we need to handle rollover
+        let timestamp = Rational64::new(timestamp.value as i64, 1000);
+
+        // println!("[RTMP   ] timestamp: {}", util::decimal(timestamp));
+
+        let key_frame =
+            if packet.frame_type.is_key_frame() {
+                None
+            } else {
+                ctx.video_key_frame.clone()
+            };
+
+        let frame = Arc::new(video::Frame {
+            specific: avc::AvcFrame {
+                frame_type: packet.frame_type,
+                composition_time: Millis(packet.composition_time as u64),
+                bitstream: bitstream,
+            },
+            duration_hint: meta.video_frame_duration,
+            key_frame,
+        });
+
+        if packet.frame_type.is_key_frame() {
+            ctx.video_key_frame = Some(frame.clone());
+        }
+
+        let _ = ctx.source.write_video(timestamp, frame);
     } else {
         eprintln!("rtmp: cannot read avc frame without dcr");
     }

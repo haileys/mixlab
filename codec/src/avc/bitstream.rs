@@ -5,6 +5,7 @@
 // Modified by Charlie Somerville for Mixlab
 // https://github.com/charliesome/mixlab
 
+use std::iter;
 use std::sync::Arc;
 
 use bytes::{Bytes, Buf, BufMut};
@@ -16,7 +17,7 @@ use super::nal::{self, UnitType};
 #[derive(Debug)]
 pub struct Bitstream {
     pub dcr: Arc<DecoderConfigurationRecord>,
-    pub nal_units: Vec<nal::Unit>,
+    pub bytes: Bytes,
 }
 
 impl Bitstream {
@@ -24,30 +25,35 @@ impl Bitstream {
     const DELIMITER2: &'static [u8] = &[0x00, 0x00, 0x00, 0x01];
     const ACCESS_UNIT_DELIMITER: &'static [u8] = &[0x00, 0x00, 0x00, 0x01, 0x09, 0xF0];
 
-    pub fn parse(mut buf: Bytes, dcr: Arc<DecoderConfigurationRecord>) -> Result<Self, AvcError> {
-        let mut nal_units = Vec::new();
+    pub fn new(bytes: Bytes, dcr: Arc<DecoderConfigurationRecord>) -> Self {
+        Bitstream { dcr, bytes}
+    }
 
-        while buf.has_remaining() {
-            if buf.remaining() < dcr.nalu_size as usize {
-                return Err(AvcError::NotEnoughData);
-            };
+    pub fn nal_units(&self) -> impl Iterator<Item = Result<nal::Unit, AvcError>> {
+        let dcr = self.dcr.clone();
+        let mut bytes = self.bytes.clone();
 
-            // TODO nalu size could be > 8... validate
-            let nalu_length = buf.get_uint(dcr.nalu_size as usize) as usize;
-
-            if buf.remaining() < nalu_length {
-                return Err(AvcError::NotEnoughData);
+        iter::from_fn(move || {
+            if bytes.remaining() == 0 {
+                return None;
             }
 
-            let nalu_data = buf.split_to(nalu_length);
-            nal_units.push(nal::Unit::parse(nalu_data)?)
-        };
+            if bytes.remaining() < dcr.nalu_size as usize {
+                // make sure bytes is empty for next iteration:
+                bytes = Bytes::new();
+                return Some(Err(AvcError::NotEnoughData));
+            }
 
-        if buf.has_remaining() {
-            eprintln!("avc::bitstream: {} bytes remaining in buffer", buf.remaining());
-        }
+            // TODO nalu size could be > 8... validate
+            let nalu_length = bytes.get_uint(dcr.nalu_size as usize) as usize;
 
-        Ok(Self { nal_units, dcr })
+            if bytes.remaining() < nalu_length {
+                return Some(Err(AvcError::NotEnoughData));
+            }
+
+            let nalu_data = bytes.split_to(nalu_length);
+            Some(nal::Unit::parse(nalu_data))
+        })
     }
 
     pub fn write_byte_stream(&self, mut out: impl BufMut) -> Result<(), AvcError> {
@@ -55,7 +61,9 @@ impl Bitstream {
         let mut sps_and_pps_appended = false;
         let dcr = &self.dcr;
 
-        for nalu in &self.nal_units {
+        for nalu in self.nal_units() {
+            let nalu = nalu?;
+
             match &nalu.kind {
                 | UnitType::SequenceParameterSet
                 | UnitType::PictureParameterSet
@@ -105,18 +113,22 @@ impl Bitstream {
         Ok(())
     }
 
-    pub fn write_to(&self, mut out: impl BufMut) {
-        for nalu in &self.nal_units {
+    pub fn write_to(&self, mut out: impl BufMut) -> Result<(), AvcError> {
+        for nalu in self.nal_units() {
+            let nalu = nalu?;
+
             match &nalu.kind {
                 | UnitType::SequenceParameterSet
                 | UnitType::PictureParameterSet
                 | UnitType::AccessUnitDelimiter
                 | UnitType::FillerData => {}
                 _ => {
-                    out.put_u32(nalu.byte_size() as u32);
+                    out.put_uint(nalu.byte_size() as u64, self.dcr.nalu_size as usize);
                     nalu.write_to(&mut out);
                 }
             }
         }
+
+        Ok(())
     }
 }
