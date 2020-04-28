@@ -19,9 +19,11 @@ use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError, Timestamp};
 use crate::video;
 
+mod decode;
 mod incoming;
 mod packet;
 
+use decode::H264Decoder;
 use packet::AudioPacket;
 
 lazy_static::lazy_static! {
@@ -78,6 +80,8 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     audio_codec.set_min_output_channels(2)?;
     audio_codec.set_max_output_channels(2)?;
 
+    let mut video_codec = H264Decoder::new().unwrap();
+
     let mut ctx = ReceiveContext {
         stream,
         session,
@@ -86,7 +90,9 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
         audio_codec,
         audio_asc: None,
         audio_timestamp: Timestamp::new(0, 1),
+        video_codec,
         video_dcr: None,
+        video_dcr_bytes: None,
         video_key_frame: None,
     };
 
@@ -105,7 +111,9 @@ struct ReceiveContext {
     audio_codec: fdk_aac::dec::Decoder,
     audio_asc: Option<aac::AudioSpecificConfiguration>,
     audio_timestamp: Timestamp,
+    video_codec: H264Decoder,
     video_dcr: Option<Arc<avc::DecoderConfigurationRecord>>,
+    video_dcr_bytes: Option<Bytes>,
     video_key_frame: Option<Arc<video::Frame>>,
 }
 
@@ -268,6 +276,8 @@ fn receive_video_packet(
     };
 
     if let AvcPacketType::SequenceHeader = packet.packet_type {
+        let dcr_bytes = packet.data.clone();
+
         match DecoderConfigurationRecord::parse(&mut packet.data) {
             Ok(dcr) => {
                 if ctx.video_dcr.is_some() {
@@ -275,6 +285,7 @@ fn receive_video_packet(
                 }
                 eprintln!("rtmp: received avc dcr: {:?}", dcr);
                 ctx.video_dcr = Some(Arc::new(dcr));
+                ctx.video_dcr_bytes = Some(dcr_bytes);
             }
             Err(e) => {
                 eprintln!("rtmp: could not read avc dcr: {:?}", e);
@@ -283,6 +294,18 @@ fn receive_video_packet(
     }
 
     if let Some(dcr) = ctx.video_dcr.clone() {
+        if packet.data.len() > 0 {
+            println!("data: {:?}", &packet.data[0..50]);
+
+            ctx.video_codec.send_packet(decode::Packet {
+                dts: timestamp.value.into(),
+                pts: (timestamp.value + packet.composition_time).into(),
+                data: &packet.data,
+                dcr: ctx.video_dcr_bytes.as_deref(),
+                is_key_frame: packet.frame_type.is_key_frame(),
+            }).unwrap();
+        }
+
         let bitstream = Bitstream::new(packet.data.clone(), dcr);
 
         // dump bit stream:

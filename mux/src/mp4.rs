@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::ffi::CString;
 
 use bytes::{Bytes, BytesMut};
