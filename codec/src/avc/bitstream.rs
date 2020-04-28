@@ -26,7 +26,7 @@ impl Bitstream {
     const ACCESS_UNIT_DELIMITER: &'static [u8] = &[0x00, 0x00, 0x00, 0x01, 0x09, 0xF0];
 
     pub fn new(bytes: Bytes, dcr: Arc<DecoderConfigurationRecord>) -> Self {
-        Bitstream { dcr, bytes}
+        Bitstream { dcr, bytes }
     }
 
     pub fn nal_units(&self) -> impl Iterator<Item = Result<nal::Unit, AvcError>> {
