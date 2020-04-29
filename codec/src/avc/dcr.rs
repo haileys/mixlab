@@ -116,12 +116,12 @@ impl DecoderConfigurationRecord {
         })
     }
 
-    pub fn width(&self) -> usize {
-        self.sps_summary.width()
+    pub fn picture_width(&self) -> usize {
+        self.sps_summary.picture_width()
     }
 
-    pub fn height(&self) -> usize {
-        self.sps_summary.height()
+    pub fn picture_height(&self) -> usize {
+        self.sps_summary.picture_height()
     }
 
     pub fn write_to(&self, mut out: impl BufMut) {

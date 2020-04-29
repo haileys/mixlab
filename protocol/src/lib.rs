@@ -1,8 +1,7 @@
 use std::fmt;
 use std::num::NonZeroUsize;
 
-use mixlab_codec::avc;
-use mixlab_mux::mp4;
+use mixlab_mux::mp4::{self, Mp4Params};
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -195,8 +194,7 @@ pub struct MonitorIndication {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum MonitorTransportPacket {
     Init {
-        timescale: u32,
-        dcr: avc::DecoderConfigurationRecord,
+        params: Mp4Params<'static>,
     },
     Frame {
         duration: u32,

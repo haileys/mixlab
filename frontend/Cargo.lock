@@ -301,17 +301,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
-name = "lewton"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be42bea7971f4ba0ea1e215730c29bc1ff9bd2a9c10013912f42a8dcf8d77c0d"
-dependencies = [
- "byteorder",
- "ogg",
- "tinyvec",
-]
-
-[[package]]
 name = "log"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -327,24 +316,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3728d817d99e5ac407411fa471ff9800a778d88a24685968b36824eaf4bee400"
 
 [[package]]
-name = "mixlab-codec"
-version = "0.0.0"
-dependencies = [
- "bytes",
- "derive_more",
- "futures",
- "lewton",
- "ogg",
- "serde",
- "serde_derive",
-]
-
-[[package]]
 name = "mixlab-mux"
 version = "0.0.0"
 dependencies = [
  "bytes",
- "mixlab-codec",
  "mse_fmp4",
  "serde",
  "serde_derive",
@@ -354,7 +329,6 @@ dependencies = [
 name = "mixlab-protocol"
 version = "0.0.0"
 dependencies = [
- "mixlab-codec",
  "mixlab-mux",
  "serde",
  "serde_derive",
@@ -388,15 +362,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c62be47e61d1842b9170f0fdeec8eba98e60e90e5446449a0545e5152acd7096"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "ogg"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d79f1db9148be9d0e174bb3ac890f6030fcb1ed947267c5a91ee4c91b5a91e15"
-dependencies = [
- "byteorder",
 ]
 
 [[package]]
@@ -520,12 +485,6 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "tinyvec"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53953d2d3a5ad81d9f844a32f14ebb121f50b650cd59d0ee2a07cf13c617efed"
 
 [[package]]
 name = "trackable"

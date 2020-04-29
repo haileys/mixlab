@@ -48,13 +48,13 @@ impl From<Eof> for SpsReadError {
 }
 
 impl SpsSummary {
-    pub fn width(&self) -> usize {
+    pub fn picture_width(&self) -> usize {
         (self.pic_width_in_mbs_minus_1 as usize + 1) * 16
             - (self.frame_crop_right_offset as usize * 2)
             - (self.frame_crop_left_offset as usize * 2)
     }
 
-    pub fn height(&self) -> usize {
+    pub fn picture_height(&self) -> usize {
         (2 - self.frame_mbs_only_flag as usize)
             * ((self.pic_height_in_map_units_minus_1 as usize + 1) * 16)
             - (self.frame_crop_bottom_offset as usize * 2)
