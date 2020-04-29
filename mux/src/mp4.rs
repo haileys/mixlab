@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ffi::CString;
 
 use bytes::{Bytes, BytesMut};
@@ -10,8 +11,6 @@ use mse_fmp4::fmp4::{
 };
 use mse_fmp4::io::WriteTo;
 use serde::{Deserialize, Serialize};
-
-use mixlab_codec::avc;
 
 #[derive(Debug)]
 pub struct Mp4Mux {
@@ -37,19 +36,24 @@ pub enum TrackData {
     Video(AvcFrame),
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Mp4Params<'a> {
+    pub timescale: u32,
+    pub width: u32,
+    pub height: u32,
+    pub dcr: Cow<'a, [u8]>,
+}
+
 impl Mp4Mux {
-    pub fn new(
-        timescale: u32,
-        dcr: &avc::DecoderConfigurationRecord,
-    ) -> (Self, Bytes) {
+    pub fn new(params: Mp4Params) -> (Self, Bytes) {
         let mux = Mp4Mux {
             sequence: 0,
-            timescale,
+            timescale: params.timescale,
             cumulative_audio_duration: 0,
             cumulative_video_duration: 0,
         };
 
-        let init = make_init_segment(&mux, dcr);
+        let init = make_init_segment(&mux, params);
 
         (mux, to_bytes(init))
     }
@@ -75,7 +79,7 @@ const VIDEO_TRACK: u32 = 2;
 
 fn make_init_segment(
     mux: &Mp4Mux,
-    dcr: &avc::DecoderConfigurationRecord,
+    params: Mp4Params,
 ) -> InitializationSegment {
     use mse_fmp4::fmp4::{
         FileTypeBox, MovieBox, MovieHeaderBox, TrackHeaderBox, MovieExtendsBox,
@@ -103,8 +107,8 @@ fn make_init_segment(
                         // then the duration is set to all 1s (32-bit maxint)
                         duration: u32::max_value(),
                         volume: 0x0100, // 16.16 fixed point, 0x0100 = 1.0
-                        width: dcr.width() as u32,
-                        height: dcr.height() as u32,
+                        width: 0,
+                        height: 0,
                     },
                     edts_box: None,
                     mdia_box: MediaBox {
@@ -154,8 +158,8 @@ fn make_init_segment(
                         // then the duration is set to all 1s (32-bit maxint)
                         duration: u32::max_value(),
                         volume: 0x0100, // 16.16 fixed point, 0x0100 = 1.0
-                        width: dcr.width() as u32,
-                        height: dcr.height() as u32,
+                        width: params.width,
+                        height: params.height,
                     },
                     edts_box: None,
                     mdia_box: MediaBox {
@@ -181,11 +185,7 @@ fn make_init_segment(
                                         SampleEntry::Avc(AvcSampleEntry {
                                             width: 1120, // TOOD set to proper value
                                             height: 720,
-                                            avcc_box: AvcConfigurationBox::Raw({
-                                                let mut dcr_bytes = Vec::new();
-                                                dcr.write_to(&mut dcr_bytes);
-                                                dcr_bytes
-                                            }),
+                                            avcc_box: AvcConfigurationBox::Raw(params.dcr.to_vec()),
                                         }),
                                     ],
                                 },

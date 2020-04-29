@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -14,7 +15,7 @@ use uuid::Uuid;
 use warp::ws::{self, WebSocket};
 
 use mixlab_codec::avc::{self, Millis};
-use mixlab_mux::mp4::{self, Mp4Mux, TrackData, AdtsFrame};
+use mixlab_mux::mp4::{self, Mp4Mux, Mp4Params, TrackData, AdtsFrame};
 use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPacket};
 
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
@@ -64,10 +65,19 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
                 if active_key_frame.is_none() {
                     // send DCR if this is the first video frame received
                     let dcr = frame.specific.bitstream.dcr.clone();
+                    let dcr_bytes = {
+                        let mut buff = Vec::new();
+                        dcr.write_to(&mut buff);
+                        buff
+                    };
 
                     send_packet(&mut client, MonitorTransportPacket::Init {
-                        timescale: SAMPLE_RATE as u32,
-                        dcr: (*dcr).clone(),
+                        params: Mp4Params {
+                            timescale: SAMPLE_RATE as u32,
+                            width: dcr.picture_width() as u32,
+                            height: dcr.picture_height() as u32,
+                            dcr: Cow::Owned(dcr_bytes),
+                        },
                     }).await?;
                 }
 
@@ -222,7 +232,18 @@ impl ModuleT for Monitor {
             }
             (None, Some(frame)) => {
                 let dcr = &frame.data.specific.bitstream.dcr;
-                let (mux, init) = Mp4Mux::new(SAMPLE_RATE as u32, dcr);
+                let dcr_bytes = {
+                    let mut buff = Vec::new();
+                    dcr.write_to(&mut buff);
+                    buff
+                };
+
+                let (mux, init) = Mp4Mux::new(Mp4Params {
+                    timescale: SAMPLE_RATE as u32,
+                    width: dcr.picture_width() as u32,
+                    height: dcr.picture_height() as u32,
+                    dcr: Cow::Owned(dcr_bytes),
+                });
 
                 println!("writing init ({} bytes)", init.len());
                 self.file.write_all(&init).unwrap();

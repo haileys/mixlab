@@ -1082,7 +1082,6 @@ name = "mixlab-mux"
 version = "0.0.0"
 dependencies = [
  "bytes",
- "mixlab-codec",
  "mse_fmp4",
  "serde",
  "serde_derive",
@@ -1092,7 +1091,6 @@ dependencies = [
 name = "mixlab-protocol"
 version = "0.0.0"
 dependencies = [
- "mixlab-codec",
  "mixlab-mux",
  "serde",
  "serde_derive",
