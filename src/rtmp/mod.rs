@@ -23,7 +23,7 @@ mod decode;
 mod incoming;
 mod packet;
 
-use decode::H264Decoder;
+use decode::{H264Decoder, RecvFrameError};
 use packet::AudioPacket;
 
 lazy_static::lazy_static! {
@@ -49,6 +49,7 @@ pub enum RtmpError {
     SourceSend,
     Aac(aac::AacError),
     AacCodec(fdk_aac::dec::DecoderError),
+    AvCodec(decode::AVError),
 }
 
 pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
@@ -294,18 +295,6 @@ fn receive_video_packet(
     }
 
     if let Some(dcr) = ctx.video_dcr.clone() {
-        if packet.data.len() > 0 {
-            println!("data: {:?}", &packet.data[0..50]);
-
-            ctx.video_codec.send_packet(decode::Packet {
-                dts: timestamp.value.into(),
-                pts: (timestamp.value + packet.composition_time).into(),
-                data: &packet.data,
-                dcr: ctx.video_dcr_bytes.as_deref(),
-                is_key_frame: packet.frame_type.is_key_frame(),
-            }).unwrap();
-        }
-
         let bitstream = Bitstream::new(packet.data.clone(), dcr);
 
         // dump bit stream:
@@ -327,8 +316,6 @@ fn receive_video_packet(
         // user-defined epochs - we need to handle rollover
         let timestamp = Rational64::new(timestamp.value as i64, 1000);
 
-        // println!("[RTMP   ] timestamp: {}", util::decimal(timestamp));
-
         let key_frame =
             if packet.frame_type.is_key_frame() {
                 None
@@ -336,21 +323,43 @@ fn receive_video_packet(
                 ctx.video_key_frame.clone()
             };
 
-        let frame = Arc::new(video::Frame {
-            specific: avc::AvcFrame {
-                frame_type: packet.frame_type,
-                composition_time: Millis(packet.composition_time as u64),
-                bitstream: bitstream,
-            },
-            duration_hint: meta.video_frame_duration,
-            key_frame,
-        });
-
-        if packet.frame_type.is_key_frame() {
-            ctx.video_key_frame = Some(frame.clone());
+        if packet.data.len() > 0 {
+            ctx.video_codec.send_packet(decode::Packet {
+                dts: *timestamp.numer(),
+                pts: *timestamp.numer() + packet.composition_time as i64,
+                data: &packet.data,
+                dcr: ctx.video_dcr_bytes.as_deref(),
+                is_key_frame: packet.frame_type.is_key_frame(),
+            }).unwrap();
         }
 
-        let _ = ctx.source.write_video(timestamp, frame);
+        loop {
+            match ctx.video_codec.recv_frame() {
+                Ok(decoded) => {
+                    let frame = Arc::new(video::Frame {
+                        specific: avc::AvcFrame {
+                            frame_type: packet.frame_type,
+                            composition_time: Millis(packet.composition_time as u64),
+                            bitstream: bitstream.clone(),
+                        },
+                        decoded: decoded,
+                        duration_hint: meta.video_frame_duration,
+                        key_frame: key_frame.clone(),
+                    });
+
+                    if packet.frame_type.is_key_frame() {
+                        ctx.video_key_frame = Some(frame.clone());
+                    }
+
+                    let _ = ctx.source.write_video(timestamp, frame);
+                }
+                Err(RecvFrameError::NeedMoreInput) => break,
+                Err(RecvFrameError::Eof) => panic!("EOF should never happen"),
+                Err(RecvFrameError::Codec(e)) => {
+                    return Err(RtmpError::AvCodec(e));
+                }
+            }
+        }
     } else {
         eprintln!("rtmp: cannot read avc frame without dcr");
     }

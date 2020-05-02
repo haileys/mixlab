@@ -7,6 +7,8 @@ use std::slice;
 
 use ffmpeg_dev::sys as ff;
 
+use mixlab_codec::ffmpeg::AvFrame;
+
 pub struct H264Decoder {
     ctx: CodecContext,
 }
@@ -50,8 +52,6 @@ impl H264Decoder {
             convergence_duration: 0,
         };
 
-        println!("{:#?}", av_pkt);
-
         let rc = unsafe { ff::avcodec_send_packet(self.ctx.ptr, &av_pkt) };
 
         mem::drop(av_pkt);
@@ -62,6 +62,23 @@ impl H264Decoder {
             Err(AVError(rc))
         }
     }
+
+    pub fn recv_frame(&mut self) -> Result<AvFrame, RecvFrameError> {
+        let mut frame = AvFrame::new();
+        let rc = unsafe {
+            ff::avcodec_receive_frame(self.ctx.ptr, frame.as_mut_ptr())
+        };
+
+        const AGAIN: c_int = -(ff::EAGAIN as c_int);
+        const EOF: c_int = -0x20464f45; // 'EOF '
+
+        match rc {
+            0 => Ok(frame),
+            AGAIN => Err(RecvFrameError::NeedMoreInput),
+            EOF => Err(RecvFrameError::Eof),
+            err => Err(RecvFrameError::Codec(AVError(err))),
+        }
+    }
 }
 
 pub struct Packet<'a> {
@@ -70,6 +87,12 @@ pub struct Packet<'a> {
     pub data: &'a [u8],
     pub dcr: Option<&'a [u8]>,
     pub is_key_frame: bool,
+}
+
+pub enum RecvFrameError {
+    NeedMoreInput,
+    Eof,
+    Codec(AVError),
 }
 
 pub struct AVError(c_int);

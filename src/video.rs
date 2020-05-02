@@ -1,11 +1,15 @@
+use std::ptr;
 use std::sync::Arc;
 
+use ffmpeg_dev::sys as ff;
 use num_rational::Rational64;
 use mixlab_codec::avc::AvcFrame;
+use mixlab_codec::ffmpeg::AvFrame;
 
 #[derive(Debug)]
 pub struct Frame {
     pub specific: AvcFrame,
+    pub decoded: AvFrame,
 
     // frame duration in fractional seconds, possibly an estimate if frame
     // duration information is not available:
