@@ -14,7 +14,7 @@ use super::{AvcError, DecoderConfigurationRecord};
 use super::nal::{self, UnitType};
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Bitstream {
     pub dcr: Arc<DecoderConfigurationRecord>,
     pub bytes: Bytes,

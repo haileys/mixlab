@@ -1,5 +1,6 @@
 pub mod aac;
 pub mod avc;
+pub mod ffmpeg;
 pub mod ogg;
 
 use std::io;

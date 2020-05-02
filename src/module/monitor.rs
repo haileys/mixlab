@@ -14,7 +14,7 @@ use tokio::sync::{broadcast, watch, mpsc};
 use uuid::Uuid;
 use warp::ws::{self, WebSocket};
 
-use mixlab_codec::avc::{self, Millis};
+use mixlab_codec::avc::{self, Millis, AvcEncoder};
 use mixlab_mux::mp4::{self, Mp4Mux, Mp4Params, TrackData, AdtsFrame};
 use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPacket};
 
@@ -146,12 +146,12 @@ struct AacFrame {
 pub struct Monitor {
     mux: Option<Mp4Mux>,
     socket_id: Uuid,
-    init_tx: watch::Sender<Option<Arc<avc::DecoderConfigurationRecord>>>,
     segments_tx: Arc<broadcast::Sender<StreamSegment>>,
     file: File,
     engine_epoch: Option<u64>,
     aac: aac::Encoder,
     audio_pcm_buff: Vec<i16>,
+    video_codec: AvcEncoder,
     filled_video_to: Rational64,
     previous_video_frame: Option<Arc<video::Frame>>,
     inputs: Vec<Terminal>,
@@ -162,8 +162,6 @@ impl ModuleT for Monitor {
     type Indication = MonitorIndication;
 
     fn create(_: Self::Params) -> (Self, Self::Indication) {
-        let (init_tx, init_rx) = watch::channel(None);
-
         // register socket
         let socket_id = Uuid::new_v4();
         let (segments_tx, _) = broadcast::channel(1024);
@@ -181,17 +179,19 @@ impl ModuleT for Monitor {
 
         let aac = aac::Encoder::new(aac_params).expect("aac::Encoder::new");
 
+        let video_codec = AvcEncoder::new(SAMPLE_RATE).unwrap();
+
         let file = File::create("dump.mp4").unwrap();
 
         let module = Monitor {
             mux: None,
             socket_id,
-            init_tx,
             segments_tx,
             file,
             engine_epoch: None,
             aac: aac,
             audio_pcm_buff: Vec::new(),
+            video_codec: video_codec,
             filled_video_to: Rational64::new(0, 1),
             previous_video_frame: None,
             inputs: vec![
@@ -248,8 +248,6 @@ impl ModuleT for Monitor {
                 println!("writing init ({} bytes)", init.len());
                 self.file.write_all(&init).unwrap();
 
-                let _ = self.init_tx.broadcast(Some((*dcr).clone()));
-
                 self.mux = Some(mux);
                 self.mux.as_mut().unwrap()
             }
@@ -299,36 +297,40 @@ impl ModuleT for Monitor {
         }
 
         // process incoming video
-        let fill_to = video.as_ref()
-            .map(|frame| timestamp + frame.tick_offset)
-            .unwrap_or(end_of_tick);
+        // let fill_to = video.as_ref()
+        //     .map(|frame| timestamp + frame.tick_offset)
+        //     .unwrap_or(end_of_tick);
 
-        if self.filled_video_to < fill_to {
-            let fill_duration = fill_to - self.filled_video_to;
+        // if self.filled_video_to < fill_to {
+        //     let fill_duration = fill_to - self.filled_video_to;
 
-            // round out to samples for video segment:
-            let fill_duration = (fill_duration * SAMPLE_RATE as i64).to_integer();
+        //     // round out to samples for video segment:
+        //     let fill_duration = (fill_duration * SAMPLE_RATE as i64).to_integer();
 
-            if let Some(frame) = self.previous_video_frame.clone() {
-                let _ = self.segments_tx.send(StreamSegment::Video {
-                    duration: fill_duration as u32,
-                    frame: frame.clone(),
-                });
-            } else {
-                let _ = self.segments_tx.send(StreamSegment::RawAvc {
-                    duration: fill_duration as u32,
-                    frame: FILL_FRAME.clone(),
-                });
-            }
+        //     if let Some(frame) = self.previous_video_frame.clone() {
+        //         let _ = self.segments_tx.send(StreamSegment::Video {
+        //             duration: fill_duration as u32,
+        //             frame: frame.clone(),
+        //         });
+        //     } else {
+        //         let _ = self.segments_tx.send(StreamSegment::RawAvc {
+        //             duration: fill_duration as u32,
+        //             frame: FILL_FRAME.clone(),
+        //         });
+        //     }
 
-            // and use the rounded samples as numerator in new fraction to ensure precision:
-            self.filled_video_to += Rational64::new(fill_duration, 44100);
-        }
+        //     // and use the rounded samples as numerator in new fraction to ensure precision:
+        //     self.filled_video_to += Rational64::new(fill_duration, 44100);
+        // }
 
         if let Some(video_frame) = video {
             // TODO keep a running total of durations/frame timestamps and correct
             // for compounding inaccuracy over time:
             let duration = (video_frame.data.duration_hint * SAMPLE_RATE as i64).to_integer() as u32;
+
+            let encoded = self.video_codec.send_frame(video_frame.data.decoded.clone());
+
+            println!("encoded: {:#?}", encoded);
 
             let track_data = TrackData::Video(avc_frame_to_mp4(&video_frame.data.specific));
             let segment = mux.write_track(duration, &track_data);
@@ -340,8 +342,8 @@ impl ModuleT for Monitor {
                 frame: video_frame.data.clone(),
             });
 
-            self.previous_video_frame = Some(video_frame.data.clone());
-            self.filled_video_to += Rational64::new(duration as i64, SAMPLE_RATE as i64);
+            // self.previous_video_frame = Some(video_frame.data.clone());
+            // self.filled_video_to += Rational64::new(duration as i64, SAMPLE_RATE as i64);
         }
 
         None
