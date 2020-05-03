@@ -75,6 +75,18 @@ impl AvFrame {
     pub fn set_picture_type(&mut self, pict_type: ff::AVPictureType) {
         self.as_underlying_mut().pict_type = pict_type;
     }
+
+    pub fn decode_timestamp(&self) -> i64 {
+        self.as_underlying().pkt_dts
+    }
+
+    pub fn presentation_timestamp(&self) -> i64 {
+        self.as_underlying().pts
+    }
+
+    pub fn packet_duration(&self) -> i64 {
+        self.as_underlying().pkt_duration
+    }
 }
 
 impl Clone for AvFrame {

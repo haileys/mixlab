@@ -1,3 +1,4 @@
+use std::os::raw::c_int;
 use std::convert::TryInto;
 use std::slice;
 
@@ -34,9 +35,20 @@ impl AvPacket {
         }
     }
 
-    pub fn composition_time(&self) -> u32 {
-        let underlying = self.as_underlying();
-        (underlying.pts - underlying.dts).try_into().unwrap()
+    pub fn decode_timestamp(&self) -> i64 {
+        self.as_underlying().dts
+    }
+
+    pub fn presentation_timestamp(&self) -> i64 {
+        self.as_underlying().pts
+    }
+
+    fn flags(&self) -> c_int {
+        self.as_underlying().flags
+    }
+
+    pub fn is_key_frame(&self) -> bool {
+        (self.flags() & ff::AV_PKT_FLAG_KEY as i32) != 0
     }
 }
 

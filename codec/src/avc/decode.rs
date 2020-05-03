@@ -13,7 +13,7 @@ pub struct AvcDecoder {
 }
 
 impl AvcDecoder {
-    pub fn new() -> Result<Self, ()> {
+    pub fn new(time_base: usize) -> Result<Self, ()> {
         let codec = unsafe { ff::avcodec_find_decoder(ff::AVCodecID_AV_CODEC_ID_H264) };
 
         if codec == ptr::null_mut() {
@@ -23,7 +23,16 @@ impl AvcDecoder {
         let mut ctx = unsafe { AvCodecContext::alloc(codec) };
 
         let mut opts = AvDict::new();
+
+        // use avcc encoding rather than default of annex-b default:
         opts.set("is_avc", "1");
+
+        // set codec context params
+        unsafe {
+            let avctx = &mut *ctx.as_mut_ptr();
+            avctx.time_base.num = 1;
+            avctx.time_base.den = time_base as c_int;
+        }
 
         let rc = unsafe { ff::avcodec_open2(ctx.as_mut_ptr(), codec, opts.as_mut() as *mut *mut _) };
 
