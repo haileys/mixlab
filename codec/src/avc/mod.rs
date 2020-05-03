@@ -8,12 +8,11 @@ pub mod dcr;
 pub mod decode;
 pub mod encode;
 pub mod nal;
-pub mod sps;
+// pub mod sps;
 
 pub use decode::AvcDecoder;
 pub use encode::AvcEncoder;
 pub use dcr::DecoderConfigurationRecord;
-pub use bitstream::Bitstream;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Millis(pub u64);
@@ -25,7 +24,7 @@ pub enum AvcError {
     #[from(ignore)] ReservedNalUnitType(u8),
     #[from(ignore)] UnknownNalUnitType(u8),
     NoSps,
-    Sps(sps::SpsReadError),
+    // Sps(sps::SpsReadError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,5 +115,5 @@ impl AvcPacket {
 pub struct AvcFrame {
     pub frame_type: AvcFrameType,
     pub composition_time: Millis,
-    pub bitstream: Bitstream,
+    // pub bitstream: Bitstream,
 }

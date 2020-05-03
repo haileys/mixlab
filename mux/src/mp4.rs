@@ -183,8 +183,8 @@ fn make_init_segment(
                                 stsd_box: SampleDescriptionBox {
                                     sample_entries: vec![
                                         SampleEntry::Avc(AvcSampleEntry {
-                                            width: 1120, // TOOD set to proper value
-                                            height: 720,
+                                            width: params.width as u16,
+                                            height: params.height as u16,
                                             avcc_box: AvcConfigurationBox::Raw(params.dcr.to_vec()),
                                         }),
                                     ],

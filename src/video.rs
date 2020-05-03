@@ -8,20 +8,16 @@ use mixlab_codec::ffmpeg::AvFrame;
 
 #[derive(Debug)]
 pub struct Frame {
-    pub specific: AvcFrame,
     pub decoded: AvFrame,
 
     // frame duration in fractional seconds, possibly an estimate if frame
     // duration information is not available:
     pub duration_hint: Rational64,
-
-    // points to any key frame that may be necessary to decode this frame
-    pub key_frame: Option<Arc<Frame>>,
 }
 
 impl Frame {
     pub fn is_key_frame(&self) -> bool {
-        self.specific.frame_type.is_key_frame()
+        self.decoded.is_key_frame()
     }
 
     pub fn id(self: &Arc<Frame>) -> FrameId {
