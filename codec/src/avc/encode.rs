@@ -1,8 +1,5 @@
 use std::convert::TryInto;
-use std::ffi::{CStr, CString};
-use std::fmt::{self, Display, Debug};
-use std::mem;
-use std::os::raw::{c_void, c_int};
+use std::os::raw::c_int;
 use std::ptr;
 use std::slice;
 
@@ -49,38 +46,7 @@ impl AvcEncoder {
         // disable annex-b encoding (on by default)
         opts.set("x264-params", "annexb=0");
 
-        // set parameters
-        /*
-        let mut codec_params = AvCodecParameters::new();
-        {
-            let mut p = codec_params.as_underlying_mut();
-            p.codec_type = ff::AVMediaType_AVMEDIA_TYPE_VIDEO;
-            p.codec_id = ff::AVCodecID_AV_CODEC_ID_H264;
-            p.codec_tag = 0; // TODO do we need this?
-            p.bit_rate = 0; // ??
-            p.bits_per_coded_sample = 0; // ??
-            p.bits_per_raw_sample = 0; // ??
-            p.profile = PROFILE_FF;
-            p.level = 41; // 4.1 is the 'optimal' level according to the internet. TODO maybe tweak this/expose in settings?
-            p.format = params.pixel_format;
-            p.width = params.picture_width.try_into().expect("picture_width too large");
-            p.height = params.picture_height.try_into().expect("picture_height too large");
-            p.sample_aspect_ratio.num = p.width;
-            p.sample_aspect_ratio.den = p.height;
-            p.video_delay = 0;
-            p.color_space = params.color_space;
-        }
-
-        let rc = unsafe {
-            ff::avcodec_parameters_to_context(ctx.as_mut_ptr(), codec_params.ptr)
-        };
-
-        if rc < 0 {
-            return Err(AvError(rc));
-        }
-        */
-
-        // set other options
+        // set codec context params
         unsafe {
             let avctx = &mut *ctx.as_mut_ptr();
             avctx.profile = ff::FF_PROFILE_H264_HIGH as i32;
@@ -178,52 +144,5 @@ impl AvcEncoder {
         }
 
         Ok(packet)
-    }
-}
-
-pub struct AvCodecParameters {
-    ptr: *mut ff::AVCodecParameters,
-}
-
-impl AvCodecParameters {
-    pub fn new() -> Self {
-        let ptr = unsafe { ff::avcodec_parameters_alloc() };
-
-        if ptr == ptr::null_mut() {
-            panic!("avcodec_parameters_alloc failed");
-        }
-
-        AvCodecParameters { ptr }
-    }
-
-    pub fn set_extradata(&mut self, data: &[u8]) {
-        let mut underlying = self.as_underlying_mut();
-
-        unsafe { ff::av_freep(&mut underlying.extradata as *mut *mut u8 as *mut c_void); }
-
-        let extradata_buff = unsafe {
-            ff::av_mallocz(data.len() + ff::AV_INPUT_BUFFER_PADDING_SIZE as usize) as *mut u8
-        };
-
-        if extradata_buff == ptr::null_mut() {
-            panic!("av_mallocz failed");
-        }
-
-        unsafe {
-            ptr::copy(data.as_ptr(), extradata_buff, data.len());
-        }
-
-        underlying.extradata = extradata_buff;
-        underlying.extradata_size = data.len().try_into().expect("extradata too long");
-    }
-
-    pub fn as_underlying_mut(&mut self) -> &mut ff::AVCodecParameters {
-        unsafe { &mut *self.ptr }
-    }
-}
-
-impl Drop for AvCodecParameters {
-    fn drop(&mut self) {
-        unsafe { ff::avcodec_parameters_free(&mut self.ptr as *mut *mut _); }
     }
 }

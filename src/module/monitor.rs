@@ -3,26 +3,23 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::Write;
-use std::iter;
 use std::sync::{Arc, Mutex};
 
-use bytes::{Bytes, BytesMut, Buf, BufMut};
-use bytes::buf::BufMutExt;
+use bytes::Bytes;
 use fdk_aac::enc as aac;
 use futures::sink::SinkExt;
 use num_rational::Rational64;
-use tokio::sync::{broadcast, watch, mpsc};
+use tokio::sync::broadcast;
 use uuid::Uuid;
 use warp::ws::{self, WebSocket};
 
-use mixlab_codec::avc::{self, Millis, DecoderConfigurationRecord};
 use mixlab_codec::avc::encode::{AvcEncoder, AvcParams};
 use mixlab_mux::mp4::{self, Mp4Mux, Mp4Params, TrackData, AdtsFrame};
 use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPacket};
 
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
-use crate::video::{self, FrameId};
+use crate::video;
 
 lazy_static::lazy_static! {
     static ref SOCKETS: Mutex<HashMap<Uuid, Stream>> = Mutex::new(HashMap::new());
@@ -46,22 +43,15 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
         .map(|stream| stream.live.subscribe())
         .ok_or(())?;
 
-    let mut active_key_frame: Option<FrameId> = None;
-
     // TODO if we lag we should catch up to the start of the stream rather
     // than disconnecting the client
     while let Ok(segment) = stream.recv().await {
         match segment {
             StreamSegment::Audio { duration, frame } => {
-                // only send audio data if we've sent init packet
-                // init packet is sent on receipt of the first video frame, at
-                // which point active_key_frame will be Some:
-                if active_key_frame.is_some() {
-                    send_packet(&mut client, MonitorTransportPacket::Frame {
-                        duration,
-                        track_data: TrackData::Audio(frame.clone()),
-                    }).await?;
-                }
+                send_packet(&mut client, MonitorTransportPacket::Frame {
+                    duration,
+                    track_data: TrackData::Audio(frame.clone()),
+                }).await?;
             }
             // StreamSegment::Video { duration, frame } => {
             //     println!("begin");
@@ -129,12 +119,10 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
             //     }).await?;
             // }
             StreamSegment::RawAvc { duration, frame } => {
-                // if active_key_frame.is_some() {
-                    send_packet(&mut client, MonitorTransportPacket::Frame {
-                        duration,
-                        track_data: TrackData::Video(frame),
-                    }).await?;
-                // }
+                send_packet(&mut client, MonitorTransportPacket::Frame {
+                    duration,
+                    track_data: TrackData::Video(frame),
+                }).await?;
             }
         }
     }

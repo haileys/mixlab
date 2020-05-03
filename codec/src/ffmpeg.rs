@@ -21,7 +21,7 @@ unsafe impl Send for AvCodecContext {}
 
 impl AvCodecContext {
     pub unsafe fn alloc(codec: *const ff::AVCodec) -> Self {
-        let ptr = unsafe { ff::avcodec_alloc_context3(codec) };
+        let ptr = ff::avcodec_alloc_context3(codec);
 
         if ptr == ptr::null_mut() {
             panic!("avcodec_alloc_context3: ENOMEM");
