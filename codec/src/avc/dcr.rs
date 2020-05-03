@@ -9,7 +9,7 @@ use bytes::{Bytes, Buf, BufMut};
 use serde_derive::{Deserialize, Serialize};
 
 use super::{nal, AvcError};
-use super::sps::SpsSummary;
+// use super::sps::SpsSummary;
 
 
 /// AVC decoder configuration record
@@ -39,7 +39,6 @@ pub struct DecoderConfigurationRecord {
     pub nalu_size: u8,
     pub sps: Vec<nal::Unit>,
     pub pps: Vec<nal::Unit>,
-    sps_summary: SpsSummary,
 }
 
 impl DecoderConfigurationRecord {
@@ -96,13 +95,13 @@ impl DecoderConfigurationRecord {
             pps.push(nal::Unit::parse(tmp)?);
         }
 
-        let sps_summary = SpsSummary::read_from(
-            sps.get(0)
-                .ok_or(AvcError::NoSps)?
-                .data
-                .clone())?;
+        // let sps_summary = SpsSummary::read_from(
+        //     sps.get(0)
+        //         .ok_or(AvcError::NoSps)?
+        //         .data
+        //         .clone())?;
 
-        println!("SPS DATA: {:?}", sps[0].data);
+        // println!("SPS DATA: {:?}", sps[0].data);
 
         Ok(Self {
             version,
@@ -112,16 +111,8 @@ impl DecoderConfigurationRecord {
             nalu_size,
             sps,
             pps,
-            sps_summary,
+            // sps_summary,
         })
-    }
-
-    pub fn picture_width(&self) -> usize {
-        self.sps_summary.picture_width()
-    }
-
-    pub fn picture_height(&self) -> usize {
-        self.sps_summary.picture_height()
     }
 
     pub fn write_to(&self, mut out: impl BufMut) {

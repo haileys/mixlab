@@ -3,7 +3,14 @@ use std::fmt::{self, Debug, Display};
 use std::os::raw::c_int;
 use std::ptr;
 
-use ffmpeg_dev::sys as ff;
+pub use ffmpeg_dev::sys as sys;
+use sys as ff;
+
+mod frame;
+mod packet;
+
+pub use frame::AvFrame;
+pub use packet::AvPacket;
 
 #[derive(Debug)]
 pub struct AvCodecContext {
@@ -23,7 +30,7 @@ impl AvCodecContext {
         AvCodecContext { ptr }
     }
 
-    pub fn as_ptr(&mut self) -> *const ff::AVCodecContext {
+    pub fn as_ptr(&self) -> *const ff::AVCodecContext {
         self.ptr as *const _
     }
 
@@ -36,54 +43,6 @@ impl Drop for AvCodecContext {
     fn drop(&mut self) {
         unsafe {
             ff::avcodec_free_context(&mut self.ptr as *mut *mut _);
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct AvFrame {
-    ptr: *mut ff::AVFrame,
-}
-
-unsafe impl Sync for AvFrame {}
-unsafe impl Send for AvFrame {}
-
-impl AvFrame {
-    pub fn new() -> Self {
-        let ptr = unsafe { ff::av_frame_alloc() };
-
-        if ptr == ptr::null_mut() {
-            panic!("av_frame_alloc: ENOMEM");
-        }
-
-        AvFrame { ptr }
-    }
-
-    pub fn as_ptr(&self) -> *const ff::AVFrame {
-        self.ptr as *const _
-    }
-
-    pub fn as_mut_ptr(&mut self) -> *mut ff::AVFrame {
-        self.ptr
-    }
-}
-
-impl Clone for AvFrame {
-    fn clone(&self) -> Self {
-        let ptr = unsafe { ff::av_frame_clone(self.ptr) };
-
-        if ptr == ptr::null_mut() {
-            panic!("av_frame_clone: ENOMEM")
-        }
-
-        AvFrame { ptr }
-    }
-}
-
-impl Drop for AvFrame {
-    fn drop(&mut self) {
-        unsafe {
-            ff::av_frame_free(&mut self.ptr as *mut *mut _);
         }
     }
 }
@@ -143,26 +102,5 @@ impl Drop for AvDict {
         unsafe {
             ff::av_dict_free(&mut self.dict as *mut _);
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct AvPacket {
-    packet: ff::AVPacket,
-}
-
-impl AvPacket {
-    pub unsafe fn new(raw: ff::AVPacket) -> Self {
-        AvPacket { packet: raw }
-    }
-
-    pub fn as_mut_ptr(&mut self) -> *mut ff::AVPacket {
-        &mut self.packet as *mut ff::AVPacket
-    }
-}
-
-impl Drop for AvPacket {
-    fn drop(&mut self) {
-        unsafe { ff::av_packet_unref(self.as_mut_ptr()); }
     }
 }

@@ -13,17 +13,17 @@ use rml_rtmp::time::RtmpTimestamp;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use mixlab_codec::aac;
-use mixlab_codec::avc::{self, DecoderConfigurationRecord, Bitstream, AvcPacket, AvcPacketType, Millis};
+use mixlab_codec::avc::{self, DecoderConfigurationRecord, AvcPacket, AvcPacketType, Millis};
+use mixlab_codec::avc::decode::{self, AvcDecoder, RecvFrameError};
+use mixlab_codec::ffmpeg::AvError;
 
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError, Timestamp};
 use crate::video;
 
-mod decode;
 mod incoming;
 mod packet;
 
-use decode::{H264Decoder, RecvFrameError};
 use packet::AudioPacket;
 
 lazy_static::lazy_static! {
@@ -49,7 +49,7 @@ pub enum RtmpError {
     SourceSend,
     Aac(aac::AacError),
     AacCodec(fdk_aac::dec::DecoderError),
-    AvCodec(decode::AVError),
+    AvCodec(AvError),
 }
 
 pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
@@ -81,7 +81,7 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     audio_codec.set_min_output_channels(2)?;
     audio_codec.set_max_output_channels(2)?;
 
-    let mut video_codec = H264Decoder::new().unwrap();
+    let mut video_codec = AvcDecoder::new().unwrap();
 
     let mut ctx = ReceiveContext {
         stream,
@@ -94,7 +94,6 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
         video_codec,
         video_dcr: None,
         video_dcr_bytes: None,
-        video_key_frame: None,
     };
 
     thread::spawn(move || {
@@ -112,10 +111,9 @@ struct ReceiveContext {
     audio_codec: fdk_aac::dec::Decoder,
     audio_asc: Option<aac::AudioSpecificConfiguration>,
     audio_timestamp: Timestamp,
-    video_codec: H264Decoder,
+    video_codec: AvcDecoder,
     video_dcr: Option<Arc<avc::DecoderConfigurationRecord>>,
     video_dcr_bytes: Option<Bytes>,
-    video_key_frame: Option<Arc<video::Frame>>,
 }
 
 struct StreamMeta {
@@ -295,33 +293,9 @@ fn receive_video_packet(
     }
 
     if let Some(dcr) = ctx.video_dcr.clone() {
-        let bitstream = Bitstream::new(packet.data.clone(), dcr);
-
-        // dump bit stream:
-        {
-            use std::io::Write;
-
-            let mut video_dump = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open("dump.h264")
-                .unwrap();
-
-            let mut buff = Vec::new();
-            bitstream.write_byte_stream(&mut buff).unwrap();
-            video_dump.write_all(&buff).unwrap();
-        }
-
         // TODO rtmp timestamps are only 32 bit and have arbitrary
         // user-defined epochs - we need to handle rollover
         let timestamp = Rational64::new(timestamp.value as i64, 1000);
-
-        let key_frame =
-            if packet.frame_type.is_key_frame() {
-                None
-            } else {
-                ctx.video_key_frame.clone()
-            };
 
         if packet.data.len() > 0 {
             ctx.video_codec.send_packet(decode::Packet {
@@ -329,7 +303,6 @@ fn receive_video_packet(
                 pts: *timestamp.numer() + packet.composition_time as i64,
                 data: &packet.data,
                 dcr: ctx.video_dcr_bytes.as_deref(),
-                is_key_frame: packet.frame_type.is_key_frame(),
             }).unwrap();
         }
 
@@ -337,19 +310,9 @@ fn receive_video_packet(
             match ctx.video_codec.recv_frame() {
                 Ok(decoded) => {
                     let frame = Arc::new(video::Frame {
-                        specific: avc::AvcFrame {
-                            frame_type: packet.frame_type,
-                            composition_time: Millis(packet.composition_time as u64),
-                            bitstream: bitstream.clone(),
-                        },
                         decoded: decoded,
                         duration_hint: meta.video_frame_duration,
-                        key_frame: key_frame.clone(),
                     });
-
-                    if packet.frame_type.is_key_frame() {
-                        ctx.video_key_frame = Some(frame.clone());
-                    }
 
                     let _ = ctx.source.write_video(timestamp, frame);
                 }

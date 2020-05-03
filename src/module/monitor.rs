@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::fs::File;
 use std::io::Write;
 use std::iter;
@@ -14,7 +15,8 @@ use tokio::sync::{broadcast, watch, mpsc};
 use uuid::Uuid;
 use warp::ws::{self, WebSocket};
 
-use mixlab_codec::avc::{self, Millis, AvcEncoder};
+use mixlab_codec::avc::{self, Millis, DecoderConfigurationRecord};
+use mixlab_codec::avc::encode::{AvcEncoder, AvcParams};
 use mixlab_mux::mp4::{self, Mp4Mux, Mp4Params, TrackData, AdtsFrame};
 use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPacket};
 
@@ -33,7 +35,7 @@ struct Stream {
 #[derive(Clone)]
 enum StreamSegment {
     Audio { duration: u32, frame: mp4::AdtsFrame },
-    Video { duration: u32, frame: Arc<video::Frame> },
+    // Video { duration: u32, frame: Arc<video::Frame> },
     RawAvc { duration: u32, frame: mp4::AvcFrame },
 }
 
@@ -61,53 +63,78 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
                     }).await?;
                 }
             }
-            StreamSegment::Video { duration, frame } => {
-                if active_key_frame.is_none() {
-                    // send DCR if this is the first video frame received
-                    let dcr = frame.specific.bitstream.dcr.clone();
-                    let dcr_bytes = {
-                        let mut buff = Vec::new();
-                        dcr.write_to(&mut buff);
-                        buff
-                    };
+            // StreamSegment::Video { duration, frame } => {
+            //     println!("begin");
+            //     let key_frame =
+            //         if frame.is_key_frame() {
+            //             println!("is key frame");
+            //             Some(frame.clone())
+            //         } else {
+            //             println!("not key frame");
+            //             Some(frame.key_frame.clone().unwrap())
+            //         };
 
-                    send_packet(&mut client, MonitorTransportPacket::Init {
-                        params: Mp4Params {
-                            timescale: SAMPLE_RATE as u32,
-                            width: dcr.picture_width() as u32,
-                            height: dcr.picture_height() as u32,
-                            dcr: Cow::Owned(dcr_bytes),
-                        },
-                    }).await?;
-                }
+            //     let key_frame_for_init =
+            //         if active_key_frame.is_none() {
+            //             println!("active key frame is none");
+            //             key_frame.clone()
+            //         } else {
+            //             println!("active key frame is some");
+            //             None
+            //         };
 
-                if frame.is_key_frame() {
-                    active_key_frame = Some(frame.id());
-                } else {
-                    if let Some(key_frame) = &frame.key_frame {
-                        if active_key_frame != Some(key_frame.id()) {
-                            send_packet(&mut client, MonitorTransportPacket::Frame {
-                                duration: 0,
-                                track_data: TrackData::Video(avc_frame_to_mp4(&key_frame.specific)),
-                            }).await?;
+            //     if let Some(key_frame) = key_frame_for_init {
+            //         println!("sending init");
 
-                            active_key_frame = Some(key_frame.id());
-                        }
-                    }
-                }
+            //         // send DCR if this is the first video frame received
+            //         let dcr = frame.specific.bitstream.dcr.clone();
+            //         let dcr_bytes = {
+            //             let mut buff = Vec::new();
+            //             dcr.write_to(&mut buff);
+            //             buff
+            //         };
 
-                send_packet(&mut client, MonitorTransportPacket::Frame {
-                    duration,
-                    track_data: TrackData::Video(avc_frame_to_mp4(&frame.specific)),
-                }).await?;
-            }
+            //         send_packet(&mut client, MonitorTransportPacket::Init {
+            //             params: Mp4Params {
+            //                 timescale: SAMPLE_RATE as u32,
+            //                 width: dcr.picture_width() as u32,
+            //                 height: dcr.picture_height() as u32,
+            //                 dcr: Cow::Owned(dcr_bytes),
+            //             },
+            //         }).await?;
+            //     }
+
+            //     if frame.is_key_frame() {
+            //         println!("is key frame");
+            //         active_key_frame = Some(frame.id());
+            //     } else {
+            //         println!("not key frame");
+            //         if let Some(key_frame) = key_frame {
+            //             if active_key_frame != Some(key_frame.id()) {
+            //                 println!("changing active key frame");
+            //                 send_packet(&mut client, MonitorTransportPacket::Frame {
+            //                     duration: 0,
+            //                     track_data: TrackData::Video(avc_frame_to_mp4(&key_frame.specific)),
+            //                 }).await?;
+
+            //                 active_key_frame = Some(key_frame.id());
+            //             }
+            //         }
+            //     }
+
+            //     println!("sending frame");
+            //     send_packet(&mut client, MonitorTransportPacket::Frame {
+            //         duration,
+            //         track_data: TrackData::Video(avc_frame_to_mp4(&frame.specific)),
+            //     }).await?;
+            // }
             StreamSegment::RawAvc { duration, frame } => {
-                if active_key_frame.is_some() {
+                // if active_key_frame.is_some() {
                     send_packet(&mut client, MonitorTransportPacket::Frame {
                         duration,
                         track_data: TrackData::Video(frame),
                     }).await?;
-                }
+                // }
             }
         }
     }
@@ -128,14 +155,6 @@ const CHANNELS: usize = 2;
 // must match AAC encoder's granule size
 const SAMPLES_PER_CHANNEL_PER_FRAGMENT: usize = 1024;
 
-static FILLER_BYTES: &[u8] = &[0, 0, 0, 1, 12];
-
-static FILL_FRAME: mp4::AvcFrame = mp4::AvcFrame {
-    is_key_frame: false,
-    composition_time: 0,
-    data: Bytes::from_static(FILLER_BYTES),
-};
-
 #[derive(Debug)]
 struct AacFrame {
     data: Vec<u8>,
@@ -144,17 +163,22 @@ struct AacFrame {
 
 #[derive(Debug)]
 pub struct Monitor {
-    mux: Option<Mp4Mux>,
     socket_id: Uuid,
     segments_tx: Arc<broadcast::Sender<StreamSegment>>,
     file: File,
     engine_epoch: Option<u64>,
     aac: aac::Encoder,
     audio_pcm_buff: Vec<i16>,
-    video_codec: AvcEncoder,
+    video_ctx: Option<VideoCtx>,
     filled_video_to: Rational64,
     previous_video_frame: Option<Arc<video::Frame>>,
     inputs: Vec<Terminal>,
+}
+
+#[derive(Debug)]
+struct VideoCtx {
+    codec: AvcEncoder,
+    mux: Mp4Mux,
 }
 
 impl ModuleT for Monitor {
@@ -179,19 +203,16 @@ impl ModuleT for Monitor {
 
         let aac = aac::Encoder::new(aac_params).expect("aac::Encoder::new");
 
-        let video_codec = AvcEncoder::new(SAMPLE_RATE).unwrap();
-
         let file = File::create("dump.mp4").unwrap();
 
         let module = Monitor {
-            mux: None,
             socket_id,
             segments_tx,
             file,
             engine_epoch: None,
             aac: aac,
             audio_pcm_buff: Vec::new(),
-            video_codec: video_codec,
+            video_ctx: None,
             filled_video_to: Rational64::new(0, 1),
             previous_video_frame: None,
             inputs: vec![
@@ -222,34 +243,46 @@ impl ModuleT for Monitor {
         let tick_len = Rational64::new(audio.len() as i64 / 2, SAMPLE_RATE as i64);
         let end_of_tick = timestamp + tick_len;
 
-        // initialise muxer and write init segment
-        let mux = match (self.mux.as_mut(), video) {
-            (Some(mux), _) => mux,
+        // initialise video codec and muxer
+        let video_ctx = match (self.video_ctx.as_mut(), video) {
+            (Some(video_ctx), _) => video_ctx,
             (None, None) => {
-                // init segment requires information from the DCR, so we can't do
-                // anything until we've received the first video frame
+                // can't do anything until we've received the first video frame
                 return None;
             }
             (None, Some(frame)) => {
-                let dcr = &frame.data.specific.bitstream.dcr;
-                let dcr_bytes = {
-                    let mut buff = Vec::new();
-                    dcr.write_to(&mut buff);
-                    buff
-                };
+                let decoded = &frame.data.decoded;
+
+                println!("pix fmt : {:?}", decoded.pixel_format());
+
+                let codec = AvcEncoder::new(AvcParams {
+                    time_base: SAMPLE_RATE,
+                    pixel_format: decoded.pixel_format(),
+                    picture_width: decoded.picture_width(),
+                    picture_height: decoded.picture_height(),
+                    color_space: decoded.color_space(),
+                }).unwrap();
+
+                let dcr = codec.decoder_configuration_record();
+                let mut dcr_bytes = vec![];
+                dcr.write_to(&mut dcr_bytes);
 
                 let (mux, init) = Mp4Mux::new(Mp4Params {
                     timescale: SAMPLE_RATE as u32,
-                    width: dcr.picture_width() as u32,
-                    height: dcr.picture_height() as u32,
+                    width: frame.data.decoded.picture_width().try_into().expect("picture_width too large"),
+                    height: frame.data.decoded.picture_height().try_into().expect("picture_height too large"),
                     dcr: Cow::Owned(dcr_bytes),
                 });
 
                 println!("writing init ({} bytes)", init.len());
                 self.file.write_all(&init).unwrap();
 
-                self.mux = Some(mux);
-                self.mux.as_mut().unwrap()
+                self.video_ctx = Some(VideoCtx {
+                    codec,
+                    mux,
+                });
+
+                self.video_ctx.as_mut().unwrap()
             }
         };
 
@@ -285,7 +318,7 @@ impl ModuleT for Monitor {
             let adts = AdtsFrame(Bytes::copy_from_slice(&aac_buff[0..encode_result.output_size]));
             let duration = SAMPLES_PER_CHANNEL_PER_FRAGMENT as u32;
             let track_data = TrackData::Audio(adts.clone());
-            let segment = mux.write_track(duration, &track_data);
+            let segment = video_ctx.mux.write_track(duration, &track_data);
             let _ = self.file.write_all(&segment);
             // only fails if no active receives:
             let _ = self.segments_tx.send(StreamSegment::Audio {
@@ -328,19 +361,23 @@ impl ModuleT for Monitor {
             // for compounding inaccuracy over time:
             let duration = (video_frame.data.duration_hint * SAMPLE_RATE as i64).to_integer() as u32;
 
-            let encoded = self.video_codec.send_frame(video_frame.data.decoded.clone());
+            let mut frame = video_frame.data.decoded.clone();
+            frame.set_picture_type(mixlab_codec::ffmpeg::sys::AVPictureType_AV_PICTURE_TYPE_I);
+            video_ctx.codec.send_frame(frame).unwrap();
 
-            println!("encoded: {:#?}", encoded);
+            let video_packet = video_ctx.codec.recv_packet().unwrap();
 
-            let track_data = TrackData::Video(avc_frame_to_mp4(&video_frame.data.specific));
-            let segment = mux.write_track(duration, &track_data);
+            println!("{:?}", &video_packet.data()[0..16]);
+
+            let track_data = TrackData::Video(av_packet_to_mp4(video_frame.data.is_key_frame(), &video_packet));
+            let segment = video_ctx.mux.write_track(duration, &track_data);
             let _ = self.file.write_all(&segment);
 
             // only fails if no active receives:
-            let _ = self.segments_tx.send(StreamSegment::Video {
-                duration: duration,
-                frame: video_frame.data.clone(),
-            });
+            // let _ = self.segments_tx.send(StreamSegment::Video {
+            //     duration: duration,
+            //     frame: video_frame.data.clone(),
+            // });
 
             // self.previous_video_frame = Some(video_frame.data.clone());
             // self.filled_video_to += Rational64::new(duration as i64, SAMPLE_RATE as i64);
@@ -358,181 +395,14 @@ impl ModuleT for Monitor {
     }
 }
 
-fn avc_frame_to_mp4(frame: &avc::AvcFrame) -> mp4::AvcFrame {
-    let Millis(composition_time_ms) = frame.composition_time;
-    let composition_time = (composition_time_ms * SAMPLE_RATE as u64) / 1000;
+fn av_packet_to_mp4(key_frame: bool, pkt: &mixlab_codec::ffmpeg::AvPacket) -> mp4::AvcFrame {
+    // let Millis(composition_time_ms) = frame.composition_time;
+    // let composition_time = (composition_time_ms * SAMPLE_RATE as u64) / 1000;
 
     mp4::AvcFrame {
-        is_key_frame: frame.frame_type.is_key_frame(),
-        composition_time: composition_time as u32,
-        data: {
-            let mut data = BytesMut::new();
-            frame.bitstream.write_to(&mut data);
-            data.freeze()
-        }
+        is_key_frame: key_frame,
+        // composition_time: composition_time as u32,
+        composition_time: pkt.composition_time(),
+        data: Bytes::copy_from_slice(pkt.data()),
     }
-}
-
-//////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////
-
-#[cfg(feature="mpeg_ts")]
-mod ts {
-
-use mpeg2ts::es::StreamId;
-use mpeg2ts::time::Timestamp as MpegTimestamp;
-use mpeg2ts::ts::{self, TsPacketWriter, TsPacket, TsHeader, TsPayload, ContinuityCounter, Pid, WriteTsPacket};
-
-const VIDEO_ES_PID: u16 = 257;
-const AUDIO_ES_PID: u16 = 258;
-
-// see https://en.wikipedia.org/wiki/Packetized_elementary_stream
-const PES_VIDEO_STREAM_ID: u8 = 0xe0;
-const PES_AUDIO_STREAM_ID: u8 = 0xc0;
-
-fn ts_header(pid: u16, continuity_counter: ContinuityCounter) -> TsHeader {
-    use mpeg2ts::ts::TransportScramblingControl;
-
-    TsHeader {
-        transport_error_indicator: false,
-        transport_priority: false,
-        pid: Pid::new(pid).unwrap(),
-        transport_scrambling_control: TransportScramblingControl::NotScrambled,
-        continuity_counter,
-    }
-}
-
-fn write_audio(ctx: &mut WriteCtx, mut data: &[u8], timestamp: Rational64) -> Result<(), mpeg2ts::Error> {
-    use mpeg2ts::pes::PesHeader;
-    use mpeg2ts::ts::payload::Bytes;
-
-    let first_payload_len = cmp::min(153, data.len());
-    let (first_payload, rest) = data.split_at(first_payload_len);
-    data = rest;
-
-    let millis = (timestamp * 1000).to_integer() as u64;
-
-    ctx.ts.write_ts_packet(&TsPacket {
-        header: ts_header(AUDIO_ES_PID, ctx.audio_continuity_counter.clone()),
-        adaptation_field: None,
-        payload: Some(TsPayload::Pes(ts::payload::Pes {
-            header: PesHeader {
-                stream_id: StreamId::new(PES_AUDIO_STREAM_ID),
-                priority: false,
-                data_alignment_indicator: false,
-                copyright: false,
-                original_or_copy: false,
-                pts: Some(MpegTimestamp::new(millis * 90)?), // pts is in 90hz or something?
-                dts: None,
-                escr: None,
-            },
-            pes_packet_len: 0,
-            data: Bytes::new(first_payload)?,
-        })),
-    })?;
-
-    ctx.audio_continuity_counter.increment();
-
-    while data.len() > 0 {
-        let payload_len = cmp::min(Bytes::MAX_SIZE, data.len());
-        let (payload, rest) = data.split_at(payload_len);
-        data = rest;
-
-        ctx.ts.write_ts_packet(&TsPacket {
-            header: ts_header(AUDIO_ES_PID, ctx.audio_continuity_counter.clone()),
-            adaptation_field: None,
-            payload: Some(TsPayload::Raw(Bytes::new(&payload)?)),
-        })?;
-
-        ctx.audio_continuity_counter.increment();
-    }
-
-    Ok(())
-}
-
-#[derive(From, Debug)]
-enum WriteVideoError {
-    Mpeg2Ts(mpeg2ts::Error),
-    Avc(AvcError),
-}
-
-fn write_video(ctx: &mut WriteCtx, frame: &AvcFrame, timestamp: Rational64) -> Result<(), WriteVideoError> {
-    use mpeg2ts::es::StreamId;
-    use mpeg2ts::pes::PesHeader;
-    use mpeg2ts::time::ClockReference;
-    use mpeg2ts::ts::AdaptationField;
-    use mpeg2ts::ts::payload::{Bytes, Pes};
-
-    let frame_data_timestamp = timestamp + frame.tick_offset;
-    let frame_presentation_timestamp = frame_data_timestamp + Rational64::new(frame.data.composition_time.0 as i64, 1000);
-
-    let frame_data_millis = (frame_data_timestamp * 1000).to_integer() as u64;
-    let frame_presentation_millis = (frame_presentation_timestamp * 1000).to_integer() as u64;
-
-    let mut buf = frame.data.bitstream.into_bytes()?;
-    let pes_data_len = cmp::min(153, buf.remaining());
-    let pes_data = buf.split_to(pes_data_len);
-    let pcr = ClockReference::new(frame_data_millis * 90)?;
-
-    let adaptation_field = if frame.data.frame_type.is_key_frame() {
-        Some(AdaptationField {
-            discontinuity_indicator: false,
-            random_access_indicator: true,
-            es_priority_indicator: false,
-            pcr: Some(pcr),
-            opcr: None,
-            splice_countdown: None,
-            transport_private_data: Vec::new(),
-            extension: None,
-        })
-    } else {
-        None
-    };
-
-    let pts = MpegTimestamp::new(frame_presentation_millis * 90)?;
-    let dts = MpegTimestamp::new(frame_data_millis * 90)?;
-
-    let packet = TsPacket {
-        header: ts_header(VIDEO_ES_PID, ctx.video_continuity_counter.clone()),
-        adaptation_field,
-        payload: Some(TsPayload::Pes(Pes {
-            header: PesHeader {
-                stream_id: StreamId::new(PES_VIDEO_STREAM_ID),
-                priority: false,
-                data_alignment_indicator: false,
-                copyright: false,
-                original_or_copy: false,
-                pts: Some(pts),
-                dts: Some(dts),
-                escr: None,
-            },
-            pes_packet_len: 0,
-            data: Bytes::new(&pes_data)?,
-        })),
-    };
-
-    ctx.ts.write_ts_packet(&packet)?;
-    ctx.video_continuity_counter.increment();
-
-    while buf.remaining() > 0 {
-        let pes_data_len = cmp::min(Bytes::MAX_SIZE, buf.remaining());
-        let pes_data = buf.split_to(pes_data_len);
-
-        let packet = TsPacket {
-            header: ts_header(VIDEO_ES_PID, ctx.video_continuity_counter.clone()),
-            adaptation_field: None,
-            payload: Some(TsPayload::Raw(Bytes::new(&pes_data)?)),
-        };
-
-        ctx.ts.write_ts_packet(&packet)?;
-        ctx.video_continuity_counter.increment();
-    }
-
-    Ok(())
-}
-
 }

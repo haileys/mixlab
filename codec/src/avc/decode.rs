@@ -47,12 +47,6 @@ impl AvcDecoder {
 
         let side_data_list = side_data.as_ref().map(slice::from_ref).unwrap_or(&[]);
 
-        let flags = if pkt.is_key_frame {
-            ff::AV_PKT_FLAG_KEY as i32
-        } else {
-            0
-        };
-
         let av_pkt = ff::AVPacket {
             buf: ptr::null_mut(),
             pts: pkt.pts,
@@ -60,7 +54,7 @@ impl AvcDecoder {
             data: pkt.data.as_ptr() as *mut _, // send_packet never mutates data
             size: pkt.data.len() as c_int,
             stream_index: 0,
-            flags: flags,
+            flags: 0,
             side_data: side_data_list.as_ptr() as *mut _, // never mutated
             side_data_elems: side_data_list.len() as c_int,
             duration: 0,
@@ -102,7 +96,6 @@ pub struct Packet<'a> {
     pub dts: i64,
     pub data: &'a [u8],
     pub dcr: Option<&'a [u8]>,
-    pub is_key_frame: bool,
 }
 
 pub enum RecvFrameError {
