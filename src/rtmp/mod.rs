@@ -17,6 +17,7 @@ use mixlab_codec::avc::{AvcPacket, AvcPacketType};
 use mixlab_codec::avc::decode::{self, AvcDecoder, RecvFrameError};
 use mixlab_codec::ffmpeg::AvError;
 
+use crate::engine::SAMPLE_RATE;
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError, Timestamp};
 use crate::video;
@@ -81,7 +82,7 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     audio_codec.set_min_output_channels(2)?;
     audio_codec.set_max_output_channels(2)?;
 
-    let video_codec = AvcDecoder::new().unwrap();
+    let video_codec = AvcDecoder::new(1000).unwrap();
 
     let mut ctx = ReceiveContext {
         stream,
@@ -279,22 +280,25 @@ fn receive_video_packet(
         AvcPacketType::Nalu => {
             let dcr = ctx.video_dcr.take();
 
+            let dts = timestamp.value as i64;
+            let pts = dts + packet.composition_time as i64;
+
             // TODO rtmp timestamps are only 32 bit and have arbitrary
             // user-defined epochs - we need to handle rollover
             let timestamp = Rational64::new(timestamp.value as i64, 1000);
 
-            if packet.data.len() > 0 {
-                ctx.video_codec.send_packet(decode::Packet {
-                    dts: *timestamp.numer(),
-                    pts: *timestamp.numer() + packet.composition_time as i64,
-                    data: &packet.data,
-                    dcr: dcr.as_deref(),
-                }).unwrap();
-            }
+            ctx.video_codec.send_packet(decode::Packet {
+                dts: dts,
+                pts: pts,
+                data: &packet.data,
+                dcr: dcr.as_deref(),
+            }).unwrap();
 
             loop {
                 match ctx.video_codec.recv_frame() {
                     Ok(decoded) => {
+                        let timestamp = Rational64::new(decoded.presentation_timestamp(), 1000);
+
                         let frame = Arc::new(video::Frame {
                             decoded: decoded,
                             duration_hint: meta.video_frame_duration,
