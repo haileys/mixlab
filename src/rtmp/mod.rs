@@ -13,7 +13,7 @@ use rml_rtmp::time::RtmpTimestamp;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use mixlab_codec::aac;
-use mixlab_codec::avc::{self, DecoderConfigurationRecord, AvcPacket, AvcPacketType, Millis};
+use mixlab_codec::avc::{AvcPacket, AvcPacketType};
 use mixlab_codec::avc::decode::{self, AvcDecoder, RecvFrameError};
 use mixlab_codec::ffmpeg::AvError;
 
@@ -81,7 +81,7 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     audio_codec.set_min_output_channels(2)?;
     audio_codec.set_max_output_channels(2)?;
 
-    let mut video_codec = AvcDecoder::new().unwrap();
+    let video_codec = AvcDecoder::new().unwrap();
 
     let mut ctx = ReceiveContext {
         stream,
@@ -93,7 +93,6 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
         audio_timestamp: Timestamp::new(0, 1),
         video_codec,
         video_dcr: None,
-        video_dcr_bytes: None,
     };
 
     thread::spawn(move || {
@@ -112,8 +111,7 @@ struct ReceiveContext {
     audio_asc: Option<aac::AudioSpecificConfiguration>,
     audio_timestamp: Timestamp,
     video_codec: AvcDecoder,
-    video_dcr: Option<Arc<avc::DecoderConfigurationRecord>>,
-    video_dcr_bytes: Option<Bytes>,
+    video_dcr: Option<Bytes>,
 }
 
 struct StreamMeta {
@@ -266,7 +264,7 @@ fn receive_video_packet(
 ) -> Result<(), RtmpError> {
     let meta = ctx.meta.as_ref().ok_or(RtmpError::MetadataNotYetSent)?;
 
-    let mut packet = match AvcPacket::parse(data) {
+    let packet = match AvcPacket::parse(data) {
         Ok(packet) => packet,
         Err(e) => {
             println!("rtmp: could not parse video packet: {:?}", e);
@@ -274,57 +272,47 @@ fn receive_video_packet(
         }
     };
 
-    if let AvcPacketType::SequenceHeader = packet.packet_type {
-        let dcr_bytes = packet.data.clone();
-
-        match DecoderConfigurationRecord::parse(&mut packet.data) {
-            Ok(dcr) => {
-                if ctx.video_dcr.is_some() {
-                    eprintln!("rtmp: received second avc sequence header?");
-                }
-                eprintln!("rtmp: received avc dcr: {:?}", dcr);
-                ctx.video_dcr = Some(Arc::new(dcr));
-                ctx.video_dcr_bytes = Some(dcr_bytes);
-            }
-            Err(e) => {
-                eprintln!("rtmp: could not read avc dcr: {:?}", e);
-            }
+    match packet.packet_type {
+        AvcPacketType::SequenceHeader => {
+            ctx.video_dcr = Some(packet.data.clone());
         }
-    }
+        AvcPacketType::Nalu => {
+            let dcr = ctx.video_dcr.take();
 
-    if let Some(dcr) = ctx.video_dcr.clone() {
-        // TODO rtmp timestamps are only 32 bit and have arbitrary
-        // user-defined epochs - we need to handle rollover
-        let timestamp = Rational64::new(timestamp.value as i64, 1000);
+            // TODO rtmp timestamps are only 32 bit and have arbitrary
+            // user-defined epochs - we need to handle rollover
+            let timestamp = Rational64::new(timestamp.value as i64, 1000);
 
-        if packet.data.len() > 0 {
-            ctx.video_codec.send_packet(decode::Packet {
-                dts: *timestamp.numer(),
-                pts: *timestamp.numer() + packet.composition_time as i64,
-                data: &packet.data,
-                dcr: ctx.video_dcr_bytes.as_deref(),
-            }).unwrap();
-        }
+            if packet.data.len() > 0 {
+                ctx.video_codec.send_packet(decode::Packet {
+                    dts: *timestamp.numer(),
+                    pts: *timestamp.numer() + packet.composition_time as i64,
+                    data: &packet.data,
+                    dcr: dcr.as_deref(),
+                }).unwrap();
+            }
 
-        loop {
-            match ctx.video_codec.recv_frame() {
-                Ok(decoded) => {
-                    let frame = Arc::new(video::Frame {
-                        decoded: decoded,
-                        duration_hint: meta.video_frame_duration,
-                    });
+            loop {
+                match ctx.video_codec.recv_frame() {
+                    Ok(decoded) => {
+                        let frame = Arc::new(video::Frame {
+                            decoded: decoded,
+                            duration_hint: meta.video_frame_duration,
+                        });
 
-                    let _ = ctx.source.write_video(timestamp, frame);
-                }
-                Err(RecvFrameError::NeedMoreInput) => break,
-                Err(RecvFrameError::Eof) => panic!("EOF should never happen"),
-                Err(RecvFrameError::Codec(e)) => {
-                    return Err(RtmpError::AvCodec(e));
+                        let _ = ctx.source.write_video(timestamp, frame);
+                    }
+                    Err(RecvFrameError::NeedMoreInput) => break,
+                    Err(RecvFrameError::Eof) => panic!("EOF should never happen"),
+                    Err(RecvFrameError::Codec(e)) => {
+                        return Err(RtmpError::AvCodec(e));
+                    }
                 }
             }
         }
-    } else {
-        eprintln!("rtmp: cannot read avc frame without dcr");
+        AvcPacketType::EndOfSequence => {
+            // do nothing
+        }
     }
 
     Ok(())

@@ -9,8 +9,6 @@ use bytes::{Bytes, Buf, BufMut};
 use serde_derive::{Deserialize, Serialize};
 
 use super::{nal, AvcError};
-// use super::sps::SpsSummary;
-
 
 /// AVC decoder configuration record
 ///
@@ -95,14 +93,6 @@ impl DecoderConfigurationRecord {
             pps.push(nal::Unit::parse(tmp)?);
         }
 
-        // let sps_summary = SpsSummary::read_from(
-        //     sps.get(0)
-        //         .ok_or(AvcError::NoSps)?
-        //         .data
-        //         .clone())?;
-
-        // println!("SPS DATA: {:?}", sps[0].data);
-
         Ok(Self {
             version,
             profile_indication,
@@ -111,7 +101,6 @@ impl DecoderConfigurationRecord {
             nalu_size,
             sps,
             pps,
-            // sps_summary,
         })
     }
 

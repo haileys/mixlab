@@ -1,12 +1,11 @@
 use std::iter;
-use std::sync::Arc;
 
-use bytes::{Bytes, Buf, BufMut};
+use bytes::{Bytes, Buf};
 
-use super::{AvcError, DecoderConfigurationRecord};
-use super::nal::{self, UnitType};
+use super::AvcError;
+use super::nal::Unit;
 
-pub fn read(mut bytes: Bytes, nalu_size: usize) -> impl Iterator<Item = Result<nal::Unit, AvcError>> {
+pub fn read(mut bytes: Bytes, nalu_size: usize) -> impl Iterator<Item = Result<Unit, AvcError>> {
     iter::from_fn(move || {
         if bytes.remaining() == 0 {
             return None;
@@ -25,6 +24,6 @@ pub fn read(mut bytes: Bytes, nalu_size: usize) -> impl Iterator<Item = Result<n
         }
 
         let nalu_data = bytes.split_to(nalu_length);
-        Some(nal::Unit::parse(nalu_data))
+        Some(Unit::parse(nalu_data))
     })
 }

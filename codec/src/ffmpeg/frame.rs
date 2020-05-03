@@ -1,7 +1,4 @@
 use std::convert::TryInto;
-use std::ffi::{CStr, CString};
-use std::fmt::{self, Debug, Display};
-use std::os::raw::c_int;
 use std::ptr;
 
 use ffmpeg_dev::sys as ff;

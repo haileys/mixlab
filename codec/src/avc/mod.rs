@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use bytes::{Bytes, Buf};
 use derive_more::From;
 
@@ -8,7 +6,6 @@ pub mod dcr;
 pub mod decode;
 pub mod encode;
 pub mod nal;
-// pub mod sps;
 
 pub use decode::AvcDecoder;
 pub use encode::AvcEncoder;
@@ -24,7 +21,6 @@ pub enum AvcError {
     #[from(ignore)] ReservedNalUnitType(u8),
     #[from(ignore)] UnknownNalUnitType(u8),
     NoSps,
-    // Sps(sps::SpsReadError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,11 +105,4 @@ impl AvcPacket {
             data,
         })
     }
-}
-
-#[derive(Debug)]
-pub struct AvcFrame {
-    pub frame_type: AvcFrameType,
-    pub composition_time: Millis,
-    // pub bitstream: Bitstream,
 }
