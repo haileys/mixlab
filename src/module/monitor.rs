@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::Write;
@@ -19,9 +19,10 @@ use mixlab_codec::avc::encode::{AvcEncoder, AvcParams};
 use mixlab_mux::mp4::{self, Mp4Mux, Mp4Params, TrackData, AdtsFrame};
 use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPacket};
 
-use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
+use crate::engine::{InputRef, OutputRef, Sample, SAMPLE_RATE};
 use crate::module::ModuleT;
 use crate::video;
+use crate::util;
 
 lazy_static::lazy_static! {
     static ref SOCKETS: Mutex<HashMap<Uuid, Stream>> = Mutex::new(HashMap::new());
@@ -32,7 +33,7 @@ struct Stream {
     live: Arc<broadcast::Sender<StreamSegment>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum StreamSegment {
     Audio { duration: u32, frame: mp4::AdtsFrame },
     Video { duration: u32, frame: mp4::AvcFrame },
@@ -107,11 +108,9 @@ pub struct Monitor {
     socket_id: Uuid,
     segments_tx: Arc<broadcast::Sender<StreamSegment>>,
     file: File,
-    engine_epoch: Option<u64>,
-    aac: aac::Encoder,
-    audio_pcm_buff: Vec<i16>,
     video_ctx: Option<VideoCtx>,
     init_tx: watch::Sender<Option<Mp4Params<'static>>>,
+    scheduler: Option<Scheduler>,
     inputs: Vec<Terminal>,
 }
 
@@ -136,26 +135,15 @@ impl ModuleT for Monitor {
             live: segments_tx.clone(),
         });
 
-        // setup codecs
-        let aac_params = aac::EncoderParams {
-            bit_rate: aac::BitRate::VbrVeryHigh,
-            sample_rate: 44100,
-            transport: aac::Transport::Adts,
-        };
-
-        let aac = aac::Encoder::new(aac_params).expect("aac::Encoder::new");
-
         let file = File::create("dump.mp4").unwrap();
 
         let module = Monitor {
             socket_id,
             segments_tx,
             file,
-            engine_epoch: None,
-            aac: aac,
-            audio_pcm_buff: Vec::new(),
             video_ctx: None,
             init_tx,
+            scheduler: None,
             inputs: vec![
                 LineType::Video.labeled("Video"),
                 LineType::Stereo.labeled("Audio"),
@@ -179,10 +167,13 @@ impl ModuleT for Monitor {
             _ => unreachable!()
         };
 
-        let engine_epoch = *self.engine_epoch.get_or_insert(time);
-        let timestamp = Rational64::new((time - engine_epoch) as i64, SAMPLE_RATE as i64);
+        let timestamp = Rational64::new(time as i64, SAMPLE_RATE as i64);
         let tick_len = Rational64::new(audio.len() as i64 / 2, SAMPLE_RATE as i64);
         let end_of_tick = timestamp + tick_len;
+
+        let scheduler = self.scheduler.get_or_insert_with(|| {
+            Scheduler::new(timestamp, SAMPLE_RATE as i64)
+        });
 
         // initialise video codec and muxer
         let video_ctx = match (self.video_ctx.as_mut(), video) {
@@ -229,54 +220,9 @@ impl ModuleT for Monitor {
             }
         };
 
-        // convert input audio samples from f32 to i16
-        self.audio_pcm_buff.extend(audio.iter().copied().map(|sample| {
-            // TODO set CLIP flag if sample is out of range
-            let sample = if sample > 1.0 {
-                1.0
-            } else if sample < -1.0 {
-                -1.0
-            } else {
-                sample
-            };
-
-            (sample * i16::max_value() as f32) as i16
-        }));
-
-        // process incoming audio
-        let audio_frame_sample_count = CHANNELS * SAMPLES_PER_CHANNEL_PER_FRAGMENT;
-
-        if self.audio_pcm_buff.len() > audio_frame_sample_count {
-            let fragment_pcm = &self.audio_pcm_buff[0..audio_frame_sample_count];
-
-            let mut aac_buff = [0u8; 4096];
-
-            let encode_result = self.aac.encode(&fragment_pcm, &mut aac_buff).expect("aac.encode");
-
-            if encode_result.input_consumed != audio_frame_sample_count {
-                eprintln!("monitor: aac encoder did not consume exactly {} samples (consumed {})",
-                    audio_frame_sample_count, encode_result.input_consumed);
-            }
-
-            let adts = AdtsFrame(Bytes::copy_from_slice(&aac_buff[0..encode_result.output_size]));
-            let duration = SAMPLES_PER_CHANNEL_PER_FRAGMENT as u32;
-            let track_data = TrackData::Audio(adts.clone());
-            let segment = video_ctx.mux.write_track(duration, &track_data);
-            let _ = self.file.write_all(&segment);
-            // only fails if no active receives:
-            let _ = self.segments_tx.send(StreamSegment::Audio {
-                duration: duration,
-                frame: adts,
-            });
-
-            self.audio_pcm_buff.drain(0..audio_frame_sample_count);
-        }
+        scheduler.send_audio(audio);
 
         if let Some(video_frame) = video {
-            // TODO keep a running total of durations/frame timestamps and correct
-            // for compounding inaccuracy over time:
-            let duration = (video_frame.data.duration_hint * SAMPLE_RATE as i64).to_integer() as u32;
-
             let mut frame = video_frame.data.decoded.clone();
             frame.set_picture_type(mixlab_codec::ffmpeg::sys::AVPictureType_AV_PICTURE_TYPE_I);
             video_ctx.codec.send_frame(frame).unwrap();
@@ -295,14 +241,21 @@ impl ModuleT for Monitor {
                 data: Bytes::copy_from_slice(video_packet.data()),
             };
 
-            let segment = video_ctx.mux.write_track(duration, &TrackData::Video(mp4_frame.clone()));
-            let _ = self.file.write_all(&segment);
+            scheduler.send_video(timestamp + video_frame.tick_offset, video_frame.data.duration_hint, mp4_frame);
+        }
 
-            // only fails if no active receives:
-            let _ = self.segments_tx.send(StreamSegment::Video {
-                duration: duration,
-                frame: mp4_frame,
-            });
+        while let Some(segment) = scheduler.recv_segment() {
+            // send segment to connected monitors
+            self.segments_tx.send(segment.clone());
+
+            // write segment to dump file
+            let (duration, track_data) = match segment {
+                StreamSegment::Audio { duration, frame } => (duration, TrackData::Audio(frame)),
+                StreamSegment::Video { duration, frame } => (duration, TrackData::Video(frame)),
+            };
+
+            let segment = video_ctx.mux.write_track(duration, &track_data);
+            let _ = self.file.write_all(&segment);
         }
 
         None
@@ -314,5 +267,130 @@ impl ModuleT for Monitor {
 
     fn outputs(&self)-> &[Terminal] {
         &[]
+    }
+}
+
+#[derive(Debug)]
+struct Scheduler {
+    segments: VecDeque<StreamSegment>,
+    epoch: Rational64,
+    timescale: i64,
+    audio_timestamp: Rational64,
+    audio_ctx: AudioCtx,
+    video_timestamp: Rational64,
+}
+
+#[derive(Debug)]
+struct AudioCtx {
+    codec: aac::Encoder,
+    pcm_buff: Vec<i16>,
+}
+
+impl Scheduler {
+    pub fn new(epoch: Rational64, timescale: i64) -> Self {
+        Scheduler {
+            segments: VecDeque::new(),
+            epoch,
+            timescale,
+            audio_timestamp: epoch,
+            audio_ctx: AudioCtx::new(),
+            video_timestamp: epoch,
+        }
+    }
+
+    pub fn send_audio(&mut self, samples: &[f32]) {
+        if let Some((duration, frame)) = self.audio_ctx.send_audio(samples) {
+            let new_timestamp = self.audio_timestamp + duration;
+
+            let previous_ts = (self.audio_timestamp * self.timescale).to_integer();
+            let new_ts = (new_timestamp * self.timescale).to_integer();
+            let duration = new_ts - previous_ts;
+
+            let duration = duration.try_into().expect("duration too large");
+
+            self.segments.push_back(StreamSegment::Audio { duration, frame });
+
+            self.audio_timestamp = new_timestamp;
+        }
+    }
+
+    pub fn send_video(&mut self, timestamp: Rational64, duration_hint: Rational64, frame: mp4::AvcFrame) {
+        let new_timestamp = timestamp + duration_hint;
+
+        if new_timestamp < self.video_timestamp {
+            // frame ends before current time stamp, drop it
+            return;
+        }
+
+        let previous_ts = (self.video_timestamp * self.timescale).to_integer();
+        let new_ts = (new_timestamp * self.timescale).to_integer();
+        let duration = new_ts - previous_ts;
+
+        let duration = duration.try_into().expect("duration too large");
+
+        self.segments.push_back(StreamSegment::Video { duration, frame });
+
+        self.video_timestamp = new_timestamp;
+    }
+
+    pub fn recv_segment(&mut self) -> Option<StreamSegment> {
+        self.segments.pop_front()
+    }
+}
+
+impl AudioCtx {
+    fn new() -> Self {
+        let aac_params = aac::EncoderParams {
+            bit_rate: aac::BitRate::VbrVeryHigh,
+            sample_rate: 44100,
+            transport: aac::Transport::Adts,
+        };
+
+        let codec = aac::Encoder::new(aac_params).expect("aac::Encoder::new");
+
+        AudioCtx {
+            codec,
+            pcm_buff: Vec::new(),
+        }
+    }
+
+    fn send_audio(&mut self, samples: &[Sample]) -> Option<(Rational64, AdtsFrame)> {
+        self.pcm_buff.extend(samples.iter().copied().map(|sample| {
+            // TODO set CLIP flag if sample is out of range
+            let sample = if sample > 1.0 {
+                1.0
+            } else if sample < -1.0 {
+                -1.0
+            } else {
+                sample
+            };
+
+            (sample * i16::max_value() as f32) as i16
+        }));
+
+        let audio_frame_sample_count = CHANNELS * SAMPLES_PER_CHANNEL_PER_FRAGMENT;
+
+        if self.pcm_buff.len() > audio_frame_sample_count {
+            // encode frame
+            let fragment_pcm = &self.pcm_buff[0..audio_frame_sample_count];
+
+            let mut aac_buff = [0u8; 4096];
+
+            let encode_result = self.codec.encode(&fragment_pcm, &mut aac_buff)
+                .expect("aac.encode");
+
+            if encode_result.input_consumed != audio_frame_sample_count {
+                eprintln!("monitor: aac encoder did not consume exactly {} samples (consumed {})",
+                    audio_frame_sample_count, encode_result.input_consumed);
+            }
+
+            let duration = Rational64::new(SAMPLES_PER_CHANNEL_PER_FRAGMENT as i64, SAMPLE_RATE as i64);
+            let adts = AdtsFrame(Bytes::copy_from_slice(&aac_buff[0..encode_result.output_size]));
+            self.pcm_buff.drain(0..audio_frame_sample_count);
+
+            Some((duration, adts))
+        } else {
+            None
+        }
     }
 }
