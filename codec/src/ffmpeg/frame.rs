@@ -22,6 +22,21 @@ impl AvFrame {
         AvFrame { ptr }
     }
 
+    pub fn blank(width: usize, height: usize, pixel_format: ff::AVPixelFormat) -> Self {
+        let mut frame = Self::new();
+
+        let underlying = frame.as_underlying_mut();
+        underlying.width = width.try_into().expect("width too large");
+        underlying.height = height.try_into().expect("height too large");
+        underlying.format = pixel_format;
+
+        unsafe {
+            ff::av_frame_get_buffer(frame.as_mut_ptr(), 0);
+        }
+
+        frame
+    }
+
     pub fn as_ptr(&self) -> *const ff::AVFrame {
         self.ptr as *const _
     }
@@ -108,4 +123,3 @@ impl Drop for AvFrame {
         }
     }
 }
-

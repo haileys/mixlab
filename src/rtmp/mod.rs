@@ -17,7 +17,6 @@ use mixlab_codec::avc::{AvcPacket, AvcPacketType};
 use mixlab_codec::avc::decode::{self, AvcDecoder, RecvFrameError};
 use mixlab_codec::ffmpeg::AvError;
 
-use crate::engine::SAMPLE_RATE;
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError, Timestamp};
 use crate::video;
@@ -193,7 +192,7 @@ fn handle_event(
 fn receive_audio_packet(
     ctx: &mut ReceiveContext,
     data: Bytes,
-    timestamp: RtmpTimestamp,
+    _timestamp: RtmpTimestamp,
 ) -> Result<(), RtmpError> {
     let packet = AudioPacket::parse(data);
 
@@ -280,12 +279,10 @@ fn receive_video_packet(
         AvcPacketType::Nalu => {
             let dcr = ctx.video_dcr.take();
 
-            let dts = timestamp.value as i64;
-            let pts = dts + packet.composition_time as i64;
-
             // TODO rtmp timestamps are only 32 bit and have arbitrary
             // user-defined epochs - we need to handle rollover
-            let timestamp = Rational64::new(timestamp.value as i64, 1000);
+            let dts = timestamp.value as i64;
+            let pts = dts + packet.composition_time as i64;
 
             ctx.video_codec.send_packet(decode::Packet {
                 dts: dts,
