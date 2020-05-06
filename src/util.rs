@@ -34,6 +34,7 @@ impl<T: AsyncRead + Unpin> io::Read for SyncRead<T> {
     }
 }
 
+#[allow(unused)]
 pub fn decimal(ratio: Rational64) -> String {
     let micros = (ratio * 1_000_000).to_integer();
     format!("{:.3}", micros as f64 / 1_000_000.0)

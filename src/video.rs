@@ -9,9 +9,3 @@ pub struct Frame {
     // duration information is not available:
     pub duration_hint: Rational64,
 }
-
-impl Frame {
-    pub fn is_key_frame(&self) -> bool {
-        self.decoded.is_key_frame()
-    }
-}
