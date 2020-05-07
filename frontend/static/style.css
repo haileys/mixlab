@@ -360,3 +360,52 @@ body {
 .form-field-label {
     margin-bottom:4px;
 }
+
+.monitor-container {
+    position:relative;
+    display:flex;
+    background:#000000;
+}
+
+.monitor-overlay {
+    position:absolute;
+    z-index:1;
+    width:100%;
+    height:100%;
+    cursor:pointer;
+}
+
+.monitor-overlay-stopped {
+    background:rgba(0, 0, 0, 0.5);
+}
+
+.monitor-overlay-stopped:hover {
+    background:rgba(64, 64, 64, 0.5);
+}
+
+.monitor-overlay-playing {
+    background:rgba(0, 0, 0, 0);
+}
+
+.monitor-overlay-playing:hover {
+    display:block;
+    background:rgba(64, 64, 64, 0.5);
+}
+
+.monitor-overlay-icon {
+    position:absolute;
+    left:50%;
+    top:50%;
+    margin-left:-32px;
+    margin-top:-32px;
+    width:64px;
+    height:64px;
+}
+
+.monitor-overlay-playing .monitor-overlay-icon {
+    display:none;
+}
+
+.monitor-overlay-playing:hover .monitor-overlay-icon {
+    display:block;
+}
