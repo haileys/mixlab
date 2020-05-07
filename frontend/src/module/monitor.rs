@@ -38,13 +38,12 @@ pub enum MonitorState {
 }
 
 pub struct PlayState {
-    media_source: MediaSource,
-    socket: WebSocketTask,
     source_buffer: SourceBuffer,
-    buffer_ready_event: Option<EventListener>,
     ready: bool,
     mux: Option<Mp4Mux>,
     fragment: Vec<u8>,
+    _socket: WebSocketTask,
+    _buffer_ready_event: EventListener,
 }
 
 pub struct SourceOpen {
@@ -79,7 +78,9 @@ impl Component for Monitor {
 
                         if let Some(video) = self.video_element.cast::<HtmlVideoElement>() {
                             video.set_src(&source_url);
-                            video.play();
+
+                            // TODO - how should we deal with errors here?
+                            let _ = video.play();
                         }
 
                         let source_open_event = EventListener::new(&media_source, "sourceopen", {
@@ -134,23 +135,22 @@ impl Component for Monitor {
                     .add_source_buffer(r#"video/mp4; codecs="avc1.42E01E, mp4a.40.2""#)
                     .unwrap();
 
-                let buffer_ready_event = Some(EventListener::new(
+                let buffer_ready_event = EventListener::new(
                     &source_buffer, "update", {
                         let link = self.link.clone();
                         move |_| {
                             // crate::log!("update fired!");
                             link.send_message(MonitorMsg::SourceBufferUpdate)
                         }
-                    }));
+                    });
 
                 self.state = MonitorState::Playing(PlayState {
-                    media_source: source_open.media_source,
-                    socket: source_open.socket,
                     source_buffer,
-                    buffer_ready_event,
                     mux: None,
                     ready: true,
                     fragment: Vec::new(),
+                    _socket: source_open.socket,
+                    _buffer_ready_event: buffer_ready_event,
                 });
 
                 false
