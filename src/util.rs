@@ -1,9 +1,11 @@
 use std::io;
 use std::num::NonZeroUsize;
 
+use num_rational::Rational64;
 use futures::executor::block_on;
 use tokio::io::AsyncRead;
 
+#[derive(Debug)]
 pub struct Sequence(usize);
 
 impl Sequence {
@@ -30,4 +32,10 @@ impl<T: AsyncRead + Unpin> io::Read for SyncRead<T> {
         use tokio::io::AsyncReadExt;
         block_on(self.0.read(buf))
     }
+}
+
+#[allow(unused)]
+pub fn decimal(ratio: Rational64) -> String {
+    let micros = (ratio * 1_000_000).to_integer();
+    format!("{:.3}", micros as f64 / 1_000_000.0)
 }

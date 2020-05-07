@@ -1,0 +1,17 @@
+[package]
+name = "mixlab-codec"
+version = "0.0.0"
+authors = ["Charlie Somerville <charlie@charlie.bz>"]
+edition = "2018"
+
+[dependencies]
+bytes = { version = "0.5", features = ["serde"] }
+derive_more = "0.99"
+futures = "0.3"
+lewton = "0.10"
+ogg = "0.7"
+serde = "1.0"
+serde_derive = "1.0"
+
+# https://github.com/imager-io/ffmpeg-dev-rs/pull/7
+ffmpeg-dev = { git = "https://github.com/charliesome/ffmpeg-dev-rs", rev = "1f315aa21d85a7111bf3f3101e7fe7c5bf22f6f1", features = ["gpl", "x264"] }

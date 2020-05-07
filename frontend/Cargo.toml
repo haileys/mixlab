@@ -16,7 +16,9 @@ bincode = "1.2"
 gloo-events = "0.1"
 js-sys = "0.3"
 lazy_static = "1.4"
+mixlab-mux = { path = "../mux" }
 mixlab-protocol = { path = "../protocol" }
+uuid = "0.8"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 yew = { version = "0.14", features = ["web_sys"] }
@@ -25,7 +27,10 @@ web-sys = { version = "0.3", features = [
     "CanvasRenderingContext2d",
     "CssStyleDeclaration",
     "HtmlCanvasElement",
+    "HtmlMediaElement",
+    "HtmlVideoElement",
     "InputEvent",
+    "MediaSource",
     "MidiAccess",
     "MidiConnectionEvent",
     "MidiInput",
@@ -33,6 +38,9 @@ web-sys = { version = "0.3", features = [
     "MidiMessageEvent",
     "MidiPort",
     "Navigator",
+    "SourceBuffer",
+    "SourceBufferAppendMode",
+    "TimeRanges",
     "WebSocket",
     "WheelEvent",
     ] }

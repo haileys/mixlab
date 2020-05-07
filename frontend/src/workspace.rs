@@ -20,6 +20,7 @@ use crate::module::oscillator::Oscillator;
 use crate::module::output_device::OutputDevice;
 use crate::module::plotter::Plotter;
 use crate::module::trigger::Trigger;
+use crate::module::monitor::Monitor;
 use crate::util::{stop_propagation, prevent_default, Sequence};
 use crate::{App, AppMsg, State};
 
@@ -476,6 +477,7 @@ impl Workspace {
             ("Stereo Splitter", ModuleParams::StereoSplitter(())),
             ("Stream Input", ModuleParams::StreamInput(StreamInputParams::default())),
             ("EQ Three", ModuleParams::EqThree(EqThreeParams::default())),
+            ("Monitor", ModuleParams::Monitor(())),
         ];
 
         html! {
@@ -723,17 +725,17 @@ impl Window {
                 html! {}
             }
             ModuleParams::OutputDevice(params) => {
-                if let Some(Indication::OutputDevice(indic)) = &self.props.indication {
-                    html! { <OutputDevice id={self.props.id} module={self.link.clone()} params={params} indication={indic} /> }
+                if let Some(Indication::OutputDevice(indication)) = &self.props.indication {
+                    html! { <OutputDevice id={self.props.id} module={self.link.clone()} params={params} indication={indication} /> }
                 } else {
-                    html! {}
+                    unreachable!()
                 }
             }
             ModuleParams::Plotter(_) => {
-                if let Some(Indication::Plotter(indic)) = &self.props.indication {
-                    html! { <Plotter id={self.props.id} indication={indic} /> }
+                if let Some(Indication::Plotter(indication)) = &self.props.indication {
+                    html! { <Plotter id={self.props.id} indication={indication} /> }
                 } else {
-                    html! {}
+                    unreachable!()
                 }
             }
             ModuleParams::FmSine(params) => {
@@ -756,6 +758,13 @@ impl Window {
             }
             ModuleParams::EqThree(params) => {
                 html! { <EqThree id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
+            }
+            ModuleParams::Monitor(()) => {
+                if let Some(Indication::Monitor(indication)) = &self.props.indication {
+                    html! { <Monitor id={self.props.id} indication={indication} /> }
+                } else {
+                    unreachable!()
+                }
             }
         }
     }
@@ -814,6 +823,9 @@ impl Component for Terminal {
                         LineType::Stereo => html! {
                             <polygon points="0,16 16,16 16,0" fill={ if self.hover { "#f0b5b3" } else { "#e0a5a3" } } />
                         },
+                        LineType::Video => html! {
+                            <rect width="16" height="16" fill={ if self.hover { "#fef8e1" } else { "#fdf1bf" } } />
+                        }
                     } }
                 </svg>
             </div>

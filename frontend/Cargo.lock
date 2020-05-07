@@ -51,6 +51,9 @@ name = "bytes"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "130aac562c0dd69c56b3b1cc8ffd2e17be31d0b6c25b61c96b76231aa23e39e1"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "cfg-if"
@@ -101,8 +104,10 @@ dependencies = [
  "gloo-events",
  "js-sys",
  "lazy_static",
+ "mixlab-mux",
  "mixlab-protocol",
  "plotters",
+ "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -311,11 +316,43 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3728d817d99e5ac407411fa471ff9800a778d88a24685968b36824eaf4bee400"
 
 [[package]]
+name = "mixlab-mux"
+version = "0.0.0"
+dependencies = [
+ "bytes",
+ "mse_fmp4",
+ "serde",
+ "serde_derive",
+]
+
+[[package]]
 name = "mixlab-protocol"
 version = "0.0.0"
 dependencies = [
+ "mixlab-mux",
  "serde",
  "serde_derive",
+ "uuid",
+]
+
+[[package]]
+name = "mpeg2ts"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a38c92bbb0d15f62ed915c392f2d675e3c0889c98be7ad418ae660bfcb7f3b2"
+dependencies = [
+ "byteorder",
+ "trackable",
+]
+
+[[package]]
+name = "mse_fmp4"
+version = "0.1.3"
+source = "git+https://github.com/charliesome/mse_fmp4?rev=59b19c8fc715e118a98b758456dad22b0bcf7614#59b19c8fc715e118a98b758456dad22b0bcf7614"
+dependencies = [
+ "byteorder",
+ "mpeg2ts",
+ "trackable",
 ]
 
 [[package]]
@@ -450,10 +487,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "trackable"
+version = "0.2.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11475c3c53b075360eac9794965822cb053996046545f91cf61d90e00b72efa5"
+dependencies = [
+ "trackable_derive",
+]
+
+[[package]]
+name = "trackable_derive"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edcf0b9b2caa5f4804ef77aeee1b929629853d806117c48258f402b69737e65c"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "unicode-xid"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "826e7639553986605ec5979c7dd957c7895e93eabed50ab2ffa7f6128a75097c"
+
+[[package]]
+name = "uuid"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fde2f6a4bea1d6e007c4ad38c6839fa71cbb63b6dbf5b595aa38dc9b1093c11"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "wasm-bindgen"

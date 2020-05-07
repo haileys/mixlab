@@ -1,7 +1,9 @@
 use std::fmt;
 use std::num::NonZeroUsize;
 
+use mixlab_mux::mp4::{self, Mp4Params};
 use serde_derive::{Deserialize, Serialize};
+use uuid::Uuid;
 
 pub type Sample = f32;
 
@@ -120,6 +122,7 @@ impl Terminal {
 pub enum LineType {
     Mono,
     Stereo,
+    Video,
 }
 
 impl LineType {
@@ -138,13 +141,14 @@ pub enum ModuleParams {
     Envelope(EnvelopeParams),
     EqThree(EqThreeParams),
     FmSine(FmSineParams),
-    StreamInput(StreamInputParams),
     Mixer(MixerParams),
+    Monitor(()),
     Oscillator(OscillatorParams),
     OutputDevice(OutputDeviceParams),
     Plotter(()),
     StereoPanner(()),
     StereoSplitter(()),
+    StreamInput(StreamInputParams),
     Trigger(GateState),
 }
 
@@ -154,13 +158,14 @@ pub enum Indication {
     Envelope(()),
     EqThree(()),
     FmSine(()),
-    StreamInput(()),
     Mixer(()),
+    Monitor(MonitorIndication),
     Oscillator(()),
     OutputDevice(OutputDeviceIndication),
     Plotter(PlotterIndication),
     StereoPanner(()),
     StereoSplitter(()),
+    StreamInput(()),
     Trigger(()),
 }
 
@@ -179,6 +184,22 @@ pub enum Waveform {
 pub struct OscillatorParams {
     pub freq: f64,
     pub waveform: Waveform,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MonitorIndication {
+    pub socket_id: Uuid,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum MonitorTransportPacket {
+    Init {
+        params: Mp4Params<'static>,
+    },
+    Frame {
+        duration: u32,
+        track_data: mp4::TrackData,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

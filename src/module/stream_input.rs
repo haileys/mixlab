@@ -1,18 +1,31 @@
+use std::cmp;
+
+use num_rational::Rational64;
+
 use mixlab_protocol::{StreamInputParams, LineType, Terminal, StreamProtocol};
 
-use crate::engine::{InputRef, OutputRef};
+use crate::engine::{InputRef, OutputRef, Sample, VideoFrame, SAMPLE_RATE};
 use crate::icecast;
 use crate::module::ModuleT;
 use crate::rtmp;
-use crate::source::SourceRecv;
+use crate::source::{SourceRecv, SourceId, Timestamp, Frame, AudioData, VideoData};
 use crate::util;
 
 #[derive(Debug)]
 pub struct StreamInput {
     params: StreamInputParams,
     recv: Option<SourceRecv>,
+    source: Option<SourceTiming>,
+    audio_frame: Option<Frame<AudioData>>,
+    video_frame: Option<Frame<VideoData>>,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
+}
+
+#[derive(Debug)]
+struct SourceTiming {
+    id: SourceId,
+    epoch: Timestamp,
 }
 
 impl ModuleT for StreamInput {
@@ -28,8 +41,14 @@ impl ModuleT for StreamInput {
         let module = StreamInput {
             params,
             recv,
+            source: None,
+            audio_frame: None,
+            video_frame: None,
             inputs: vec![],
-            outputs: vec![LineType::Stereo.unlabeled()],
+            outputs: vec![
+                LineType::Video.labeled("Video"),
+                LineType::Stereo.labeled("Audio"),
+            ],
         };
 
         (module, ())
@@ -53,14 +72,87 @@ impl ModuleT for StreamInput {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, _: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
-        let output = outputs[0].expect_stereo();
+    fn run_tick(&mut self, engine_time: u64, _: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let engine_time = Timestamp::new(engine_time as i64, SAMPLE_RATE as i64);
 
-        let samples = self.recv.as_mut()
-            .map(|recv| recv.read(output))
-            .unwrap_or(0);
+        let (video_out, mut audio_out) = match outputs {
+            [video, audio] => (video.expect_video(), audio.expect_stereo()),
+            _ => unimplemented!(),
+        };
 
-        util::zero(&mut output[samples..]);
+        let tick_duration = Rational64::new(audio_out.len() as i64 / 2, SAMPLE_RATE as i64);
+
+        let video_frame = self.video_frame.take()
+            .or_else(|| {
+                self.recv.as_mut()
+                    .and_then(|recv| recv.read_video())
+            });
+
+        let existing_source_id = self.source.as_ref().map(|src| src.id);
+
+        // process audio frames. we may have to consume multiple input audio
+        // frames to fill the output buffer
+        while audio_out.len() > 0 {
+            let audio_frame = self.audio_frame.take()
+                .or_else(|| {
+                    self.recv.as_mut()
+                        .and_then(|recv| recv.read_audio())
+                    });
+
+            if let Some(mut frame) = audio_frame {
+                if existing_source_id != Some(frame.source_id) {
+                    // source changed
+                    self.source = Some(SourceTiming {
+                        id: frame.source_id,
+                        epoch: engine_time - frame.source_time,
+                    });
+                }
+
+                let len = cmp::min(audio_out.len(), frame.data.len());
+
+                for i in 0..len {
+                    audio_out[i] = convert_sample(frame.data[i]);
+                }
+
+                audio_out = &mut audio_out[len..];
+
+                if len < frame.data.len() {
+                    frame.data.drain(0..len);
+                    self.audio_frame = Some(frame);
+                }
+            } else {
+                util::zero(audio_out);
+                break;
+            }
+        }
+
+        *video_out = video_frame.and_then(|frame| {
+            let tick_offset = self.source.as_ref()
+                .map(|source| {
+                    (source.epoch + frame.source_time) - engine_time
+                })
+                .filter(|tick_offset| *tick_offset >= Rational64::new(0, 1))
+                .unwrap_or(Rational64::new(0, 1));
+
+            if tick_offset > tick_duration {
+                // frame is not due for this tick, put it back
+                self.video_frame = Some(frame);
+                None
+            } else {
+                // TODO
+                // let frame = Rc::new(AvcFrame {
+                //     data: frame.data,
+                //     tick_offset,
+                //     duration,
+                //     previous,
+                // });
+
+                Some(VideoFrame {
+                    data: frame.data,
+                    tick_offset,
+                })
+            }
+        });
 
         None
     }
@@ -81,4 +173,12 @@ fn listen_mountpoint(params: &StreamInputParams) -> Option<SourceRecv> {
         StreamProtocol::Icecast => icecast::listen(mountpoint).ok(),
         StreamProtocol::Rtmp => rtmp::listen(mountpoint).ok(),
     }
+}
+
+fn convert_sample(sample: i16) -> Sample {
+    // i16::min_value is a greater absolute distance away from 0 than max_value
+    // divide by it rather than max_value to prevent clipping
+    let divisor = -(i16::min_value() as Sample);
+
+    sample as Sample / divisor
 }

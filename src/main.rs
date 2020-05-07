@@ -1,18 +1,20 @@
-mod codec;
 mod engine;
 mod icecast;
 mod listen;
 mod module;
 mod rtmp;
 mod source;
+mod throttle;
 mod util;
+mod video;
 
-use std::sync::Arc;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use futures::{StreamExt, SinkExt, stream};
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
@@ -176,8 +178,18 @@ async fn main() {
             })
         });
 
+    let monitor_socket = warp::get()
+        .and(warp::path!("_monitor" / Uuid))
+        .and(warp::ws())
+        .map(move |socket_id: Uuid, ws: Ws| {
+            ws.on_upgrade(move |websocket| async move {
+                let _ = module::monitor::stream(socket_id, websocket).await;
+            })
+        });
+
     let routes = static_content
         .or(websocket)
+        .or(monitor_socket)
         .with(warp::log("mixlab-http"));
 
     let warp = warp::serve(routes);

@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Instant, Duration};
 
+use num_rational::Rational64;
 use ringbuf::{RingBuffer, Producer, Consumer};
 
-use crate::engine::{Sample, SAMPLE_RATE};
+use crate::util::Sequence;
+use crate::video;
+
+pub type Timestamp = Rational64;
 
 #[derive(Clone)]
 pub struct Registry {
@@ -18,10 +21,19 @@ struct RegistryInner {
     channels: HashMap<String, Source>,
 }
 
-pub struct Source {
+struct Source {
     shared: Arc<SourceShared>,
-    tx: Option<Producer<Sample>>,
+    seq: Sequence,
+    tx: Option<TxPair>,
 }
+
+struct TxPair {
+    audio: Producer<Frame<AudioData>>,
+    video: Producer<Frame<VideoData>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SourceId(NonZeroUsize);
 
 #[derive(Debug)]
 pub struct SourceShared {
@@ -43,18 +55,27 @@ pub enum ConnectError {
 pub struct SourceSend {
     registry: Registry,
     shared: Arc<SourceShared>,
-    // this is, regrettably, an Option because we need to take the producer
+    source_id: SourceId,
+    // this is, regrettably, an Option because we need to take the tx pair
     // and put it back in the mountpoints table on drop:
-    tx: Option<Producer<Sample>>,
-    // throttling data:
-    started: Option<Instant>,
-    samples_sent: u64,
+    tx: Option<TxPair>,
+}
+
+pub type AudioData = Vec<i16>;
+pub type VideoData = Arc<video::Frame>;
+
+#[derive(Debug)]
+pub struct Frame<T> {
+    pub source_id: SourceId,
+    pub source_time: Timestamp,
+    pub data: T,
 }
 
 pub struct SourceRecv {
     registry: Registry,
     shared: Arc<SourceShared>,
-    rx: Consumer<Sample>,
+    audio_rx: Consumer<Frame<AudioData>>,
+    video_rx: Consumer<Frame<VideoData>>,
 }
 
 impl Registry {
@@ -74,7 +95,8 @@ impl Registry {
             return Err(ListenError::AlreadyInUse);
         }
 
-        let (tx, rx) = RingBuffer::<Sample>::new(65536).split();
+        let (audio_tx, audio_rx) = RingBuffer::<Frame<AudioData>>::new(65536).split();
+        let (video_tx, video_rx) = RingBuffer::<Frame<VideoData>>::new(65536).split();
 
         let shared = Arc::new(SourceShared {
             channel_name: channel_name.to_owned(),
@@ -84,12 +106,17 @@ impl Registry {
         let recv = SourceRecv {
             registry: self.clone(),
             shared: shared.clone(),
-            rx,
+            audio_rx,
+            video_rx,
         };
 
         let source = Source {
             shared: shared.clone(),
-            tx: Some(tx),
+            seq: Sequence::new(),
+            tx: Some(TxPair {
+                audio: audio_tx,
+                video: video_tx,
+            }),
         };
 
         registry.channels.insert(channel_name.to_owned(), source);
@@ -106,17 +133,15 @@ impl Registry {
             Some(source) => source,
         };
 
-        let tx = match source.tx.take() {
-            None => { return Err(ConnectError::AlreadyConnected); }
-            Some(tx) => tx,
-        };
+        let source_id = SourceId(source.seq.next());
+
+        let tx = source.tx.take().ok_or(ConnectError::AlreadyConnected)?;
 
         Ok(SourceSend {
             registry: self.clone(),
             shared: source.shared.clone(),
             tx: Some(tx),
-            started: None,
-            samples_sent: 0,
+            source_id,
         })
     }
 }
@@ -126,39 +151,35 @@ impl SourceSend {
         self.shared.recv_online.load(Ordering::Relaxed)
     }
 
-    pub fn write(&mut self, data: &[Sample]) -> Result<(), ()> {
+    pub fn write_audio(&mut self, timestamp: Timestamp, data: AudioData) -> Result<(), ()> {
         if self.connected() {
-            let started = *self.started.get_or_insert_with(Instant::now);
-
             // tx is always Some for a valid (non-dropped) SourceSend:
             let tx = self.tx.as_mut().unwrap();
 
-            // we intentionally ignore the return value of write indicating
-            // how many samples were written to the ring buffer. if it's
-            // ever less than the number of samples on hand, the receive
-            // side is suffering from serious lag and the best we can do
-            // is drop the data
+            let frame = Frame {
+                source_id: self.source_id,
+                source_time: timestamp,
+                data,
+            };
 
-            let _ = tx.push_slice(data);
+            tx.audio.push(frame).map_err(|_| ())
+        } else {
+            Err(())
+        }
+    }
 
-            // throttle ourselves according to how long these samples should
-            // take to play through. this ensures that fast clients don't
-            // fill the ring buffer up on us
+    pub fn write_video(&mut self, timestamp: Timestamp, data: VideoData) -> Result<(), ()> {
+        if self.connected() {
+            // tx is always Some for a valid (non-dropped) SourceSend:
+            let tx = self.tx.as_mut().unwrap();
 
-            let elapsed = Duration::from_micros((self.samples_sent * 1_000_000) / SAMPLE_RATE as u64);
-            let sleep_until = started + elapsed;
-            let now = Instant::now();
+            let frame = Frame {
+                source_id: self.source_id,
+                source_time: timestamp,
+                data,
+            };
 
-            if now < sleep_until {
-                thread::sleep(sleep_until - now);
-            }
-
-            // assume stereo:
-            let sample_count = data.len() / 2;
-
-            self.samples_sent += sample_count as u64;
-
-            Ok(())
+            tx.video.push(frame).map_err(|_| ())
         } else {
             Err(())
         }
@@ -198,8 +219,12 @@ impl SourceRecv {
         &self.shared.channel_name
     }
 
-    pub fn read(&mut self, data: &mut [Sample]) -> usize {
-        self.rx.pop_slice(data)
+    pub fn read_audio(&mut self) -> Option<Frame<AudioData>> {
+        self.audio_rx.pop()
+    }
+
+    pub fn read_video(&mut self) -> Option<Frame<VideoData>> {
+        self.video_rx.pop()
     }
 }
 

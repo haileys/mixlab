@@ -2,3 +2,6 @@
 /frontend/target
 /frontend/pkg/
 /frontend/wasm-pack.log
+/dump.ts
+/dump.h264
+/dump.mp4

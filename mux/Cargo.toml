@@ -1,0 +1,14 @@
+[package]
+name = "mixlab-mux"
+version = "0.0.0"
+authors = ["Charlie Somerville <charlie@charlie.bz>"]
+edition = "2018"
+
+[dependencies]
+bytes = { version = "0.5", features = ["serde"] }
+serde = "1.0"
+serde_derive = "1.0"
+
+# we rely on changes not yet merged into mse_fmp4 upstream:
+# https://github.com/sile/mse_fmp4/pull/5
+mse_fmp4 = { git = "https://github.com/charliesome/mse_fmp4", rev = "59b19c8fc715e118a98b758456dad22b0bcf7614" }
