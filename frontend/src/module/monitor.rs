@@ -18,22 +18,38 @@ pub struct MonitorProps {
 pub struct Monitor {
     link: ComponentLink<Self>,
     props: MonitorProps,
-    socket: WebSocketTask,
-    media_source: MediaSource,
-    source_buffer: Option<SourceBuffer>,
-    mux: Option<Mp4Mux>,
-    fragment: Vec<u8>,
-    ready: bool,
-    source_url: String,
+    state: MonitorState,
+    socket_url: String,
     video_element: NodeRef,
-    _source_open_event: EventListener,
-    _buffer_ready_event: Option<EventListener>,
+    _source_open_event: Option<EventListener>,
 }
 
 pub enum MonitorMsg {
-    SourceOpen,
+    OverlayClick,
+    SourceOpen(SourceOpen),
     SourceBufferUpdate,
     PacketReceive(Vec<u8>),
+}
+
+pub enum MonitorState {
+    Stopped,
+    Loading(EventListener),
+    Playing(PlayState),
+}
+
+pub struct PlayState {
+    media_source: MediaSource,
+    socket: WebSocketTask,
+    source_buffer: SourceBuffer,
+    buffer_ready_event: Option<EventListener>,
+    ready: bool,
+    mux: Option<Mp4Mux>,
+    fragment: Vec<u8>,
+}
+
+pub struct SourceOpen {
+    media_source: MediaSource,
+    socket: WebSocketTask,
 }
 
 impl Component for Monitor {
@@ -41,61 +57,84 @@ impl Component for Monitor {
     type Message = MonitorMsg;
 
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let mut socket = WebSocketService::new();
-        let socket_id = format!("ws://localhost:8000/_monitor/{}", props.indication.socket_id);
-
-        let socket = socket.connect_binary(&socket_id,
-            Callback::from({
-                let link = link.clone();
-                move |msg: Binary| {
-                    match msg {
-                        Ok(buff) => {
-                            link.send_message(MonitorMsg::PacketReceive(buff));
-                        }
-                        Err(e) => {
-                            crate::log!("monitor recv error: {:?}", e);
-                        }
-                    }
-                }
-            }),
-            Callback::from(|status: WebSocketStatus| {
-                crate::log!("websocket status: {:?}", status);
-            }))
-        .expect("websocket.connect_binary");
-
-        let media_source = MediaSource::new().unwrap();
-        let source_url = Url::create_object_url_with_source(&media_source).unwrap();
-
-        let source_open_event = EventListener::new(&media_source, "sourceopen", {
-            let link = link.clone();
-            move |_| link.send_message(MonitorMsg::SourceOpen)
-        });
+        let socket_url = format!("ws://localhost:8000/_monitor/{}", props.indication.socket_id);
 
         Monitor {
             link,
             props,
-            socket,
-            media_source,
-            source_buffer: None,
-            mux: None,
-            fragment: Vec::new(),
-            ready: false,
-            source_url,
+            socket_url,
+            state: MonitorState::Stopped,
             video_element: NodeRef::default(),
-            _source_open_event: source_open_event,
-            _buffer_ready_event: None,
+            _source_open_event: None,
         }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
-            MonitorMsg::SourceOpen => {
-                let source_buffer = self.media_source
+            MonitorMsg::OverlayClick => {
+                match self.state {
+                    MonitorState::Stopped => {
+                        let media_source = MediaSource::new().unwrap();
+                        let source_url = Url::create_object_url_with_source(&media_source).unwrap();
+
+                        if let Some(video) = self.video_element.cast::<HtmlVideoElement>() {
+                            video.set_src(&source_url);
+                            video.play();
+                        }
+
+                        let source_open_event = EventListener::new(&media_source, "sourceopen", {
+                            let link = self.link.clone();
+                            let socket_url = self.socket_url.clone();
+                            let media_source = media_source.clone();
+
+                            move |_| {
+                                let mut socket = WebSocketService::new();
+
+                                let socket = socket.connect_binary(&socket_url,
+                                    Callback::from({
+                                        let link = link.clone();
+                                        move |msg: Binary| {
+                                            match msg {
+                                                Ok(buff) => {
+                                                    link.send_message(MonitorMsg::PacketReceive(buff));
+                                                }
+                                                Err(e) => {
+                                                    crate::log!("monitor recv error: {:?}", e);
+                                                }
+                                            }
+                                        }
+                                    }),
+                                    Callback::from(|status: WebSocketStatus| {
+                                        crate::log!("websocket status: {:?}", status);
+                                    }))
+                                .expect("websocket.connect_binary");
+
+                                link.send_message(MonitorMsg::SourceOpen(SourceOpen {
+                                    media_source: media_source.clone(),
+                                    socket,
+                                }))
+                            }
+                        });
+
+                        self.state = MonitorState::Loading(source_open_event);
+                    }
+                    MonitorState::Loading(_) => {
+                        self.state = MonitorState::Stopped;
+                    }
+                    MonitorState::Playing(_) => {
+                        self.state = MonitorState::Stopped;
+                    }
+                }
+
+                true
+            }
+            MonitorMsg::SourceOpen(source_open) => {
+                let source_buffer = source_open.media_source
                     // .add_source_buffer(r#"video/mp4; codecs="avc1.42E01E, mp4a.40.2""#)
                     .add_source_buffer(r#"video/mp4; codecs="avc1.42E01E, mp4a.40.2""#)
                     .unwrap();
 
-                self._buffer_ready_event = Some(EventListener::new(
+                let buffer_ready_event = Some(EventListener::new(
                     &source_buffer, "update", {
                         let link = self.link.clone();
                         move |_| {
@@ -104,37 +143,48 @@ impl Component for Monitor {
                         }
                     }));
 
-                self.source_buffer = Some(source_buffer);
-                self.ready = true;
-                self.ready();
+                self.state = MonitorState::Playing(PlayState {
+                    media_source: source_open.media_source,
+                    socket: source_open.socket,
+                    source_buffer,
+                    buffer_ready_event,
+                    mux: None,
+                    ready: true,
+                    fragment: Vec::new(),
+                });
+
                 false
             }
             MonitorMsg::SourceBufferUpdate => {
-                self.ready = true;
-                self.ready();
+                if let MonitorState::Playing(play_state) = &mut self.state {
+                    play_state.ready = true;
+                    play_state.ready();
+                }
                 false
             }
             MonitorMsg::PacketReceive(packet) => {
-                let packet = bincode::deserialize::<MonitorTransportPacket>(&packet).unwrap();
+                if let MonitorState::Playing(play_state) = &mut self.state {
+                    let packet = bincode::deserialize::<MonitorTransportPacket>(&packet).unwrap();
 
-                match packet {
-                    MonitorTransportPacket::Init { params } => {
-                        if self.mux.is_some() {
-                            panic!("protocol violation: received >1 init packet");
+                    match packet {
+                        MonitorTransportPacket::Init { params } => {
+                            if play_state.mux.is_some() {
+                                panic!("protocol violation: received >1 init packet");
+                            }
+
+                            let (mux, init) = Mp4Mux::new(params);
+                            play_state.mux = Some(mux);
+                            play_state.fragment.extend(init);
+                            play_state.ready()
                         }
+                        MonitorTransportPacket::Frame { duration, track_data } => {
+                            let mux = play_state.mux.as_mut()
+                                .expect("protocol violation: received frame before init packet");
 
-                        let (mux, init) = Mp4Mux::new(params);
-                        self.mux = Some(mux);
-                        self.fragment.extend(init);
-                        self.ready()
-                    }
-                    MonitorTransportPacket::Frame { duration, track_data } => {
-                        let mux = self.mux.as_mut()
-                            .expect("protocol violation: received frame before init packet");
-
-                        let segment = mux.write_track(duration, &track_data);
-                        self.fragment.extend(segment);
-                        self.ready()
+                            let segment = mux.write_track(duration, &track_data);
+                            play_state.fragment.extend(segment);
+                            play_state.ready()
+                        }
                     }
                 }
 
@@ -153,13 +203,40 @@ impl Component for Monitor {
     }
 
     fn view(&self) -> Html {
+        let overlay_class = match self.state {
+            MonitorState::Stopped => "monitor-overlay monitor-overlay-stopped",
+            MonitorState::Loading(_) => "monitor-overlay",
+            MonitorState::Playing(_) => "monitor-overlay monitor-overlay-playing",
+        };
+
+        let overlay_icon = match self.state {
+            MonitorState::Stopped => html! {
+                <svg width={64} height={64}>
+                    <polygon points="8,0 56,32 8,64" fill="#ffffff" />
+                </svg>
+            },
+            MonitorState::Loading(_) => html! {},
+            MonitorState::Playing(_) => html! {
+                <svg width={64} height={64}>
+                    <rect width={64} height={64} fill="#ffffff" />
+                </svg>
+            }
+        };
+
         html! {
-            <video width={400} height={250} ref={self.video_element.clone()} src={&self.source_url} controls={true} />
+            <div class="monitor-container">
+                <div class={overlay_class} onclick={self.link.callback(|_| MonitorMsg::OverlayClick)}>
+                    <div class="monitor-overlay-icon">
+                        {overlay_icon}
+                    </div>
+                </div>
+                <video width={400} height={250} ref={self.video_element.clone()} class="monitor-video" />
+            </div>
         }
     }
 }
 
-impl Monitor {
+impl PlayState {
     fn ready(&mut self) {
         if self.ready {
             let mut fragment = mem::take(&mut self.fragment);
@@ -169,30 +246,6 @@ impl Monitor {
     }
 
     fn append_buffer(&mut self, fragment: &mut [u8]) {
-        if let Some(source_buffer) = &mut self.source_buffer {
-            match source_buffer.append_buffer_with_u8_array(fragment) {
-                Ok(()) => {
-                    if let Some(video) = self.video_element.cast::<HtmlVideoElement>() {
-                        let buffered = video.buffered();
-                        let range_count = buffered.length();
-                        let buffered_until =
-                            if range_count > 0 {
-                                buffered.end(range_count - 1).unwrap_or(0.0)
-                            } else {
-                                0.0
-                            };
-
-                        if buffered_until > 0.2 {
-                            if video.paused() {
-                                video.play();
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    panic!("append_buffer: {:?}", e);
-                }
-            }
-        }
+        self.source_buffer.append_buffer_with_u8_array(fragment).expect("append_buffer");
     }
 }

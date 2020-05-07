@@ -22,7 +22,6 @@ use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPac
 
 use crate::engine::{InputRef, OutputRef, Sample, SAMPLE_RATE};
 use crate::module::ModuleT;
-use crate::util;
 
 const MONITOR_WIDTH: usize = 1120;
 const MONITOR_HEIGHT: usize = 700;
