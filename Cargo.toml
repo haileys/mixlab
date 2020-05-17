@@ -22,11 +22,14 @@ hyper = "0.13"
 lazy_static = "1.4"
 mpeg2ts = "0.1"
 num-rational = "0.2"
+once_cell = "1.4"
+raw-window-handle = "0.3"
 ringbuf = "0.2"
 serde = "1.0"
-tokio = { version = "0.2", features = ["macros", "process"] }
+tokio = { version = "0.2", features = ["rt-threaded", "macros", "process"] }
 uuid = { version = "0.8", features = ["v4"] }
 warp = "0.2"
+winit = "0.22"
 
 # we rely on changes made in cpal master since release of 0.11.0:
 cpal = { git = "https://github.com/rustaudio/cpal", rev = "f3e7c462055004d0841cbb78d3f43585af3e8567" }
@@ -36,6 +39,9 @@ rml_rtmp = { git = "https://github.com/KallDrexx/rust-media-libs", rev = "eb7f41
 
 # https://github.com/imager-io/ffmpeg-dev-rs/pull/7
 ffmpeg-dev = { git = "https://github.com/charliesome/ffmpeg-dev-rs", rev = "1f315aa21d85a7111bf3f3101e7fe7c5bf22f6f1", features = ["gpl", "x264"] }
+
+# https://github.com/RustAudio/vst-rs/pull/128
+vst = { git = "https://github.com/charliesome/vst-rs", branch = "pub-dispatch" }
 
 [patch."https://github.com/charliesome/ffmpeg-dev-rs"]
 # https://github.com/imager-io/x264-dev/pull/1

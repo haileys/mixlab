@@ -17,7 +17,7 @@ pub trait ModuleT: Sized {
 macro_rules! gen_modules {
     ($( $mod_name:ident::$module:ident , )*) => {
         $( pub mod $mod_name; )*
-        $( use $mod_name::$module; )*
+        $( use self::$mod_name::$module; )*
 
         #[derive(Debug)]
         pub enum Module {
@@ -93,4 +93,5 @@ gen_modules!{
     stereo_splitter::StereoSplitter,
     stream_input::StreamInput,
     trigger::Trigger,
+    vst::Vst,
 }

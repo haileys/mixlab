@@ -7,6 +7,7 @@ mod source;
 mod throttle;
 mod util;
 mod video;
+mod vst;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -231,11 +232,13 @@ async fn async_main() {
 }
 
 fn main() {
-    let mut runtime = tokio::runtime::Builder::new()
+    let runtime = tokio::runtime::Builder::new()
         .enable_all()
         .threaded_scheduler()
         .build()
         .unwrap();
 
-    runtime.block_on(async_main());
+    runtime.spawn(async_main());
+
+    vst::hijack_main_thread();
 }

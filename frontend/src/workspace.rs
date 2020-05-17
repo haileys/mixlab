@@ -478,6 +478,7 @@ impl Workspace {
             ("Stream Input", ModuleParams::StreamInput(StreamInputParams::default())),
             ("EQ Three", ModuleParams::EqThree(EqThreeParams::default())),
             ("Monitor", ModuleParams::Monitor(())),
+            ("VST", ModuleParams::Vst(())),
         ];
 
         html! {
@@ -720,8 +721,9 @@ impl Window {
             ModuleParams::Oscillator(params) => {
                 html! { <Oscillator id={self.props.id} module={self.link.clone()} params={params} /> }
             }
-            ModuleParams::StereoPanner(()) |
-            ModuleParams::StereoSplitter(()) => {
+            | ModuleParams::StereoPanner(())
+            | ModuleParams::StereoSplitter(())
+            | ModuleParams::Vst(()) => {
                 html! {}
             }
             ModuleParams::OutputDevice(params) => {
