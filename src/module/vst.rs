@@ -39,6 +39,16 @@ impl ModuleT for Vst {
     }
 
     fn run_tick(&mut self, t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+        let inputs = inputs.iter()
+            .map(|input| input.expect_mono().to_vec())
+            .collect::<Vec<_>>();
+
+        let vst_outputs = self.plugin.process(BLOCK_SIZE, inputs);
+
+        for (out, vst_out) in outputs.iter_mut().zip(vst_outputs) {
+            out.expect_mono().copy_from_slice(&vst_out);
+        }
+
         None
     }
 
@@ -60,17 +70,15 @@ fn load_vst() -> Vst {
 
     let plugin = vst::global().open_plugin(loader).unwrap();
 
-    let info = plugin.call(|plugin| {
+    plugin.call(|plugin| {
         plugin.init();
         plugin.set_sample_rate(SAMPLE_RATE as f32);
         plugin.set_block_size(BLOCK_SIZE as i64);
-        let info = plugin.get_info();
         plugin.resume();
-        info
     });
 
-    let inputs = (0..info.inputs).map(|_| LineType::Mono.unlabeled()).collect();
-    let outputs = (0..info.outputs).map(|_| LineType::Mono.unlabeled()).collect();
+    let inputs = (0..plugin.info.inputs).map(|_| LineType::Mono.unlabeled()).collect();
+    let outputs = (0..plugin.info.outputs).map(|_| LineType::Mono.unlabeled()).collect();
 
     Vst {
         plugin,

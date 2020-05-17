@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
+use std::mem;
 use std::num::NonZeroUsize;
 use std::os::raw::c_void;
 use std::ptr;
 use std::sync::mpsc::{self, SyncSender};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use once_cell::sync::OnceCell;
 use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
@@ -13,9 +14,10 @@ use winit::event::Event;
 use winit::event_loop::{EventLoop, EventLoopProxy, ControlFlow, EventLoopWindowTarget};
 use winit::window::{Window, WindowBuilder};
 use ::vst::api;
+use ::vst::buffer::AudioBuffer;
 use ::vst::editor::Rect;
 use ::vst::host::{Dispatch, PluginLoader, PluginInstance, PluginLoadError};
-use ::vst::plugin::OpCode;
+use ::vst::plugin::{OpCode, Plugin, Info};
 
 use crate::util::Sequence;
 
@@ -65,7 +67,7 @@ pub fn hijack_main_thread() -> ! {
 
 struct State {
     plugin_seq: Sequence,
-    plugin_instances: HashMap<PluginId, (PluginInstance, Window)>,
+    plugin_instances: HashMap<PluginId, LoadedPlugin>,
 }
 
 fn handle_event(state: &mut State, event_loop: &EventLoopWindowTarget<Msg>, ev: Event<Msg>) {
@@ -81,16 +83,18 @@ fn handle_event(state: &mut State, event_loop: &EventLoopWindowTarget<Msg>, ev: 
             match msg {
                 Msg::OpenPlugin(plugin_loader, retn) => {
                     let result = open_plugin(event_loop, plugin_loader)
-                        .map(|plugin_data| {
+                        .map(|loaded_plugin| {
+                            let info = loaded_plugin.instance.get_info();
                             let plugin_id = state.plugin_seq.next();
-                            state.plugin_instances.insert(plugin_id, plugin_data);
-                            PluginHandle { plugin_id }
+                            state.plugin_instances.insert(plugin_id, loaded_plugin);
+                            PluginHandle { plugin_id, info }
                         });
 
                     let _ = retn.send(result);
                 }
                 Msg::CallPlugin(plugin_id, mut f) => {
-                    f(&mut state.plugin_instances.get_mut(&plugin_id).unwrap().0);
+                    let plugin = state.plugin_instances.get_mut(&plugin_id).unwrap();
+                    f(&mut plugin.instance);
                 }
                 Msg::ClosePlugin(plugin_id) => {
                     // TOOD close window too
@@ -112,7 +116,7 @@ fn handle_event(state: &mut State, event_loop: &EventLoopWindowTarget<Msg>, ev: 
 fn open_plugin(
     event_loop: &EventLoopWindowTarget<Msg>,
     mut plugin_loader: PluginLoader<Host>,
-) -> Result<(PluginInstance, Window), PluginLoadError> {
+) -> Result<LoadedPlugin, PluginLoadError> {
     let instance = plugin_loader.instance()?;
 
     let (editor_width, editor_height) = unsafe {
@@ -146,7 +150,7 @@ fn open_plugin(
         instance.dispatch(OpCode::EditorOpen, 0, 0, handle_ptr, 0.0);
     }
 
-    Ok((instance, window))
+    Ok(LoadedPlugin { instance, _window: window })
 }
 
 impl VstContext {
@@ -161,9 +165,23 @@ impl VstContext {
     }
 }
 
+struct LoadedPlugin {
+    instance: PluginInstance,
+    _window: Window,
+}
+
+impl Drop for LoadedPlugin {
+    fn drop(&mut self) {
+        unsafe {
+            self.instance.dispatch(OpCode::EditorClose, 0, 0, ptr::null_mut(), 0.0);
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PluginHandle {
     plugin_id: PluginId,
+    pub info: Info,
 }
 
 impl PluginHandle {
@@ -177,6 +195,63 @@ impl PluginHandle {
         global().send_event(Msg::CallPlugin(self.plugin_id, f));
 
         retn.recv().unwrap()
+    }
+
+    pub fn process(&self, samples: usize, inputs: Vec<Vec<f32>>) -> Vec<Vec<f32>> {
+        // validate inputs:
+        for input in inputs.iter() {
+            if input.len() != samples {
+                panic!("wrong input buffer size");
+            }
+        }
+
+        // set up output buffers:
+        let outputs = (0..self.info.outputs)
+            .map(|_| vec![0.0; samples])
+            .collect::<Vec<_>>();
+
+        struct Shared {
+            inputs: Vec<Vec<f32>>,
+            outputs: Vec<Vec<f32>>,
+        }
+
+        let shared = Shared {
+            inputs,
+            outputs,
+        };
+
+        let shared = Arc::new(Mutex::new(shared));
+
+        self.call({
+            let shared = Arc::clone(&shared);
+
+            move |plugin| {
+                let mut shared = shared.lock().unwrap();
+
+                let mut input_ptrs = shared.inputs.iter()
+                    .map(|input| input.as_ptr())
+                    .collect::<Vec<_>>();
+
+                let mut output_ptrs = shared.outputs.iter_mut()
+                    .map(|output| output.as_mut_ptr())
+                    .collect::<Vec<_>>();
+
+                let mut audio_buffer = unsafe {
+                    AudioBuffer::from_raw(
+                        input_ptrs.len(),
+                        output_ptrs.len(),
+                        input_ptrs.as_ptr(),
+                        output_ptrs.as_mut_ptr(),
+                        samples,
+                    )
+                };
+
+                plugin.process(&mut audio_buffer);
+            }
+        });
+
+        let mut shared = shared.lock().unwrap();
+        mem::replace(&mut shared.outputs, Vec::new())
     }
 }
 
