@@ -143,8 +143,7 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
     }
 }
 
-#[tokio::main]
-async fn main() {
+async fn async_main() {
     let engine = Arc::new(engine::start());
 
     env_logger::init();
@@ -229,4 +228,14 @@ async fn main() {
     });
 
     warp.run_incoming(incoming_rx).await;
+}
+
+fn main() {
+    let mut runtime = tokio::runtime::Builder::new()
+        .enable_all()
+        .threaded_scheduler()
+        .build()
+        .unwrap();
+
+    runtime.block_on(async_main());
 }
