@@ -12,6 +12,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use futures::{StreamExt, SinkExt, stream};
+use structopt::StructOpt;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -23,6 +24,12 @@ use engine::{EngineHandle, EngineOp};
 use listen::Disambiguation;
 
 use mixlab_protocol::{ClientMessage, ServerMessage};
+
+#[derive(StructOpt)]
+struct Opts {
+    #[structopt(short, long, default_value = "127.0.0.1:8000")]
+    listen: SocketAddr,
+}
 
 fn content(content_type: &str, reply: impl Reply) -> impl Reply {
     reply::with_header(reply, "content-type", content_type)
@@ -143,7 +150,7 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
     }
 }
 
-async fn async_main() {
+async fn async_main(opts: Opts) {
     let engine = Arc::new(engine::start());
 
     env_logger::init();
@@ -193,18 +200,15 @@ async fn async_main() {
 
     let warp = warp::serve(routes);
 
-    let listen_addr = "127.0.0.1:8000".parse::<SocketAddr>()
-        .expect("parse SocketAddr");
-
-    let mut incoming = listen::start(listen_addr).await
+    let mut listener = listen::start(opts.listen).await
         .expect("listen::start");
 
-    println!("Mixlab is now running at http://localhost:8000");
+    println!("Mixlab is now running at http://{}", listener.local_addr);
 
     let (mut incoming_tx, incoming_rx) = mpsc::channel::<Result<_, warp::Error>>(1);
 
     tokio::spawn(async move {
-        while let Some(conn) = incoming.next().await {
+        while let Some(conn) = listener.incoming.next().await {
             match conn {
                 Disambiguation::Http(conn) => {
                     match incoming_tx.send(Ok(conn)).await {
@@ -231,11 +235,13 @@ async fn async_main() {
 }
 
 fn main() {
+    let opts = Opts::from_args();
+
     let mut runtime = tokio::runtime::Builder::new()
         .enable_all()
         .threaded_scheduler()
         .build()
         .unwrap();
 
-    runtime.block_on(async_main());
+    runtime.block_on(async_main(opts));
 }

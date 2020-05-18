@@ -8,8 +8,14 @@ use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-pub async fn start(addr: SocketAddr) -> Result<Receiver<Disambiguation>, io::Error> {
+pub struct Listener {
+    pub local_addr: SocketAddr,
+    pub incoming: Receiver<Disambiguation>,
+}
+
+pub async fn start(addr: SocketAddr) -> Result<Listener, io::Error> {
     let mut listener = TcpListener::bind(&addr).await?;
+    let local_addr = listener.local_addr()?;
 
     let (mut result_tx, result_rx) = mpsc::channel::<Disambiguation>(1);
     let (disambiguated_tx, disambiguated_rx) = mpsc::channel::<Disambiguation>(1);
@@ -44,7 +50,10 @@ pub async fn start(addr: SocketAddr) -> Result<Receiver<Disambiguation>, io::Err
         }
     });
 
-    Ok(result_rx)
+    Ok(Listener {
+        local_addr,
+        incoming: result_rx,
+    })
 }
 
 fn handle_connection(conn: TcpStream, mut out: Sender<Disambiguation>) {
