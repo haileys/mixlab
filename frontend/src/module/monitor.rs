@@ -9,6 +9,8 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRe
 use mixlab_mux::mp4::Mp4Mux;
 use mixlab_protocol::{ModuleId, MonitorIndication, MonitorTransportPacket};
 
+use crate::util;
+
 #[derive(Properties, Clone, Debug)]
 pub struct MonitorProps {
     pub id: ModuleId,
@@ -56,7 +58,7 @@ impl Component for Monitor {
     type Message = MonitorMsg;
 
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let socket_url = format!("ws://localhost:8000/_monitor/{}", props.indication.socket_id);
+        let socket_url = format!("{}/_monitor/{}", util::websocket_origin(), props.indication.socket_id);
 
         Monitor {
             link,

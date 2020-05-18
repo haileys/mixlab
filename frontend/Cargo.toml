@@ -30,6 +30,7 @@ web-sys = { version = "0.3", features = [
     "HtmlMediaElement",
     "HtmlVideoElement",
     "InputEvent",
+    "Location",
     "MediaSource",
     "MidiAccess",
     "MidiConnectionEvent",
@@ -43,6 +44,7 @@ web-sys = { version = "0.3", features = [
     "TimeRanges",
     "WebSocket",
     "WheelEvent",
+    "Window",
     ] }
 
 # The `console_error_panic_hook` crate provides better debugging of panics by

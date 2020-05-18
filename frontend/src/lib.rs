@@ -75,7 +75,9 @@ impl Component for App {
     fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
         let mut websocket = WebSocketService::new();
 
-        let websocket = websocket.connect_binary("ws://localhost:8000/session",
+        let websocket_url = util::websocket_origin() + "/session";
+
+        let websocket = websocket.connect_binary(&websocket_url,
             link.callback(|msg: Binary| {
                 match msg {
                     Ok(buff) => {
