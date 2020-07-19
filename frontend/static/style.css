@@ -256,21 +256,21 @@ body {
     text-align:center;
 }
 
-.output-device-status-bar {
+.status-light-bar {
     display:flex;
     flex-flow:row nowrap;
     justify-content:center;
 }
 
-.output-device-status-bar > * {
+.status-light-bar > * {
     margin-right:12px;
 }
 
-.output-device-status-bar > *:last-child {
+.status-light-bar > *:last-child {
     margin-right:0px;
 }
 
-.output-device-status {
+.status-light {
     border:1px solid #e0e0e0;
     color:#e0e0e0;
     width:64px;
@@ -281,16 +281,29 @@ body {
     font-size:12px;
 }
 
-.output-device-status-red {
+.status-light-red {
     border:1px solid #ff003a;
     color:#ff003a;
     font-weight:bold;
 }
 
-.output-device-status-red-active {
+.status-light-red-active {
     border:1px solid #ff003a;
     color:#ffffff;
     background-color:#ff003a;
+    font-weight:bold;
+}
+
+.status-light-green {
+    border:1px solid #00cc3a;
+    color:#00cc3a;
+    font-weight:bold;
+}
+
+.status-light-green-active {
+    border:1px solid #00cc3a;
+    color:#ffffff;
+    background-color:#00cc3a;
     font-weight:bold;
 }
 

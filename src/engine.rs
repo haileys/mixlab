@@ -8,6 +8,7 @@ use std::thread;
 use std::time::{Instant, Duration};
 
 use num_rational::Rational64;
+use tokio::runtime;
 use tokio::sync::{oneshot, broadcast};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ServerUpdate, Indication, LineType, ClientSequence, ClientOp};
@@ -59,7 +60,7 @@ pub struct EngineSession {
     cmd_tx: SyncSender<EngineMessage>,
 }
 
-pub fn start() -> EngineHandle {
+pub fn start(tokio_runtime: runtime::Handle) -> EngineHandle {
     let (cmd_tx, cmd_rx) = mpsc::sync_channel(8);
     let (log_tx, _) = broadcast::channel(64);
 
@@ -75,7 +76,11 @@ pub fn start() -> EngineHandle {
             indications: HashMap::new(),
         };
 
-        engine.run();
+        // enter the tokio runtime context for the engine thread
+        // this allows modules to spawn async tasks
+        tokio_runtime.enter(|| {
+            engine.run();
+        });
     });
 
     EngineHandle { cmd_tx }

@@ -149,6 +149,7 @@ pub enum ModuleParams {
     StereoPanner(()),
     StereoSplitter(()),
     StreamInput(StreamInputParams),
+    StreamOutput(StreamOutputParams),
     Trigger(GateState),
 }
 
@@ -166,9 +167,9 @@ pub enum Indication {
     StereoPanner(()),
     StereoSplitter(()),
     StreamInput(()),
+    StreamOutput(StreamOutputIndication),
     Trigger(()),
 }
-
 
 #[derive(Serialize, Deserialize, Clone, Debug, Copy, PartialEq)]
 pub enum Waveform {
@@ -302,6 +303,42 @@ pub struct StreamInputParams {
 pub enum StreamProtocol {
     Icecast,
     Rtmp,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StreamOutputParams {
+    // TODO this is an awful hack to encode one-time impulses into params
+    // figure out a nicer way of doing this
+    pub seq: u64,
+    pub connect_seq: u64,
+    pub disconnect_seq: u64,
+    pub rtmp_url: String,
+    pub rtmp_stream_key: String,
+}
+
+impl Default for StreamOutputParams {
+    fn default() -> Self {
+        Self {
+            seq: 1,
+            connect_seq: 0,
+            disconnect_seq: 0,
+            rtmp_url: "".to_owned(),
+            rtmp_stream_key: "".to_owned(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct StreamOutputIndication {
+    pub live: StreamOutputLiveStatus,
+    pub error: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StreamOutputLiveStatus {
+    Offline,
+    Connecting,
+    Live,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

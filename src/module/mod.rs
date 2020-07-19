@@ -92,5 +92,6 @@ gen_modules!{
     stereo_panner::StereoPanner,
     stereo_splitter::StereoSplitter,
     stream_input::StreamInput,
+    stream_output::StreamOutput,
     trigger::Trigger,
 }

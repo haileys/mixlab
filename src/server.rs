@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use futures::{StreamExt, SinkExt, stream};
 use structopt::StructOpt;
+use tokio::runtime;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -24,7 +25,7 @@ pub struct RunOpts {
 }
 
 pub async fn run(opts: RunOpts) {
-    let engine = Arc::new(engine::start());
+    let engine = Arc::new(engine::start(runtime::Handle::current()));
 
     let index = warp::path::end()
         .map(index);

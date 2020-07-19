@@ -21,6 +21,7 @@ use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError, Timestamp};
 use crate::video;
 
+pub mod client;
 mod incoming;
 mod packet;
 

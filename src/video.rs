@@ -1,3 +1,5 @@
+pub mod encode;
+
 use num_rational::Rational64;
 use mixlab_codec::ffmpeg::AvFrame;
 
