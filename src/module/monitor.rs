@@ -95,6 +95,7 @@ impl ModuleT for Monitor {
         let audio_ctx = AudioCtx::new(AudioParams {
             bit_rate: aac::BitRate::VbrVeryHigh,
             sample_rate: SAMPLE_RATE,
+            transport: aac::Transport::Adts,
         });
 
         let video_ctx = VideoCtx::new(VideoParams {

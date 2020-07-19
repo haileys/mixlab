@@ -121,6 +121,7 @@ pub struct AudioCtx {
 pub struct AudioParams {
     pub bit_rate: aac::BitRate,
     pub sample_rate: usize,
+    pub transport: aac::Transport,
 }
 
 impl AudioCtx {
@@ -130,7 +131,7 @@ impl AudioCtx {
         let aac_params = aac::EncoderParams {
             bit_rate: params.bit_rate,
             sample_rate: sample_rate,
-            transport: aac::Transport::Adts,
+            transport: params.transport,
         };
 
         let codec = aac::Encoder::new(aac_params).expect("aac::Encoder::new");
@@ -140,6 +141,10 @@ impl AudioCtx {
             pcm_buff: Vec::new(),
             sample_rate: sample_rate.into(),
         }
+    }
+
+    pub fn codec(&self) -> &aac::Encoder {
+        &self.codec
     }
 
     fn send_audio(&mut self, samples: &[Sample]) -> Option<(Rational64, AdtsFrame)> {

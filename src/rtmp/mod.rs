@@ -21,8 +21,8 @@ use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError,
 use crate::video;
 
 pub mod client;
-mod incoming;
-mod packet;
+pub mod incoming;
+pub mod packet;
 
 use packet::{AudioPacket, VideoPacket, VideoPacketType};
 
