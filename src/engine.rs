@@ -156,7 +156,7 @@ impl Engine {
         let mut tick = 0;
 
         loop {
-            let indications = self.run_tick(tick);
+            let indications = time_tick(|| self.run_tick(tick));
             tick += 1;
 
             for (module_id, indication) in indications {
@@ -180,6 +180,21 @@ impl Engine {
                     Err(RecvTimeoutError::Disconnected) => { return; }
                 }
             }
+        }
+
+        fn time_tick<T>(f: impl FnOnce() -> T) -> T {
+            let before = Instant::now();
+            let retn = f();
+            let after = Instant::now();
+
+            let elapsed = after - before;
+            let budget = Duration::from_millis(1_000 / TICKS_PER_SECOND as u64);
+
+            if elapsed > budget {
+                eprintln!("WARNING: tick ran over time! elapsed {} us, budget {} us", elapsed.as_micros(), budget.as_micros());
+            }
+
+            retn
         }
     }
 
