@@ -12,7 +12,7 @@ use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
 use crate::rtmp::packet::{AudioPacket, VideoPacket, VideoFrameType, VideoPacketType};
 use crate::rtmp::client::{self, StreamMetadata, PublishInfo, PublishClient};
-use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, PixelFormat};
+use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, PixelFormat, Profile};
 
 const OUTPUT_WIDTH: usize = 1120;
 const OUTPUT_HEIGHT: usize = 700;
@@ -157,12 +157,12 @@ impl ModuleT for StreamOutput {
 
         while let Some(segment) = live.encode.recv_segment() {
             match segment {
-                StreamSegment::Audio { duration: _, timestamp, frame } => {
-                    let timestamp = RtmpTimestamp::new((timestamp * 1000).to_integer() as u32);
-                    live.publish.publish_audio(AudioPacket::AacRawData(frame), timestamp);
+                StreamSegment::Audio { duration: _, decode_timestamp, frame } => {
+                    let timestamp = RtmpTimestamp::new((decode_timestamp * 1000).to_integer() as u32);
+                    live.publish.publish_audio(AudioPacket::AacRawData(frame), timestamp).expect("TODO");
                 }
-                StreamSegment::Video { duration: _, timestamp, frame } => {
-                    let timestamp = RtmpTimestamp::new((timestamp * 1000).to_integer() as u32);
+                StreamSegment::Video { duration: _, decode_timestamp, frame } => {
+                    let timestamp = RtmpTimestamp::new((decode_timestamp * 1000).to_integer() as u32);
                     live.publish.publish_video(VideoPacket {
                         frame_type: if frame.is_key_frame {
                             VideoFrameType::KeyFrame
@@ -172,7 +172,7 @@ impl ModuleT for StreamOutput {
                         packet_type: VideoPacketType::Nalu,
                         composition_time: frame.composition_time,
                         data: frame.data,
-                    }, timestamp);
+                    }, timestamp).expect("TODO");
                 }
             }
         }
@@ -224,15 +224,15 @@ async fn connect_rtmp(params: StreamOutputParams) -> Result<PublishClient, RtmpC
             meta: StreamMetadata {
                 video_width: Some(OUTPUT_WIDTH as u32),
                 video_height: Some(OUTPUT_HEIGHT as u32),
-                video_codec: None,
-                video_frame_rate: None,
-                video_bitrate_kbps: None,
-                audio_codec: None,
-                audio_bitrate_kbps: None,
-                audio_sample_rate: None,
+                video_codec: Some("avc1".to_owned()),
+                video_frame_rate: Some(30.0),
+                video_bitrate_kbps: Some(2500),
+                audio_codec: Some("aac1".to_owned()),
+                audio_bitrate_kbps: Some(160),
+                audio_sample_rate: Some(SAMPLE_RATE as u32),
                 audio_channels: Some(2),
                 audio_is_stereo: Some(true),
-                encoder: None,
+                encoder: Some("Mixlab".to_owned()),
             },
         })
         .await?;
@@ -307,13 +307,14 @@ impl LiveOutput {
 
         // configuration buffer is ASC when raw transport is in use:
         let asc = audio_ctx.configuration_data();
-        publish.publish_audio(AudioPacket::AacSequenceHeader(asc), RtmpTimestamp::new(0));
+        publish.publish_audio(AudioPacket::AacSequenceHeader(asc), RtmpTimestamp::new(0)).expect("TODO");
 
         let video_ctx = VideoCtx::new(VideoParams {
             width: OUTPUT_WIDTH,
             height: OUTPUT_HEIGHT,
             time_base: SAMPLE_RATE,
             pixel_format: PixelFormat::Yuv420p,
+            profile: Profile::Stream,
         });
 
         let mut dsc = BytesMut::new();
@@ -325,7 +326,7 @@ impl LiveOutput {
             packet_type: VideoPacketType::SequenceHeader,
             composition_time: 0,
             data: dsc,
-        }, RtmpTimestamp::new(0));
+        }, RtmpTimestamp::new(0)).expect("TODO");
 
         let encode = EncodeStream::new(audio_ctx, video_ctx);
 

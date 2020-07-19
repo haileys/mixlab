@@ -11,7 +11,7 @@ use rml_rtmp::handshake::{Handshake, HandshakeProcessResult, PeerType, Handshake
 use rml_rtmp::sessions::{ClientSession, ClientSessionConfig, ClientSessionResult, ClientSessionEvent, ClientSessionError, PublishRequestType};
 use tokio::net::{tcp, TcpStream};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, error::TrySendError};
 
 use crate::rtmp::packet::{AudioPacket, VideoPacket};
 
@@ -230,25 +230,33 @@ impl fmt::Debug for PublishClient {
 }
 
 #[derive(Debug)]
-pub struct PublishError;
+pub enum PublishError {
+    Disconnected,
+    Lagged,
+}
+
+impl<T> From<TrySendError<T>> for PublishError {
+    fn from(e: TrySendError<T>) -> PublishError {
+        match e {
+            TrySendError::Full(_) => PublishError::Lagged,
+            TrySendError::Closed(_) => PublishError::Disconnected,
+        }
+    }
+}
 
 impl PublishClient {
     pub fn publish_audio(&mut self, packet: AudioPacket, timestamp: RtmpTimestamp) -> Result<(), PublishError> {
         let mut data = BytesMut::new();
         packet.write_to(&mut data);
 
-        self.command_tx.try_send(ClientCommand::PublishAudio { data: data.freeze(), timestamp })
-            .map_err(|_| PublishError)
-            // TODO disambiguate between other side disconnecting and other side lagging
+        Ok(self.command_tx.try_send(ClientCommand::PublishAudio { data: data.freeze(), timestamp })?)
     }
 
     pub fn publish_video(&mut self, packet: VideoPacket, timestamp: RtmpTimestamp) -> Result<(), PublishError> {
         let mut data = BytesMut::new();
         packet.write_to(&mut data);
 
-        self.command_tx.try_send(ClientCommand::PublishVideo { data: data.freeze(), timestamp })
-            .map_err(|_| PublishError)
-            // TODO disambiguate between other side disconnecting and other side lagging
+        Ok(self.command_tx.try_send(ClientCommand::PublishVideo { data: data.freeze(), timestamp })?)
     }
 }
 

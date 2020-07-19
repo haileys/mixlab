@@ -7,9 +7,9 @@ use num_rational::Rational64;
 
 use mixlab_codec::avc::DecoderConfigurationRecord;
 use mixlab_codec::avc::encode::{AvcEncoder, AvcParams};
-use mixlab_codec::ffmpeg::AvFrame;
+use mixlab_codec::ffmpeg::{AvFrame, AvPacket};
 use mixlab_codec::ffmpeg::sys;
-use mixlab_mux::mp4;
+use mixlab_mux::mp4::{self, AvcFrame};
 
 use crate::engine::Sample;
 
@@ -51,7 +51,7 @@ impl EncodeStream {
             let duration = duration.try_into().expect("duration too large");
 
             self.segments.push_back(StreamSegment::Audio {
-                timestamp: self.audio_timestamp,
+                decode_timestamp: self.audio_timestamp,
                 duration,
                 frame,
             });
@@ -85,27 +85,33 @@ impl EncodeStream {
         }
     }
 
-    fn encode_video(&mut self, duration: Rational64, frame: AvFrame) {
-        let frame = self.video_ctx.encode_frame(frame);
-
+    fn encode_video(&mut self, duration: Rational64, mut frame: AvFrame) {
         let timescale = self.video_ctx.time_base;
+        let previous_ts = (self.video_timestamp * timescale).to_integer();
+
+        frame.set_presentation_timestamp(previous_ts);
+        self.video_ctx.send_frame(frame);
 
         let new_timestamp = self.video_timestamp + duration;
 
-        let previous_ts = (self.video_timestamp * timescale).to_integer();
         let new_ts = (new_timestamp * timescale).to_integer();
         let duration = new_ts - previous_ts;
 
         let duration = duration.try_into().expect("duration too large");
 
-        self.segments.push_back(StreamSegment::Video {
-            timestamp: self.video_timestamp,
-            duration,
-            frame,
-        });
+        while let Some(packet) = self.video_ctx.recv_packet() {
+            self.segments.push_back(StreamSegment::Video {
+                decode_timestamp: Rational64::new(packet.decode_timestamp(), timescale),
+                duration,
+                frame: AvcFrame {
+                    is_key_frame: packet.is_key_frame(),
+                    composition_time: (packet.presentation_timestamp() - packet.decode_timestamp()) as u32,
+                    data: Bytes::copy_from_slice(packet.data()),
+                },
+            });
+        }
 
         self.video_timestamp = new_timestamp;
-
     }
 
     pub fn recv_segment(&mut self) -> Option<StreamSegment> {
@@ -115,8 +121,8 @@ impl EncodeStream {
 
 #[derive(Clone, Debug)]
 pub enum StreamSegment {
-    Audio { timestamp: Rational64, duration: u32, frame: Bytes },
-    Video { timestamp: Rational64, duration: u32, frame: mp4::AvcFrame },
+    Audio { decode_timestamp: Rational64, duration: u32, frame: Bytes },
+    Video { decode_timestamp: Rational64, duration: u32, frame: AvcFrame },
 }
 
 #[derive(Debug)]
@@ -209,6 +215,12 @@ pub struct VideoParams {
     pub height: usize,
     pub time_base: usize,
     pub pixel_format: PixelFormat,
+    pub profile: Profile,
+}
+
+pub enum Profile {
+    Monitor,
+    Stream,
 }
 
 pub enum PixelFormat {
@@ -227,6 +239,14 @@ impl VideoCtx {
             color_space: sys::AVColorSpace_AVCOL_SPC_UNSPECIFIED,
             picture_width: params.width,
             picture_height: params.height,
+            crf: Some(match params.profile {
+                Profile::Monitor => "17",
+                Profile::Stream => "50",
+            }),
+            tune: Some(match params.profile {
+                Profile::Monitor => "zerolatency",
+                Profile::Stream => "film",
+            }),
         };
 
         let blank_frame = AvFrame::blank(
@@ -248,22 +268,16 @@ impl VideoCtx {
         self.codec.decoder_configuration_record()
     }
 
-    pub fn encode_frame(&mut self, mut frame: AvFrame) -> mp4::AvcFrame {
+    pub fn send_frame(&mut self, mut frame: AvFrame) {
         frame.set_picture_type(mixlab_codec::ffmpeg::sys::AVPictureType_AV_PICTURE_TYPE_I);
         self.codec.send_frame(frame).unwrap();
+    }
 
-        let video_packet = self.codec.recv_packet().unwrap();
-
-        // if dts = pts for all frames, we can safely ignore both and attach our own timing to the frame:
-        assert!(video_packet.decode_timestamp() == video_packet.presentation_timestamp());
-
-        // and if all frames are key frames, we can stream directly to clients with no buffering:
-        assert!(video_packet.is_key_frame());
-
-        mp4::AvcFrame {
-            is_key_frame: true, // all frames are key frames
-            composition_time: 0, // dts always equals pts
-            data: Bytes::copy_from_slice(video_packet.data()),
+    pub fn recv_packet(&mut self) -> Option<AvPacket> {
+        match self.codec.recv_packet() {
+            Ok(pkt) => Some(pkt),
+            Err(e) if e.again() => { return None; }
+            Err(e) => { panic!("recv_packet errored: {:?}", e); }
         }
     }
 

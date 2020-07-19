@@ -99,6 +99,10 @@ impl AvFrame {
         self.as_underlying().pts
     }
 
+    pub fn set_presentation_timestamp(&mut self, pts: i64) {
+        self.as_underlying_mut().pts = pts;
+    }
+
     pub fn packet_duration(&self) -> i64 {
         self.as_underlying().pkt_duration
     }

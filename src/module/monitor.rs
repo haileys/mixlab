@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 
+use bytes::Bytes;
 use fdk_aac::enc as aac;
 use futures::sink::SinkExt;
 use num_rational::Rational64;
@@ -11,12 +12,12 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 use warp::ws::{self, WebSocket};
 
-use mixlab_mux::mp4::{Mp4Mux, Mp4Params, TrackData, AdtsFrame};
+use mixlab_mux::mp4::{Mp4Mux, Mp4Params, TrackData, AdtsFrame, AvcFrame};
 use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPacket};
 
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
-use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, PixelFormat};
+use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, PixelFormat, Profile};
 
 const MONITOR_WIDTH: usize = 1120;
 const MONITOR_HEIGHT: usize = 700;
@@ -43,16 +44,20 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
     // than disconnecting the client
     while let Ok(segment) = stream.recv().await {
         match segment {
-            StreamSegment::Audio { duration, frame, timestamp: _ } => {
+            StreamSegment::Audio { duration, frame, decode_timestamp: _ } => {
                 send_packet(&mut client, MonitorTransportPacket::Frame {
                     duration,
                     track_data: TrackData::Audio(AdtsFrame(frame.clone())),
                 }).await?;
             }
-            StreamSegment::Video { duration, frame, timestamp: _ } => {
+            StreamSegment::Video { duration, frame, decode_timestamp: _ } => {
                 send_packet(&mut client, MonitorTransportPacket::Frame {
                     duration,
-                    track_data: TrackData::Video(frame),
+                    track_data: TrackData::Video(AvcFrame {
+                        is_key_frame: frame.is_key_frame,
+                        composition_time: frame.composition_time as u32,
+                        data: frame.data.clone(),
+                    }),
                 }).await?;
             }
         }
@@ -103,6 +108,7 @@ impl ModuleT for Monitor {
             height: MONITOR_HEIGHT,
             time_base: SAMPLE_RATE,
             pixel_format: PixelFormat::Yuv420p,
+            profile: Profile::Monitor,
         });
 
         // mp4 params placeholder
@@ -184,18 +190,17 @@ impl ModuleT for Monitor {
         self.encode.barrier(timestamp - epoch);
 
         while let Some(segment) = self.encode.recv_segment() {
+            if let StreamSegment::Video { frame, .. } = &segment {
+                // if dts = pts for all frames, we can safely ignore both and attach our own timing to the frame:
+                assert!(frame.composition_time == 0);
+
+                // and if all frames are key frames, we can stream directly to clients with no buffering:
+                assert!(frame.is_key_frame);
+            }
+
             // send segment to connected monitors
             // this only errors if there are no connected clients
             let _ = self.segments_tx.send(segment.clone());
-
-            // write segment to dump file
-            let (duration, track_data) = match segment {
-                StreamSegment::Audio { duration, frame, timestamp: _ } => (duration, TrackData::Audio(AdtsFrame(frame))),
-                StreamSegment::Video { duration, frame, timestamp: _ } => (duration, TrackData::Video(frame)),
-            };
-
-            let segment = self.mux.write_track(duration, &track_data);
-            let _ = self.file.write_all(&segment);
         }
 
         None

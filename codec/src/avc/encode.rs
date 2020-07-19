@@ -14,12 +14,14 @@ pub struct AvcEncoder {
     ctx: AvCodecContext,
 }
 
-pub struct AvcParams {
+pub struct AvcParams<'a> {
     pub time_base: usize,
     pub pixel_format: ff::AVPixelFormat,
     pub color_space: ff::AVColorSpace,
     pub picture_width: usize,
     pub picture_height: usize,
+    pub crf: Option<&'a str>,
+    pub tune: Option<&'a str>,
 }
 
 impl AvcEncoder {
@@ -35,15 +37,17 @@ impl AvcEncoder {
         let mut opts = AvDict::new();
 
         // 17 is more or less visually lossless:
-        opts.set("crf", "17");
+        // opts.set("crf", "17");
+        // 23 chosen arbitrarily for a default good-enough quality:
+        opts.set("crf", params.crf.unwrap_or("23"));
 
         // chosen arbitrarily
         opts.set("preset", "veryfast");
 
-        // zero latency
-        opts.set("tune", "zerolatency");
+        // also arbitrary
+        opts.set("tune", params.tune.unwrap_or("film"));
 
-        // disable annex-b encoding (on by default)
+        // force disable annex-b encoding (on by default)
         opts.set("x264-params", "annexb=0");
 
         // set codec context params

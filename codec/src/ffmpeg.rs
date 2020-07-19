@@ -49,6 +49,12 @@ impl Drop for AvCodecContext {
 
 pub struct AvError(pub(crate) c_int);
 
+impl AvError {
+    pub fn again(&self) -> bool {
+        self.0 == -(ff::EAGAIN as c_int)
+    }
+}
+
 impl Display for AvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut msg_buf = [0i8; ff::AV_ERROR_MAX_STRING_SIZE as usize];
