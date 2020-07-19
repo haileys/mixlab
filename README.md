@@ -1,6 +1,6 @@
 # Mixlab
 
-Digital audio workstation. AGPLv3.
+Digital audio/video workstation. AGPLv3.
 
 ## Building
 
