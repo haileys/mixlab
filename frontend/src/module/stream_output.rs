@@ -1,11 +1,7 @@
-use std::fmt::{self, Display};
-
-use derive_more::{From, Into};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback};
-use yew::components::Select;
 use yew::events::ChangeData;
 
-use mixlab_protocol::{ModuleId, ModuleParams, StreamOutputParams, StreamProtocol, StreamOutputLiveStatus, StreamOutputIndication};
+use mixlab_protocol::{ModuleId, ModuleParams, StreamOutputParams, StreamOutputLiveStatus, StreamOutputIndication};
 
 use crate::workspace::{Window, WindowMsg};
 

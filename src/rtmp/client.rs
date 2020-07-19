@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::fmt;
 use std::iter::{self, IntoIterator};
-use std::mem;
 
 use futures::future;
 use futures::stream::{self, Stream, StreamExt};
@@ -11,10 +10,9 @@ use rml_rtmp::time::RtmpTimestamp;
 use rml_rtmp::handshake::{Handshake, HandshakeProcessResult, PeerType, HandshakeError};
 use rml_rtmp::sessions::{ClientSession, ClientSessionConfig, ClientSessionResult, ClientSessionEvent, ClientSessionError, PublishRequestType};
 use tokio::net::{tcp, TcpStream};
-use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
-use crate::rtmp::RtmpError;
 use crate::rtmp::packet::{AudioPacket, VideoPacket};
 
 pub use rml_rtmp::sessions::StreamMetadata;
@@ -29,8 +27,6 @@ pub enum Error {
     #[from(ignore)]
     RtmpConnectionRefused(String),
     #[from(ignore)]
-    DeadRecvTask,
-    #[from(ignore)]
     UnexpectedEvent(ClientSessionEvent),
 }
 
@@ -42,7 +38,7 @@ enum ClientCommand {
 enum Event {
     Command(ClientCommand),
     CommandEof,
-    ServerData(Bytes),
+    ServerData(Result<Bytes, io::Error>),
     ServerEof,
 }
 
@@ -96,28 +92,27 @@ pub async fn start(mut stream: TcpStream) -> Result<PrepublishClient, Error> {
         loop {
             let data = match rtmp_rx.read(&mut buff).await {
                 Ok(0) => break,
-                Ok(n) => Bytes::copy_from_slice(&buff[0..n]),
+                Ok(n) => Ok(Bytes::copy_from_slice(&buff[0..n])),
                 Err(e) => {
                     eprintln!("rtmp::client recv error: {:?}", e);
-                    break;
+                    Err(e)
                 }
             };
 
             match recv_tx.send(data).await {
                 Ok(()) => continue,
-                Err(e) => break,
+                Err(_) => break,
             }
         }
     });
 
-    Ok(PrepublishClient {
-        client: ClientState {
-            session,
-            rtmp_tx,
-            rtmp_events: VecDeque::new(),
-        },
-        recv_rx,
-    })
+    let client = ClientState {
+        session,
+        rtmp_tx,
+        rtmp_events: VecDeque::new(),
+    };
+
+    Ok(PrepublishClient::new(client, recv_rx, bytes_after_handshake).await?)
 }
 
 #[derive(Debug)]
@@ -129,11 +124,11 @@ pub struct PublishInfo {
 
 pub struct PrepublishClient {
     client: ClientState,
-    recv_rx: mpsc::Receiver<Bytes>,
+    recv_rx: mpsc::Receiver<Result<Bytes, io::Error>>,
 }
 
 impl PrepublishClient {
-    async fn new(mut client: ClientState, recv_rx: mpsc::Receiver<Bytes>, bytes_after_handshake: Vec<u8>) -> Result<Self, Error> {
+    async fn new(mut client: ClientState, recv_rx: mpsc::Receiver<Result<Bytes, io::Error>>, bytes_after_handshake: Vec<u8>) -> Result<Self, Error> {
         let actions = client.session.handle_input(&bytes_after_handshake)?;
         handle_session_results(&mut client, actions).await?;
 
@@ -212,7 +207,7 @@ impl PrepublishClient {
         }
 
         loop {
-            let bytes = self.recv_rx.next().await.ok_or(Error::EarlyEof)?;
+            let bytes = self.recv_rx.next().await.ok_or(Error::EarlyEof)??;
 
             let actions = self.client.session.handle_input(&bytes)?;
             handle_session_results(&mut self.client, actions).await?;
@@ -266,9 +261,12 @@ struct ClientState {
 async fn run_client(mut client: ClientState, mut events: impl Stream<Item = Event> + Unpin) -> Result<(), Error> {
     while let Some(event) = events.next().await {
         match event {
-            Event::ServerData(bytes) => {
+            Event::ServerData(Ok(bytes)) => {
                 let actions = client.session.handle_input(&bytes)?;
                 handle_session_results(&mut client, actions).await?;
+            }
+            Event::ServerData(Err(e)) => {
+                return Err(e.into());
             }
             Event::ServerEof => {
                 break;

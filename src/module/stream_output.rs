@@ -1,16 +1,11 @@
-use std::sync::Arc;
-use std::thread;
-
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use derive_more::From;
 use fdk_aac::enc as aac;
 use num_rational::Rational64;
 use rml_rtmp::time::RtmpTimestamp;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
 
-use mixlab_mux::mp4::TrackData;
 use mixlab_protocol::{StreamOutputParams, LineType, Terminal, StreamOutputIndication, StreamOutputLiveStatus};
 
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
@@ -218,7 +213,7 @@ async fn connect_rtmp(params: StreamOutputParams) -> Result<PublishClient, RtmpC
     assert!(path.chars().nth(0) == Some('/'));
     let app_name = &path[1..];
 
-    let mut conn = TcpStream::connect((hostname, port)).await?;
+    let conn = TcpStream::connect((hostname, port)).await?;
     conn.set_nodelay(true)?;
 
     let client = client::start(conn)
