@@ -5,7 +5,7 @@ use std::mem;
 
 use futures::future;
 use futures::stream::{self, Stream, StreamExt};
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use derive_more::From;
 use rml_rtmp::time::RtmpTimestamp;
 use rml_rtmp::handshake::{Handshake, HandshakeProcessResult, PeerType, HandshakeError};
@@ -15,6 +15,7 @@ use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc;
 
 use crate::rtmp::RtmpError;
+use crate::rtmp::packet::{AudioPacket, VideoPacket};
 
 pub use rml_rtmp::sessions::StreamMetadata;
 
@@ -143,8 +144,6 @@ impl PrepublishClient {
     }
 
     pub async fn publish(mut self, info: PublishInfo) -> Result<PublishClient, Error> {
-        eprintln!("publish!");
-
         // request connection:
         let action = self.client.session.request_connection(info.app_name)?;
         handle_session_results(&mut self.client, iter::once(action)).await?;
@@ -164,14 +163,11 @@ impl PrepublishClient {
             }
         }
 
-        eprintln!("accepted connect");
-
         // request publish:
         let action = self.client.session.request_publishing(info.stream_key, PublishRequestType::Live)?;
         handle_session_results(&mut self.client, iter::once(action)).await?;
 
         loop {
-            eprintln!("waiting on publish");
             match self.wait_event().await? {
                 ClientSessionEvent::PublishRequestAccepted => {
                     break;
@@ -182,8 +178,6 @@ impl PrepublishClient {
                 }
             }
         }
-
-        eprintln!("accepted publish");
 
         // send publish metadata:
         let action = self.client.session.publish_metadata(&info.meta)?;
@@ -220,8 +214,6 @@ impl PrepublishClient {
         loop {
             let bytes = self.recv_rx.next().await.ok_or(Error::EarlyEof)?;
 
-            println!("got bytes -> {:?}", bytes);
-
             let actions = self.client.session.handle_input(&bytes)?;
             handle_session_results(&mut self.client, actions).await?;
 
@@ -246,16 +238,22 @@ impl fmt::Debug for PublishClient {
 pub struct PublishError;
 
 impl PublishClient {
-    pub async fn publish_audio(&mut self, data: Bytes, timestamp: RtmpTimestamp) -> Result<(), PublishError> {
-        self.command_tx.send(ClientCommand::PublishAudio { data, timestamp })
-            .await
+    pub fn publish_audio(&mut self, packet: AudioPacket, timestamp: RtmpTimestamp) -> Result<(), PublishError> {
+        let mut data = BytesMut::new();
+        packet.write_to(&mut data);
+
+        self.command_tx.try_send(ClientCommand::PublishAudio { data: data.freeze(), timestamp })
             .map_err(|_| PublishError)
+            // TODO disambiguate between other side disconnecting and other side lagging
     }
 
-    pub async fn publish_video(&mut self, data: Bytes, timestamp: RtmpTimestamp) -> Result<(), PublishError> {
-        self.command_tx.send(ClientCommand::PublishVideo { data, timestamp })
-            .await
+    pub fn publish_video(&mut self, packet: VideoPacket, timestamp: RtmpTimestamp) -> Result<(), PublishError> {
+        let mut data = BytesMut::new();
+        packet.write_to(&mut data);
+
+        self.command_tx.try_send(ClientCommand::PublishVideo { data: data.freeze(), timestamp })
             .map_err(|_| PublishError)
+            // TODO disambiguate between other side disconnecting and other side lagging
     }
 }
 
@@ -294,13 +292,11 @@ async fn run_client(mut client: ClientState, mut events: impl Stream<Item = Even
 
 async fn handle_session_results(client: &mut ClientState, actions: impl IntoIterator<Item = ClientSessionResult>) -> Result<(), Error> {
     for action in actions {
-        println!("action -> {:?}", action);
         match action {
             ClientSessionResult::OutboundResponse(packet) => {
                 client.rtmp_tx.write_all(&packet.bytes).await?;
             }
             ClientSessionResult::RaisedEvent(ev) => {
-                println!("received event! {:?}", ev);
                 client.rtmp_events.push_back(ev);
             }
             ClientSessionResult::UnhandleableMessageReceived(msg) => {

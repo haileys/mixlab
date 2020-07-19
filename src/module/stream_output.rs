@@ -1,9 +1,11 @@
 use std::sync::Arc;
 use std::thread;
 
+use bytes::{Bytes, BytesMut};
 use derive_more::From;
 use fdk_aac::enc as aac;
 use num_rational::Rational64;
+use rml_rtmp::time::RtmpTimestamp;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::oneshot;
@@ -13,6 +15,7 @@ use mixlab_protocol::{StreamOutputParams, LineType, Terminal, StreamOutputIndica
 
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
+use crate::rtmp::packet::{AudioPacket, VideoPacket, VideoFrameType, VideoPacketType};
 use crate::rtmp::client::{self, StreamMetadata, PublishInfo, PublishClient};
 use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, PixelFormat};
 
@@ -119,11 +122,7 @@ impl ModuleT for StreamOutput {
 
                 match completion.try_recv() {
                     Ok(Ok(publish)) => {
-                        self.connection = Connection::Live(LiveOutput {
-                            epoch: timestamp,
-                            encode: create_encode_stream(),
-                            publish,
-                        });
+                        self.connection = Connection::Live(LiveOutput::start(timestamp, publish));
 
                         match &mut self.connection {
                             Connection::Live(live) => live,
@@ -162,18 +161,25 @@ impl ModuleT for StreamOutput {
         live.encode.barrier(timestamp - live.epoch);
 
         while let Some(segment) = live.encode.recv_segment() {
-            // send segment to connected monitors
-            // this only errors if there are no connected clients
-            // let _ = live.segments_tx.send(segment.clone());
-
-            // // write segment to dump file
-            // let (duration, track_data) = match segment {
-            //     StreamSegment::Audio { duration, frame } => (duration, TrackData::Audio(frame)),
-            //     StreamSegment::Video { duration, frame } => (duration, TrackData::Video(frame)),
-            // };
-
-            // let segment = live.mux.write_track(duration, &track_data);
-            // let _ = live.file.write_all(&segment);
+            match segment {
+                StreamSegment::Audio { duration: _, timestamp, frame } => {
+                    let timestamp = RtmpTimestamp::new((timestamp * 1000).to_integer() as u32);
+                    live.publish.publish_audio(AudioPacket::AacRawData(frame), timestamp);
+                }
+                StreamSegment::Video { duration: _, timestamp, frame } => {
+                    let timestamp = RtmpTimestamp::new((timestamp * 1000).to_integer() as u32);
+                    live.publish.publish_video(VideoPacket {
+                        frame_type: if frame.is_key_frame {
+                            VideoFrameType::KeyFrame
+                        } else {
+                            VideoFrameType::InterFrame
+                        },
+                        packet_type: VideoPacketType::Nalu,
+                        composition_time: frame.composition_time,
+                        data: frame.data,
+                    }, timestamp);
+                }
+            }
         }
 
         return self.indicate();
@@ -296,18 +302,42 @@ struct LiveOutput {
     publish: PublishClient,
 }
 
-fn create_encode_stream() -> EncodeStream {
-    let audio_ctx = AudioCtx::new(AudioParams {
-        bit_rate: aac::BitRate::VbrVeryHigh,
-        sample_rate: SAMPLE_RATE,
-    });
+impl LiveOutput {
+    pub fn start(epoch: Rational64, mut publish: PublishClient) -> Self {
+        let audio_ctx = AudioCtx::new(AudioParams {
+            bit_rate: aac::BitRate::VbrVeryHigh,
+            sample_rate: SAMPLE_RATE,
+            transport: aac::Transport::Raw,
+        });
 
-    let video_ctx = VideoCtx::new(VideoParams {
-        width: OUTPUT_WIDTH,
-        height: OUTPUT_HEIGHT,
-        time_base: SAMPLE_RATE,
-        pixel_format: PixelFormat::Yuv420p,
-    });
+        // configuration buffer is ASC when raw transport is in use:
+        let asc = audio_ctx.configuration_data();
+        publish.publish_audio(AudioPacket::AacSequenceHeader(asc), RtmpTimestamp::new(0));
 
-    EncodeStream::new(audio_ctx, video_ctx)
+        let video_ctx = VideoCtx::new(VideoParams {
+            width: OUTPUT_WIDTH,
+            height: OUTPUT_HEIGHT,
+            time_base: SAMPLE_RATE,
+            pixel_format: PixelFormat::Yuv420p,
+        });
+
+        let mut dsc = BytesMut::new();
+        video_ctx.decoder_configuration_record().write_to(&mut dsc);
+        let dsc = dsc.freeze();
+
+        publish.publish_video(VideoPacket {
+            frame_type: VideoFrameType::KeyFrame,
+            packet_type: VideoPacketType::SequenceHeader,
+            composition_time: 0,
+            data: dsc,
+        }, RtmpTimestamp::new(0));
+
+        let encode = EncodeStream::new(audio_ctx, video_ctx);
+
+        LiveOutput {
+            epoch,
+            encode,
+            publish,
+        }
+    }
 }

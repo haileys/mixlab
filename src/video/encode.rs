@@ -9,7 +9,7 @@ use mixlab_codec::avc::DecoderConfigurationRecord;
 use mixlab_codec::avc::encode::{AvcEncoder, AvcParams};
 use mixlab_codec::ffmpeg::AvFrame;
 use mixlab_codec::ffmpeg::sys;
-use mixlab_mux::mp4::{self, AdtsFrame};
+use mixlab_mux::mp4;
 
 use crate::engine::Sample;
 
@@ -50,7 +50,11 @@ impl EncodeStream {
 
             let duration = duration.try_into().expect("duration too large");
 
-            self.segments.push_back(StreamSegment::Audio { duration, frame });
+            self.segments.push_back(StreamSegment::Audio {
+                timestamp: self.audio_timestamp,
+                duration,
+                frame,
+            });
 
             self.audio_timestamp = new_timestamp;
         }
@@ -94,7 +98,11 @@ impl EncodeStream {
 
         let duration = duration.try_into().expect("duration too large");
 
-        self.segments.push_back(StreamSegment::Video { duration, frame });
+        self.segments.push_back(StreamSegment::Video {
+            timestamp: self.video_timestamp,
+            duration,
+            frame,
+        });
 
         self.video_timestamp = new_timestamp;
 
@@ -107,8 +115,8 @@ impl EncodeStream {
 
 #[derive(Clone, Debug)]
 pub enum StreamSegment {
-    Audio { duration: u32, frame: mp4::AdtsFrame },
-    Video { duration: u32, frame: mp4::AvcFrame },
+    Audio { timestamp: Rational64, duration: u32, frame: Bytes },
+    Video { timestamp: Rational64, duration: u32, frame: mp4::AvcFrame },
 }
 
 #[derive(Debug)]
@@ -143,11 +151,12 @@ impl AudioCtx {
         }
     }
 
-    pub fn codec(&self) -> &aac::Encoder {
-        &self.codec
+    pub fn configuration_data(&self) -> Bytes {
+        let info = self.codec.info().unwrap();
+        Bytes::copy_from_slice(&info.confBuf[0..info.confSize as usize])
     }
 
-    fn send_audio(&mut self, samples: &[Sample]) -> Option<(Rational64, AdtsFrame)> {
+    fn send_audio(&mut self, samples: &[Sample]) -> Option<(Rational64, Bytes)> {
         self.pcm_buff.extend(samples.iter().copied().map(|sample| {
             // TODO set CLIP flag if sample is out of range
             let sample = if sample > 1.0 {
@@ -178,10 +187,10 @@ impl AudioCtx {
             }
 
             let duration = Rational64::new(SAMPLES_PER_CHANNEL_PER_FRAGMENT as i64, self.sample_rate);
-            let adts = AdtsFrame(Bytes::copy_from_slice(&aac_buff[0..encode_result.output_size]));
+            let frame_data = Bytes::copy_from_slice(&aac_buff[0..encode_result.output_size]);
             self.pcm_buff.drain(0..audio_frame_sample_count);
 
-            Some((duration, adts))
+            Some((duration, frame_data))
         } else {
             None
         }

@@ -11,7 +11,7 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 use warp::ws::{self, WebSocket};
 
-use mixlab_mux::mp4::{Mp4Mux, Mp4Params, TrackData};
+use mixlab_mux::mp4::{Mp4Mux, Mp4Params, TrackData, AdtsFrame};
 use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPacket};
 
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
@@ -43,13 +43,13 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
     // than disconnecting the client
     while let Ok(segment) = stream.recv().await {
         match segment {
-            StreamSegment::Audio { duration, frame } => {
+            StreamSegment::Audio { duration, frame, timestamp: _ } => {
                 send_packet(&mut client, MonitorTransportPacket::Frame {
                     duration,
-                    track_data: TrackData::Audio(frame.clone()),
+                    track_data: TrackData::Audio(AdtsFrame(frame.clone())),
                 }).await?;
             }
-            StreamSegment::Video { duration, frame } => {
+            StreamSegment::Video { duration, frame, timestamp: _ } => {
                 send_packet(&mut client, MonitorTransportPacket::Frame {
                     duration,
                     track_data: TrackData::Video(frame),
@@ -190,8 +190,8 @@ impl ModuleT for Monitor {
 
             // write segment to dump file
             let (duration, track_data) = match segment {
-                StreamSegment::Audio { duration, frame } => (duration, TrackData::Audio(frame)),
-                StreamSegment::Video { duration, frame } => (duration, TrackData::Video(frame)),
+                StreamSegment::Audio { duration, frame, timestamp: _ } => (duration, TrackData::Audio(AdtsFrame(frame))),
+                StreamSegment::Video { duration, frame, timestamp: _ } => (duration, TrackData::Video(frame)),
             };
 
             let segment = self.mux.write_track(duration, &track_data);
