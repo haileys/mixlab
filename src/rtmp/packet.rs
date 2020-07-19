@@ -3,15 +3,19 @@ use bytes::{Bytes, Buf};
 pub enum AudioPacket {
     AacSequenceHeader(Bytes),
     AacRawData(Bytes),
-    Unknown(Bytes)
+}
+
+#[derive(Debug)]
+pub enum AudioPacketError {
+    Eof,
+    BadTag(u8),
+    BadPacketType(u8),
 }
 
 // See https://www.adobe.com/content/dam/acom/en/devnet/flv/video_file_format_spec_v10_1.pdf
 // Section E.4.2.1 AUDIODATA for reference
 impl AudioPacket {
-    pub fn parse(mut bytes: Bytes) -> AudioPacket {
-        let original = bytes.clone();
-
+    pub fn parse(mut bytes: Bytes) -> Result<AudioPacket, AudioPacketError> {
         if bytes.len() >= 2 {
             let tag = bytes.get_u8();
 
@@ -20,14 +24,18 @@ impl AudioPacket {
                 let packet_type = bytes.get_u8();
 
                 if packet_type == 0 {
-                    return AudioPacket::AacSequenceHeader(bytes);
+                    Ok(AudioPacket::AacSequenceHeader(bytes))
                 } else if packet_type == 1 {
-                    return AudioPacket::AacRawData(bytes);
+                    Ok(AudioPacket::AacRawData(bytes))
+                } else {
+                    Err(AudioPacketError::BadPacketType(packet_type))
                 }
+            } else {
+                Err(AudioPacketError::BadTag(tag))
             }
+        } else {
+            Err(AudioPacketError::Eof)
         }
-
-        AudioPacket::Unknown(original)
     }
 }
 

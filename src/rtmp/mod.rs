@@ -197,11 +197,11 @@ fn receive_audio_packet(
     let packet = AudioPacket::parse(data);
 
     match packet {
-        AudioPacket::AacSequenceHeader(bytes) => {
+        Ok(AudioPacket::AacSequenceHeader(bytes)) => {
             let asc = aac::AudioSpecificConfiguration::parse(bytes)?;
             ctx.audio_asc = Some(asc);
         }
-        AudioPacket::AacRawData(bytes) => {
+        Ok(AudioPacket::AacRawData(bytes)) => {
             let asc = if let Some(asc) = &ctx.audio_asc {
                 asc
             } else {
@@ -249,8 +249,8 @@ fn receive_audio_packet(
                 }
             }
         }
-        AudioPacket::Unknown(_) => {
-            eprintln!("rtmp: received unknown audio packet, dropping");
+        Err(e) => {
+            eprintln!("rtmp: could not parse audio packet ({:?}), dropping", e);
         }
     }
 
@@ -267,7 +267,7 @@ fn receive_video_packet(
     let packet = match VideoPacket::parse(data) {
         Ok(packet) => packet,
         Err(e) => {
-            println!("rtmp: could not parse video packet: {:?}", e);
+            println!("rtmp: could not parse video packet ({:?}), dropping", e);
             return Ok(());
         }
     };
