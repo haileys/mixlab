@@ -13,7 +13,6 @@ use rml_rtmp::time::RtmpTimestamp;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use mixlab_codec::aac;
-use mixlab_codec::avc::{AvcPacket, AvcPacketType};
 use mixlab_codec::avc::decode::{self, AvcDecoder, RecvFrameError};
 use mixlab_codec::ffmpeg::AvError;
 
@@ -25,7 +24,7 @@ pub mod client;
 mod incoming;
 mod packet;
 
-use packet::AudioPacket;
+use packet::{AudioPacket, VideoPacket, VideoPacketType};
 
 lazy_static::lazy_static! {
     static ref MOUNTPOINTS: Registry = {
@@ -265,7 +264,7 @@ fn receive_video_packet(
 ) -> Result<(), RtmpError> {
     let meta = ctx.meta.as_ref().ok_or(RtmpError::MetadataNotYetSent)?;
 
-    let packet = match AvcPacket::parse(data) {
+    let packet = match VideoPacket::parse(data) {
         Ok(packet) => packet,
         Err(e) => {
             println!("rtmp: could not parse video packet: {:?}", e);
@@ -274,10 +273,10 @@ fn receive_video_packet(
     };
 
     match packet.packet_type {
-        AvcPacketType::SequenceHeader => {
+        VideoPacketType::SequenceHeader => {
             ctx.video_dcr = Some(packet.data.clone());
         }
-        AvcPacketType::Nalu => {
+        VideoPacketType::Nalu => {
             let dcr = ctx.video_dcr.take();
 
             // TODO rtmp timestamps are only 32 bit and have arbitrary
@@ -312,7 +311,7 @@ fn receive_video_packet(
                 }
             }
         }
-        AvcPacketType::EndOfSequence => {
+        VideoPacketType::EndOfSequence => {
             // do nothing
         }
     }
