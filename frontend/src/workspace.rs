@@ -821,6 +821,7 @@ impl Component for Terminal {
                 onmousedown={self.props.onmousedown.clone()}
                 onmouseover={self.link.callback(|_| true)}
                 onmouseout={self.link.callback(|_| false)}
+                oncontextmenu={prevent_default()}
             >
                 <div class="terminal-label">
                     {format!("{}", &self.props.terminal.label.as_ref().unwrap_or(&"".to_string()))}
