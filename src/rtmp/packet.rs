@@ -1,4 +1,4 @@
-use bytes::{Bytes, Buf};
+use bytes::{Bytes, Buf, BytesMut, BufMut};
 
 pub enum AudioPacket {
     AacSequenceHeader(Bytes),
@@ -35,6 +35,21 @@ impl AudioPacket {
             }
         } else {
             Err(AudioPacketError::Eof)
+        }
+    }
+
+    pub fn write_to(&self, out: &mut BytesMut) {
+        match self {
+            AudioPacket::AacSequenceHeader(bytes) => {
+                out.put_u8(0xaf);
+                out.put_u8(0);
+                out.extend_from_slice(bytes);
+            }
+            AudioPacket::AacRawData(bytes) => {
+                out.put_u8(0xaf);
+                out.put_u8(1);
+                out.extend_from_slice(bytes);
+            }
         }
     }
 }
@@ -120,5 +135,33 @@ impl VideoPacket {
             composition_time,
             data,
         })
+    }
+
+    pub fn write_to(&self, out: &mut BytesMut) {
+        let frame_type: u8 = match self.frame_type {
+            VideoFrameType::KeyFrame => 1,
+            VideoFrameType::InterFrame => 2,
+            VideoFrameType::DisposableInterFrame => 3,
+            VideoFrameType::GeneratedKeyFrame => 4,
+            VideoFrameType::VideoInfoFrame => 5,
+        };
+
+        let codec: u8 = 7; // AVC
+
+        // write ident (frame type + codec)
+        out.put_u8((frame_type << 4) | codec);
+
+        // write packet type
+        out.put_u8(match self.packet_type {
+            VideoPacketType::SequenceHeader => 0,
+            VideoPacketType::Nalu => 1,
+            VideoPacketType::EndOfSequence => 2,
+        });
+
+        // write composition time as BE24
+        out.put_uint(self.composition_time as u64, 3usize);
+
+        // write data
+        out.extend_from_slice(&self.data);
     }
 }
