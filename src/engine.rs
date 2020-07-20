@@ -454,7 +454,7 @@ impl Engine {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VideoFrame {
     pub data: Arc<video::Frame>,
 
