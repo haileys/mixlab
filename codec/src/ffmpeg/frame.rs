@@ -8,6 +8,7 @@ pub struct AvFrame {
     ptr: *mut ff::AVFrame,
 }
 
+// ffmpeg buffer refcounts are threadsafe
 unsafe impl Sync for AvFrame {}
 unsafe impl Send for AvFrame {}
 

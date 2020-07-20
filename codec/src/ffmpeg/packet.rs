@@ -9,6 +9,10 @@ pub struct AvPacket {
     packet: ff::AVPacket,
 }
 
+// ffmpeg buffer refcounts are threadsafe
+unsafe impl Sync for AvPacket {}
+unsafe impl Send for AvPacket {}
+
 impl AvPacket {
     pub unsafe fn new(raw: ff::AVPacket) -> Self {
         AvPacket { packet: raw }
