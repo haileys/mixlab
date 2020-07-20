@@ -308,23 +308,23 @@ impl LiveOutputTask {
 
                             while let Some(segment) = live.encode.recv_segment() {
                                 match segment {
-                                    StreamSegment::Audio { duration: _, decode_timestamp, frame } => {
-                                        println!("sending audio dts {:?} ({} bytes)", crate::util::decimal(decode_timestamp), frame.len());
-                                        let timestamp = RtmpTimestamp::new((decode_timestamp * 1000).to_integer() as u32);
-                                        live.publish.publish_audio(AudioPacket::AacRawData(frame), timestamp).expect("TODO");
+                                    StreamSegment::Audio(audio) => {
+                                        println!("sending audio dts {:?} ({} bytes)", crate::util::decimal(audio.decode_timestamp), audio.frame.len());
+                                        let timestamp = RtmpTimestamp::new((audio.decode_timestamp * 1000).to_integer() as u32);
+                                        live.publish.publish_audio(AudioPacket::AacRawData(audio.frame), timestamp).expect("TODO");
                                     }
-                                    StreamSegment::Video { duration: _, decode_timestamp, frame } => {
-                                        println!("sending video dts {:?} ({} bytes)", crate::util::decimal(decode_timestamp), frame.data.len());
-                                        let timestamp = RtmpTimestamp::new((decode_timestamp * 1000).to_integer() as u32);
+                                    StreamSegment::Video(video) => {
+                                        println!("sending video dts {:?} ({} bytes)", crate::util::decimal(video.decode_timestamp), video.frame.data.len());
+                                        let timestamp = RtmpTimestamp::new((video.decode_timestamp * 1000).to_integer() as u32);
                                         live.publish.publish_video(VideoPacket {
-                                            frame_type: if frame.is_key_frame {
+                                            frame_type: if video.frame.is_key_frame {
                                                 VideoFrameType::KeyFrame
                                             } else {
                                                 VideoFrameType::InterFrame
                                             },
                                             packet_type: VideoPacketType::Nalu,
-                                            composition_time: frame.composition_time,
-                                            data: frame.data,
+                                            composition_time: 0,//video.frame.composition_time,
+                                            data: video.frame.data,
                                         }, timestamp).expect("TODO");
                                     }
                                 }

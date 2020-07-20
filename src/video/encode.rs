@@ -20,9 +20,10 @@ const AUDIO_CHANNELS: usize = 2;
 
 #[derive(Debug)]
 pub struct EncodeStream {
-    segments: VecDeque<StreamSegment>,
+    audio_segments: VecDeque<AudioSegment>,
     audio_timestamp: Rational64,
     audio_ctx: AudioCtx,
+    video_segments: VecDeque<VideoSegment>,
     video_timestamp: Rational64,
     video_ctx: VideoCtx,
 }
@@ -30,9 +31,10 @@ pub struct EncodeStream {
 impl EncodeStream {
     pub fn new(audio_ctx: AudioCtx, video_ctx: VideoCtx) -> Self {
         EncodeStream {
-            segments: VecDeque::new(),
+            audio_segments: VecDeque::new(),
             audio_timestamp: Rational64::new(0, 1),
             audio_ctx,
+            video_segments: VecDeque::new(),
             video_timestamp: Rational64::new(0, 1),
             video_ctx,
         }
@@ -50,7 +52,7 @@ impl EncodeStream {
 
             let duration = duration.try_into().expect("duration too large");
 
-            self.segments.push_back(StreamSegment::Audio {
+            self.audio_segments.push_back(AudioSegment {
                 decode_timestamp: self.audio_timestamp,
                 duration,
                 frame,
@@ -100,7 +102,9 @@ impl EncodeStream {
         let duration = duration.try_into().expect("duration too large");
 
         while let Some(packet) = self.video_ctx.recv_packet() {
-            self.segments.push_back(StreamSegment::Video {
+            println!("RECEIVED VIDEO PACKET: dts = {:?} pts = {:?}", packet.decode_timestamp(), packet.presentation_timestamp());
+
+            self.video_segments.push_back(VideoSegment {
                 decode_timestamp: Rational64::new(packet.decode_timestamp(), timescale),
                 duration,
                 frame: AvcFrame {
@@ -115,14 +119,36 @@ impl EncodeStream {
     }
 
     pub fn recv_segment(&mut self) -> Option<StreamSegment> {
-        self.segments.pop_front()
+        if self.audio_segments.len() <= 1 || self.video_segments.len() <= 1 {
+            return None;
+        }
+
+        if self.audio_segments.front().unwrap().decode_timestamp < self.video_segments.front().unwrap().decode_timestamp {
+            self.audio_segments.pop_front().map(StreamSegment::Audio)
+        } else {
+            self.video_segments.pop_front().map(StreamSegment::Video)
+        }
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum StreamSegment {
-    Audio { decode_timestamp: Rational64, duration: u32, frame: Bytes },
-    Video { decode_timestamp: Rational64, duration: u32, frame: AvcFrame },
+    Audio(AudioSegment),
+    Video(VideoSegment),
+}
+
+#[derive(Clone, Debug)]
+pub struct AudioSegment {
+    pub decode_timestamp: Rational64,
+    pub duration: u32,
+    pub frame: Bytes,
+}
+
+#[derive(Clone, Debug)]
+pub struct VideoSegment {
+    pub decode_timestamp: Rational64,
+    pub duration: u32,
+    pub frame: AvcFrame,
 }
 
 #[derive(Debug)]

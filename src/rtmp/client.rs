@@ -30,11 +30,13 @@ pub enum Error {
     UnexpectedEvent(ClientSessionEvent),
 }
 
+#[derive(Debug)]
 enum ClientCommand {
     PublishVideo { data: Bytes, timestamp: RtmpTimestamp },
     PublishAudio { data: Bytes, timestamp: RtmpTimestamp },
 }
 
+#[derive(Debug)]
 enum Event {
     Command(ClientCommand),
     CommandEof,
@@ -270,24 +272,30 @@ async fn run_client(mut client: ClientState, mut events: impl Stream<Item = Even
     while let Some(event) = events.next().await {
         match event {
             Event::ServerData(Ok(bytes)) => {
+                println!("received server data");
                 let actions = client.session.handle_input(&bytes)?;
                 handle_session_results(&mut client, actions).await?;
             }
             Event::ServerData(Err(e)) => {
+                println!("server read error, goodbye");
                 return Err(e.into());
             }
             Event::ServerEof => {
+                println!("server eof, goodbye");
                 break;
             }
             Event::Command(ClientCommand::PublishAudio { data, timestamp }) => {
+                println!("received PublishAudio");
                 let action = client.session.publish_audio_data(data, timestamp, false)?;
                 handle_session_results(&mut client, iter::once(action)).await?;
             }
             Event::Command(ClientCommand::PublishVideo { data, timestamp }) => {
+                println!("received PublishVideo");
                 let action = client.session.publish_video_data(data, timestamp, false)?;
                 handle_session_results(&mut client, iter::once(action)).await?;
             }
             Event::CommandEof => {
+                println!("command eof, goodbye");
                 break;
             }
         }
@@ -303,6 +311,7 @@ async fn handle_session_results(client: &mut ClientState, actions: impl IntoIter
                 client.rtmp_tx.write_all(&packet.bytes).await?;
             }
             ClientSessionResult::RaisedEvent(ev) => {
+                println!("REMOTE RAISED EVENT: {:?}", ev);
                 client.rtmp_events.push_back(ev);
             }
             ClientSessionResult::UnhandleableMessageReceived(msg) => {

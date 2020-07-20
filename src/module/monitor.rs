@@ -44,19 +44,19 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
     // than disconnecting the client
     while let Ok(segment) = stream.recv().await {
         match segment {
-            StreamSegment::Audio { duration, frame, decode_timestamp: _ } => {
+            StreamSegment::Audio(audio) => {
                 send_packet(&mut client, MonitorTransportPacket::Frame {
-                    duration,
-                    track_data: TrackData::Audio(AdtsFrame(frame.clone())),
+                    duration: audio.duration,
+                    track_data: TrackData::Audio(AdtsFrame(audio.frame.clone())),
                 }).await?;
             }
-            StreamSegment::Video { duration, frame, decode_timestamp: _ } => {
+            StreamSegment::Video(video) => {
                 send_packet(&mut client, MonitorTransportPacket::Frame {
-                    duration,
+                    duration: video.duration,
                     track_data: TrackData::Video(AvcFrame {
-                        is_key_frame: frame.is_key_frame,
-                        composition_time: frame.composition_time as u32,
-                        data: frame.data.clone(),
+                        is_key_frame: video.frame.is_key_frame,
+                        composition_time: video.frame.composition_time as u32,
+                        data: video.frame.data.clone(),
                     }),
                 }).await?;
             }
@@ -190,12 +190,12 @@ impl ModuleT for Monitor {
         self.encode.barrier(timestamp - epoch);
 
         while let Some(segment) = self.encode.recv_segment() {
-            if let StreamSegment::Video { frame, .. } = &segment {
+            if let StreamSegment::Video(video) = &segment {
                 // if dts = pts for all frames, we can safely ignore both and attach our own timing to the frame:
-                assert!(frame.composition_time == 0);
+                assert!(video.frame.composition_time == 0);
 
                 // and if all frames are key frames, we can stream directly to clients with no buffering:
-                assert!(frame.is_key_frame);
+                assert!(video.frame.is_key_frame);
             }
 
             // send segment to connected monitors
