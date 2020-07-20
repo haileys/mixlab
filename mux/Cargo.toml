@@ -5,6 +5,8 @@ authors = ["Charlie Somerville <charlie@charlie.bz>"]
 edition = "2018"
 
 [dependencies]
+mixlab-util = { path = "../util" }
+
 bytes = { version = "0.5", features = ["serde"] }
 serde = "1.0"
 serde_derive = "1.0"

@@ -11,6 +11,7 @@ use mse_fmp4::fmp4::{
 };
 use mse_fmp4::io::WriteTo;
 use serde::{Deserialize, Serialize};
+use mixlab_util::time::MediaDuration;
 
 #[derive(Debug)]
 pub struct Mp4Mux {
@@ -26,7 +27,7 @@ pub struct AdtsFrame(pub Bytes);
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AvcFrame {
     pub is_key_frame: bool,
-    pub composition_time: u32,
+    pub composition_time: MediaDuration,
     pub data: Bytes,
 }
 
@@ -301,7 +302,7 @@ fn make_media_segment(
                     samples: vec![Sample {
                         duration: Some(duration),
                         size: Some(avc_frame.data.len() as u32),
-                        composition_time_offset: Some(avc_frame.composition_time as i32),
+                        composition_time_offset: Some(avc_frame.composition_time.round_to_base(i64::from(mux.timescale)) as i32),
                         flags: Some(sample_flags),
                     }],
                 }

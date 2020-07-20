@@ -55,7 +55,7 @@ pub async fn stream(socket_id: Uuid, mut client: WebSocket) -> Result<(), ()> {
                     duration: video.duration,
                     track_data: TrackData::Video(AvcFrame {
                         is_key_frame: video.frame.is_key_frame,
-                        composition_time: video.frame.composition_time as u32,
+                        composition_time: video.frame.composition_time,
                         data: video.frame.data.clone(),
                     }),
                 }).await?;
@@ -192,7 +192,7 @@ impl ModuleT for Monitor {
         while let Some(segment) = self.encode.recv_segment() {
             if let StreamSegment::Video(video) = &segment {
                 // if dts = pts for all frames, we can safely ignore both and attach our own timing to the frame:
-                assert!(video.frame.composition_time == 0);
+                assert!(video.frame.composition_time.is_zero());
 
                 // and if all frames are key frames, we can stream directly to clients with no buffering:
                 assert!(video.frame.is_key_frame);

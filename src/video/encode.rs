@@ -7,9 +7,10 @@ use num_rational::Rational64;
 
 use mixlab_codec::avc::DecoderConfigurationRecord;
 use mixlab_codec::avc::encode::{AvcEncoder, AvcParams};
-use mixlab_codec::ffmpeg::{AvFrame, AvPacket};
 use mixlab_codec::ffmpeg::sys;
+use mixlab_codec::ffmpeg::{AvFrame, AvPacket};
 use mixlab_mux::mp4::{self, AvcFrame};
+use mixlab_util::time::MediaDuration;
 
 use crate::engine::Sample;
 
@@ -109,7 +110,7 @@ impl EncodeStream {
                 duration,
                 frame: AvcFrame {
                     is_key_frame: packet.is_key_frame(),
-                    composition_time: (packet.presentation_timestamp() - packet.decode_timestamp()) as u32,
+                    composition_time: MediaDuration::new(packet.presentation_timestamp() - packet.decode_timestamp(), timescale),
                     data: Bytes::copy_from_slice(packet.data()),
                 },
             });

@@ -8,6 +8,7 @@ edition = "2018"
 mixlab-codec = { path = "codec" }
 mixlab-mux = { path = "mux" }
 mixlab-protocol = { path = "protocol" }
+mixlab-util = { path = "util" }
 
 bincode = "1.2"
 byteorder = "1.3"
