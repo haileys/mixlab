@@ -1,9 +1,11 @@
 use std::fmt;
 use std::num::NonZeroUsize;
 
-use mixlab_mux::mp4::{self, Mp4Params};
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use mixlab_mux::mp4::{self, Mp4Params};
+use mixlab_util::time::MediaDuration;
 
 pub type Sample = f32;
 
@@ -198,7 +200,7 @@ pub enum MonitorTransportPacket {
         params: Mp4Params<'static>,
     },
     Frame {
-        duration: u32,
+        duration: MediaDuration,
         track_data: mp4::TrackData,
     },
 }

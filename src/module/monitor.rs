@@ -4,16 +4,15 @@ use std::fs::File;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 
-use bytes::Bytes;
 use fdk_aac::enc as aac;
 use futures::sink::SinkExt;
-use num_rational::Rational64;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 use warp::ws::{self, WebSocket};
 
 use mixlab_mux::mp4::{Mp4Mux, Mp4Params, TrackData, AdtsFrame, AvcFrame};
 use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPacket};
+use mixlab_util::time::MediaTime;
 
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
@@ -82,7 +81,7 @@ struct AacFrame {
 
 #[derive(Debug)]
 pub struct Monitor {
-    epoch: Option<Rational64>,
+    epoch: Option<MediaTime>,
     socket_id: Uuid,
     segments_tx: Arc<broadcast::Sender<StreamSegment>>,
     file: File,
@@ -175,19 +174,20 @@ impl ModuleT for Monitor {
             _ => unreachable!()
         };
 
-        let timestamp = Rational64::new(time as i64, SAMPLE_RATE as i64);
+        let timestamp = MediaTime::new(time as i64, SAMPLE_RATE as i64);
         let epoch = *self.epoch.get_or_insert(timestamp);
 
         self.encode.send_audio(audio);
 
         if let Some(video_frame) = video {
+            let frame_timestamp = timestamp + video_frame.tick_offset;
+            let frame_timestamp = MediaTime::zero() + (frame_timestamp - epoch);
             let frame = video_frame.data.decoded.clone();
-            let frame_timestamp = timestamp - epoch + video_frame.tick_offset;
 
             self.encode.send_video(frame_timestamp, video_frame.data.duration_hint, frame);
         }
 
-        self.encode.barrier(timestamp - epoch);
+        self.encode.barrier(MediaTime::zero() + (timestamp - epoch));
 
         while let Some(segment) = self.encode.recv_segment() {
             if let StreamSegment::Video(video) = &segment {

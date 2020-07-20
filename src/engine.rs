@@ -7,11 +7,11 @@ use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError
 use std::thread;
 use std::time::{Instant, Duration};
 
-use num_rational::Rational64;
 use tokio::runtime;
 use tokio::sync::{oneshot, broadcast};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ServerUpdate, Indication, LineType, ClientSequence, ClientOp};
+use mixlab_util::time::MediaDuration;
 
 use crate::module::Module;
 use crate::util::Sequence;
@@ -459,7 +459,7 @@ pub struct VideoFrame {
     pub data: Arc<video::Frame>,
 
     // frame timestamp in fractional seconds after enclosing tick begins:
-    pub tick_offset: Rational64,
+    pub tick_offset: MediaDuration,
 }
 
 pub enum InputRef<'a> {

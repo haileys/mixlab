@@ -1138,6 +1138,7 @@ name = "mixlab-protocol"
 version = "0.0.0"
 dependencies = [
  "mixlab-mux",
+ "mixlab-util",
  "serde",
  "serde_derive",
  "uuid",

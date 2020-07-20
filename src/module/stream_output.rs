@@ -4,16 +4,17 @@ use std::thread;
 use bytes::BytesMut;
 use derive_more::From;
 use fdk_aac::enc as aac;
-use num_rational::Rational64;
 use rml_rtmp::time::RtmpTimestamp;
 use tokio::net::TcpStream;
 use tokio::runtime;
 use tokio::sync::oneshot;
 
 use mixlab_protocol::{StreamOutputParams, LineType, Terminal, StreamOutputIndication, StreamOutputLiveStatus};
+use mixlab_util::time::MediaTime;
 
 use crate::engine::{self, InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
+use crate::rtmp;
 use crate::rtmp::packet::{AudioPacket, VideoPacket, VideoFrameType, VideoPacketType};
 use crate::rtmp::client::{self, StreamMetadata, PublishInfo, PublishClient};
 use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, PixelFormat, Profile};
@@ -107,7 +108,7 @@ impl ModuleT for StreamOutput {
             _ => unreachable!()
         };
 
-        let timestamp = Rational64::new(engine_time as i64, SAMPLE_RATE as i64);
+        let timestamp = MediaTime::new(engine_time as i64, SAMPLE_RATE as i64);
 
         let live = match &mut self.connection {
             Connection::Offline => {
@@ -280,11 +281,11 @@ struct LiveOutputTask {
 }
 
 enum LiveOutputMsg {
-    Tick { timestamp: Rational64, audio: Vec<engine::Sample>, video: Option<engine::VideoFrame> }
+    Tick { timestamp: MediaTime, audio: Vec<engine::Sample>, video: Option<engine::VideoFrame> }
 }
 
 impl LiveOutputTask {
-    pub fn start(epoch: Rational64, mut publish: PublishClient) -> Self {
+    pub fn start(epoch: MediaTime, publish: PublishClient) -> Self {
         let runtime = runtime::Handle::current();
         let (tx, rx) = mpsc::sync_channel(100);
 
@@ -295,40 +296,7 @@ impl LiveOutputTask {
                 while let Ok(msg) = rx.recv() {
                     match msg {
                         LiveOutputMsg::Tick { timestamp, audio, video } => {
-                            live.encode.send_audio(&audio);
-
-                            if let Some(video_frame) = video {
-                                let frame = video_frame.data.decoded.clone();
-                                let frame_timestamp = timestamp - live.epoch + video_frame.tick_offset;
-
-                                live.encode.send_video(frame_timestamp, video_frame.data.duration_hint, frame);
-                            }
-
-                            live.encode.barrier(timestamp - live.epoch);
-
-                            while let Some(segment) = live.encode.recv_segment() {
-                                match segment {
-                                    StreamSegment::Audio(audio) => {
-                                        println!("sending audio dts {:?} ({} bytes)", crate::util::decimal(audio.decode_timestamp), audio.frame.len());
-                                        let timestamp = RtmpTimestamp::new((audio.decode_timestamp * 1000).to_integer() as u32);
-                                        live.publish.publish_audio(AudioPacket::AacRawData(audio.frame), timestamp).expect("TODO");
-                                    }
-                                    StreamSegment::Video(video) => {
-                                        println!("sending video dts {:?} ({} bytes)", crate::util::decimal(video.decode_timestamp), video.frame.data.len());
-                                        let timestamp = RtmpTimestamp::new((video.decode_timestamp * 1000).to_integer() as u32);
-                                        live.publish.publish_video(VideoPacket {
-                                            frame_type: if video.frame.is_key_frame {
-                                                VideoFrameType::KeyFrame
-                                            } else {
-                                                VideoFrameType::InterFrame
-                                            },
-                                            packet_type: VideoPacketType::Nalu,
-                                            composition_time: 0,//video.frame.composition_time,
-                                            data: video.frame.data,
-                                        }, timestamp).expect("TODO");
-                                    }
-                                }
-                            }
+                            live.tick(timestamp, audio, video);
                         }
                     }
                 }
@@ -357,13 +325,15 @@ impl LiveOutputTask {
 
 #[derive(Debug)]
 struct LiveOutput {
-    epoch: Rational64,
+    epoch: MediaTime,
     encode: EncodeStream,
     publish: PublishClient,
+    audio_time: MediaTime,
+    video_time: MediaTime,
 }
 
 impl LiveOutput {
-    pub fn start(epoch: Rational64, mut publish: PublishClient) -> Self {
+    pub fn start(epoch: MediaTime, mut publish: PublishClient) -> Self {
         let audio_ctx = AudioCtx::new(AudioParams {
             bit_rate: aac::BitRate::Cbr(160000),
             sample_rate: SAMPLE_RATE,
@@ -399,6 +369,45 @@ impl LiveOutput {
             epoch,
             encode,
             publish,
+            audio_time: MediaTime::zero(),
+            video_time: MediaTime::zero(),
+        }
+    }
+
+    pub fn tick(&mut self, timestamp: MediaTime, audio: Vec<engine::Sample>, video: Option<engine::VideoFrame>) {
+        self.encode.send_audio(&audio);
+
+        if let Some(video_frame) = video {
+            let frame = video_frame.data.decoded.clone();
+            let frame_timestamp = timestamp.remove_epoch(self.epoch) + video_frame.tick_offset;
+
+            self.encode.send_video(frame_timestamp, video_frame.data.duration_hint, frame);
+        }
+
+        self.encode.barrier(timestamp.remove_epoch(self.epoch));
+
+        while let Some(segment) = self.encode.recv_segment() {
+            match segment {
+                StreamSegment::Audio(audio) => {
+                    println!("sending audio dts {:?} ({} bytes)", crate::util::decimal(audio.decode_timestamp.as_rational()), audio.frame.len());
+                    let timestamp = RtmpTimestamp::new(audio.decode_timestamp.round_to_base(rtmp::TIME_BASE) as u32);
+                    self.publish.publish_audio(AudioPacket::AacRawData(audio.frame), timestamp).expect("TODO");
+                }
+                StreamSegment::Video(video) => {
+                    println!("sending video dts {:?} ({} bytes)", crate::util::decimal(video.decode_timestamp.as_rational()), video.frame.data.len());
+                    let timestamp = RtmpTimestamp::new(video.decode_timestamp.round_to_base(rtmp::TIME_BASE) as u32);
+                    self.publish.publish_video(VideoPacket {
+                        frame_type: if video.frame.is_key_frame {
+                            VideoFrameType::KeyFrame
+                        } else {
+                            VideoFrameType::InterFrame
+                        },
+                        packet_type: VideoPacketType::Nalu,
+                        composition_time: video.frame.composition_time.round_to_base(rtmp::TIME_BASE) as u32,
+                        data: video.frame.data,
+                    }, timestamp).expect("TODO");
+                }
+            }
         }
     }
 }

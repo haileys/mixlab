@@ -47,6 +47,16 @@ impl AvPacket {
         self.as_underlying().pts
     }
 
+    pub fn duration(&self) -> Option<i64> {
+        let duration = self.as_underlying().duration;
+
+        if duration == 0 {
+            None
+        } else {
+            Some(duration)
+        }
+    }
+
     fn flags(&self) -> c_int {
         self.as_underlying().flags
     }

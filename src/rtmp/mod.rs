@@ -15,9 +15,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use mixlab_codec::aac;
 use mixlab_codec::avc::decode::{self, AvcDecoder, RecvFrameError};
 use mixlab_codec::ffmpeg::AvError;
+use mixlab_util::time::{MediaDuration, MediaTime};
 
 use crate::listen::PeekTcpStream;
-use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError, Timestamp};
+use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError};
 use crate::video;
 
 pub mod client;
@@ -37,6 +38,8 @@ lazy_static::lazy_static! {
 pub fn listen(mountpoint: &str) -> Result<SourceRecv, ListenError> {
     MOUNTPOINTS.listen(mountpoint)
 }
+
+pub const TIME_BASE: i64 = 1000;
 
 #[derive(From, Debug)]
 pub enum RtmpError {
@@ -81,7 +84,7 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     audio_codec.set_min_output_channels(2)?;
     audio_codec.set_max_output_channels(2)?;
 
-    let video_codec = AvcDecoder::new(1000).unwrap();
+    let video_codec = AvcDecoder::new(TIME_BASE as usize).unwrap();
 
     let mut ctx = ReceiveContext {
         stream,
@@ -90,7 +93,7 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
         meta: None,
         audio_codec,
         audio_asc: None,
-        audio_timestamp: Timestamp::new(0, 1),
+        audio_timestamp: MediaTime::new(0, 1),
         video_codec,
         video_dcr: None,
     };
@@ -109,13 +112,13 @@ struct ReceiveContext {
     meta: Option<StreamMeta>,
     audio_codec: fdk_aac::dec::Decoder,
     audio_asc: Option<aac::AudioSpecificConfiguration>,
-    audio_timestamp: Timestamp,
+    audio_timestamp: MediaTime,
     video_codec: AvcDecoder,
     video_dcr: Option<Bytes>,
 }
 
 struct StreamMeta {
-    video_frame_duration: Rational64,
+    video_frame_duration: MediaDuration,
 }
 
 fn run_receive_thread(ctx: &mut ReceiveContext, mut buff: Vec<u8>) -> Result<(), RtmpError> {
@@ -169,8 +172,8 @@ fn handle_event(
         ServerSessionEvent::StreamMetadataChanged { app_name: _, stream_key: _, metadata } => {
             let video_frame_duration =
                 if let Some(frame_rate) = metadata.video_frame_rate {
-                    let frame_rate = Rational64::new((frame_rate * 100.0) as i64, 100);
-                    frame_rate.recip()
+                    let frame_rate = Rational64::new((frame_rate * TIME_BASE as f32) as i64, TIME_BASE);
+                    MediaDuration::from(frame_rate.recip())
                 } else {
                     eprintln!("rtmp: no frame rate in metadata");
                     return Err(RtmpError::UnsupportedStream);
@@ -231,7 +234,7 @@ fn receive_audio_packet(
                         panic!("expected stream sample rate to be 44100");
                     }
 
-                    let frame_time = Rational64::new(pcm_buffer.len() as i64 / 2, sample_rate as i64);
+                    let frame_time = MediaDuration::new(pcm_buffer.len() as i64 / 2, sample_rate as i64);
 
                     pcm_buffer.truncate(ctx.audio_codec.decoded_frame_size());
                     // println!("decoded frame! timestamp: {:?}, frame size: {}", timestamp, pcm_buffer.len());
@@ -294,7 +297,7 @@ fn receive_video_packet(
             loop {
                 match ctx.video_codec.recv_frame() {
                     Ok(decoded) => {
-                        let timestamp = Rational64::new(decoded.presentation_timestamp(), 1000);
+                        let timestamp = MediaTime::new(decoded.presentation_timestamp(), TIME_BASE);
 
                         let frame = Arc::new(video::Frame {
                             decoded: decoded,
