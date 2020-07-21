@@ -5,7 +5,7 @@ use bytes::Bytes;
 use fdk_aac::enc as aac;
 
 use mixlab_codec::avc::DecoderConfigurationRecord;
-use mixlab_codec::avc::encode::{AvcEncoder, AvcParams};
+use mixlab_codec::avc::encode::{AvcEncoder, AvcParams, Preset, Tune, Quality};
 use mixlab_codec::ffmpeg::sys;
 use mixlab_codec::ffmpeg::{AvFrame, AvPacket};
 use mixlab_mux::mp4::AvcFrame;
@@ -95,8 +95,6 @@ impl EncodeStream {
         self.video_ctx.send_frame(frame);
 
         while let Some(packet) = self.video_ctx.recv_packet() {
-            println!("RECEIVED VIDEO PACKET: dts = {:?} pts = {:?}", packet.decode_timestamp(), packet.presentation_timestamp());
-
             self.video_segments.push_back(VideoSegment {
                 decode_timestamp: MediaTime::new(packet.decode_timestamp(), time_base),
                 duration: MediaDuration::new(duration_in_base, time_base),
@@ -256,14 +254,23 @@ impl VideoCtx {
             color_space: sys::AVColorSpace_AVCOL_SPC_UNSPECIFIED,
             picture_width: params.width,
             picture_height: params.height,
-            crf: Some(match params.profile {
-                Profile::Monitor => "17",
-                Profile::Stream => "50",
-            }),
-            tune: Some(match params.profile {
-                Profile::Monitor => "zerolatency",
-                Profile::Stream => "film",
-            }),
+            quality: match params.profile {
+                // cannot use constant bitrate in zero latency mode apparently:
+                Profile::Monitor => Quality::ConstantQuality { crf: 30 },
+                Profile::Stream => Quality::ConstantBitRate { bitrate: 1_500_000 },
+            },
+            preset: match params.profile {
+                Profile::Monitor => Preset::Veryfast,
+                Profile::Stream => Preset::Slow,
+            },
+            tune: match params.profile {
+                Profile::Monitor => Some(Tune::Zerolatency),
+                Profile::Stream => Some(Tune::Film),
+            },
+            gop_size: match params.profile {
+                Profile::Monitor => Some(1), // every frame is key frame
+                Profile::Stream => None,
+            },
         };
 
         let blank_frame = AvFrame::blank(
@@ -286,7 +293,9 @@ impl VideoCtx {
     }
 
     pub fn send_frame(&mut self, mut frame: AvFrame) {
-        frame.set_picture_type(mixlab_codec::ffmpeg::sys::AVPictureType_AV_PICTURE_TYPE_I);
+        // clear picture type so x264 can make its own decisions about keyframes:
+        frame.set_picture_type(mixlab_codec::ffmpeg::sys::AVPictureType_AV_PICTURE_TYPE_NONE);
+
         self.codec.send_frame(frame).unwrap();
     }
 

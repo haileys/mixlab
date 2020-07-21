@@ -285,12 +285,10 @@ async fn run_client(mut client: ClientState, mut events: impl Stream<Item = Even
                 break;
             }
             Event::Command(ClientCommand::PublishAudio { data, timestamp }) => {
-                println!("received PublishAudio");
                 let action = client.session.publish_audio_data(data, timestamp, false)?;
                 handle_session_results(&mut client, iter::once(action)).await?;
             }
             Event::Command(ClientCommand::PublishVideo { data, timestamp }) => {
-                println!("received PublishVideo");
                 let action = client.session.publish_video_data(data, timestamp, false)?;
                 handle_session_results(&mut client, iter::once(action)).await?;
             }

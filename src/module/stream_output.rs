@@ -211,7 +211,7 @@ async fn connect_rtmp(params: StreamOutputParams) -> Result<PublishClient, RtmpC
                 video_height: Some(OUTPUT_HEIGHT as u32),
                 video_codec: Some("avc1".to_owned()),
                 video_frame_rate: Some(30.0),
-                video_bitrate_kbps: Some(2500),
+                video_bitrate_kbps: None, //Some(2500),
                 audio_codec: Some("aac1".to_owned()),
                 audio_bitrate_kbps: Some(160),
                 audio_sample_rate: Some(SAMPLE_RATE as u32),
@@ -389,12 +389,10 @@ impl LiveOutput {
         while let Some(segment) = self.encode.recv_segment() {
             match segment {
                 StreamSegment::Audio(audio) => {
-                    println!("sending audio dts {:?} ({} bytes)", crate::util::decimal(audio.decode_timestamp.as_rational()), audio.frame.len());
                     let timestamp = RtmpTimestamp::new(audio.decode_timestamp.round_to_base(rtmp::TIME_BASE) as u32);
                     self.publish.publish_audio(AudioPacket::AacRawData(audio.frame), timestamp).expect("TODO");
                 }
                 StreamSegment::Video(video) => {
-                    println!("sending video dts {:?} ({} bytes)", crate::util::decimal(video.decode_timestamp.as_rational()), video.frame.data.len());
                     let timestamp = RtmpTimestamp::new(video.decode_timestamp.round_to_base(rtmp::TIME_BASE) as u32);
                     self.publish.publish_video(VideoPacket {
                         frame_type: if video.frame.is_key_frame {

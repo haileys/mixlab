@@ -84,12 +84,12 @@ impl AvFrame {
         self.as_underlying().pict_type
     }
 
-    pub fn color_space(&self) -> ff::AVColorSpace {
-        self.as_underlying().colorspace
-    }
-
     pub fn set_picture_type(&mut self, pict_type: ff::AVPictureType) {
         self.as_underlying_mut().pict_type = pict_type;
+    }
+
+    pub fn color_space(&self) -> ff::AVColorSpace {
+        self.as_underlying().colorspace
     }
 
     pub fn decode_timestamp(&self) -> i64 {
