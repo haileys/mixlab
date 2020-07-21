@@ -67,7 +67,8 @@ pub async fn start(mut stream: TcpStream) -> Result<PrepublishClient, Error> {
 
     // go with defaults for now. TODO investigate whether any should be changed
     // - specifically peer_bandwidth
-    let session_config = ClientSessionConfig::new();
+    let mut session_config = ClientSessionConfig::new();
+    session_config.chunk_size = 65536;
 
     let (session, results) = ClientSession::new(session_config)?;
 
