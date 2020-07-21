@@ -68,7 +68,7 @@ pub async fn start(mut stream: TcpStream) -> Result<PrepublishClient, Error> {
     // go with defaults for now. TODO investigate whether any should be changed
     // - specifically peer_bandwidth
     let mut session_config = ClientSessionConfig::new();
-    session_config.chunk_size = 65536;
+    session_config.chunk_size = 8 * 65536;
 
     let (session, results) = ClientSession::new(session_config)?;
 
@@ -273,7 +273,6 @@ async fn run_client(mut client: ClientState, mut events: impl Stream<Item = Even
     while let Some(event) = events.next().await {
         match event {
             Event::ServerData(Ok(bytes)) => {
-                println!("received server data");
                 let actions = client.session.handle_input(&bytes)?;
                 handle_session_results(&mut client, actions).await?;
             }
@@ -310,11 +309,10 @@ async fn handle_session_results(client: &mut ClientState, actions: impl IntoIter
                 client.rtmp_tx.write_all(&packet.bytes).await?;
             }
             ClientSessionResult::RaisedEvent(ev) => {
-                println!("REMOTE RAISED EVENT: {:?}", ev);
                 client.rtmp_events.push_back(ev);
             }
             ClientSessionResult::UnhandleableMessageReceived(msg) => {
-                println!("ClientSessionResult::UnhandleableMessageReceived: {:?}", msg);
+                println!("rtmp::client received unhandleable server message: {:?}", msg);
                 println!("    data -> {:?}", msg.data);
             }
         }
