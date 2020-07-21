@@ -21,14 +21,14 @@ pub struct AvcParams {
     pub color_space: ff::AVColorSpace,
     pub picture_width: usize,
     pub picture_height: usize,
-    pub quality: Quality,
+    pub rate_control: RateControl,
     pub preset: Preset,
     pub tune: Option<Tune>,
     pub gop_size: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Quality {
+pub enum RateControl {
     ConstantBitRate { bitrate: usize },
     ConstantQuality { crf: usize },
 }
@@ -94,8 +94,8 @@ impl AvcEncoder {
         }
 
         // quality/bitrate
-        match params.quality {
-            Quality::ConstantBitRate { bitrate } => {
+        match params.rate_control {
+            RateControl::ConstantBitRate { bitrate } => {
                 let bitrate_str = bitrate.to_string();
                 opts.set("b", &bitrate_str);
 
@@ -110,7 +110,7 @@ impl AvcEncoder {
                 let bufsize_str = (bitrate * 2).to_string();
                 opts.set("bufsize", &bufsize_str);
             }
-            Quality::ConstantQuality { crf } => {
+            RateControl::ConstantQuality { crf } => {
                 opts.set("crf", &crf.to_string());
             }
         }
@@ -184,7 +184,7 @@ impl AvcEncoder {
         }
     }
 
-    pub fn send_frame(&mut self, frame: AvFrame) -> Result<(), AvError> {
+    pub fn send_frame(&mut self, frame: &AvFrame) -> Result<(), AvError> {
         let rc = unsafe { ff::avcodec_send_frame(self.ctx.as_mut_ptr(), frame.as_ptr()) };
 
         if rc < 0 {

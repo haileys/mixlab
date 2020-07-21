@@ -10,13 +10,14 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 use warp::ws::{self, WebSocket};
 
+use mixlab_codec::ffmpeg::PictureSettings;
 use mixlab_mux::mp4::{Mp4Mux, Mp4Params, TrackData, AdtsFrame, AvcFrame};
 use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPacket};
 use mixlab_util::time::MediaTime;
 
 use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
-use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, PixelFormat, Profile};
+use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, Profile};
 
 const MONITOR_WIDTH: usize = 1120;
 const MONITOR_HEIGHT: usize = 700;
@@ -103,10 +104,8 @@ impl ModuleT for Monitor {
         });
 
         let video_ctx = VideoCtx::new(VideoParams {
-            width: MONITOR_WIDTH,
-            height: MONITOR_HEIGHT,
+            picture: PictureSettings::yuv420p(MONITOR_WIDTH, MONITOR_HEIGHT),
             time_base: SAMPLE_RATE,
-            pixel_format: PixelFormat::Yuv420p,
             profile: Profile::Monitor,
         });
 

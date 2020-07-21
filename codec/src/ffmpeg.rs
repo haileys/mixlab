@@ -8,9 +8,11 @@ use sys as ff;
 
 mod frame;
 mod packet;
+mod scale;
 
-pub use frame::AvFrame;
+pub use frame::{AvFrame, PictureSettings};
 pub use packet::AvPacket;
+pub use scale::SwsContext;
 
 #[derive(Debug)]
 pub struct AvCodecContext {

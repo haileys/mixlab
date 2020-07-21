@@ -5,9 +5,9 @@ use bytes::Bytes;
 use fdk_aac::enc as aac;
 
 use mixlab_codec::avc::DecoderConfigurationRecord;
-use mixlab_codec::avc::encode::{AvcEncoder, AvcParams, Preset, Tune, Quality};
+use mixlab_codec::avc::encode::{AvcEncoder, AvcParams, Preset, Tune, RateControl};
 use mixlab_codec::ffmpeg::sys;
-use mixlab_codec::ffmpeg::{AvFrame, AvPacket};
+use mixlab_codec::ffmpeg::{AvFrame, AvPacket, PictureSettings, SwsContext};
 use mixlab_mux::mp4::AvcFrame;
 use mixlab_util::time::{MediaTime, MediaDuration};
 
@@ -221,15 +221,14 @@ impl AudioCtx {
 #[derive(Debug)]
 pub struct VideoCtx {
     codec: AvcEncoder,
+    scaler: DynamicScaler,
     blank_frame: AvFrame,
     time_base: i64,
 }
 
 pub struct VideoParams {
-    pub width: usize,
-    pub height: usize,
+    pub picture: PictureSettings,
     pub time_base: usize,
-    pub pixel_format: PixelFormat,
     pub profile: Profile,
 }
 
@@ -238,26 +237,21 @@ pub enum Profile {
     Stream,
 }
 
-pub enum PixelFormat {
-    Yuv420p,
-}
-
 impl VideoCtx {
     pub fn new(params: VideoParams) -> Self {
         let time_base = params.time_base;
+        let picture = params.picture;
 
         let params = AvcParams {
             time_base: time_base,
-            pixel_format: match params.pixel_format {
-                PixelFormat::Yuv420p => sys::AVPixelFormat_AV_PIX_FMT_YUV420P,
-            },
+            pixel_format: picture.pixel_format,
             color_space: sys::AVColorSpace_AVCOL_SPC_UNSPECIFIED,
-            picture_width: params.width,
-            picture_height: params.height,
-            quality: match params.profile {
+            picture_width: picture.width,
+            picture_height: picture.height,
+            rate_control: match params.profile {
                 // cannot use constant bitrate in zero latency mode apparently:
-                Profile::Monitor => Quality::ConstantQuality { crf: 30 },
-                Profile::Stream => Quality::ConstantBitRate { bitrate: 1_500_000 },
+                Profile::Monitor => RateControl::ConstantQuality { crf: 30 },
+                Profile::Stream => RateControl::ConstantBitRate { bitrate: 1_500_000 },
             },
             preset: match params.profile {
                 Profile::Monitor => Preset::Veryfast,
@@ -273,17 +267,12 @@ impl VideoCtx {
             },
         };
 
-        let blank_frame = AvFrame::blank(
-            params.picture_width,
-            params.picture_height,
-            params.pixel_format,
-        );
-
         let codec = AvcEncoder::new(params).unwrap();
 
         VideoCtx {
             codec,
-            blank_frame,
+            scaler: DynamicScaler::new(&picture),
+            blank_frame: AvFrame::blank(&picture),
             time_base: time_base.try_into().unwrap(),
         }
     }
@@ -295,6 +284,9 @@ impl VideoCtx {
     pub fn send_frame(&mut self, mut frame: AvFrame) {
         // clear picture type so x264 can make its own decisions about keyframes:
         frame.set_picture_type(mixlab_codec::ffmpeg::sys::AVPictureType_AV_PICTURE_TYPE_NONE);
+
+        // scale picture to expected size if necessary
+        let frame = self.scaler.scale(&mut frame);
 
         self.codec.send_frame(frame).unwrap();
     }
@@ -309,5 +301,52 @@ impl VideoCtx {
 
     pub fn blank_frame(&self) -> AvFrame {
         self.blank_frame.clone()
+    }
+}
+
+#[derive(Debug)]
+struct DynamicScaler {
+    scale: Option<SwsContext>,
+    frame: AvFrame,
+}
+
+impl DynamicScaler {
+    pub fn new(output: &PictureSettings) -> Self {
+        DynamicScaler {
+            scale: None,
+            frame: AvFrame::blank(&output),
+        }
+    }
+
+    // the returned reference can either by borrowed from self, or borrowed
+    // from our argument, so we need to set up a few lifetime constraints to
+    // express that the output lifetime is outlived by both self and arg
+    fn scale<'this: 'out, 'arg: 'out, 'out>(&'this mut self, frame: &'arg mut AvFrame) -> &'out mut AvFrame {
+        let input_picture = frame.picture_settings();
+        let output_picture = self.frame.picture_settings();
+
+        if frame.picture_settings() == output_picture {
+            // no scaling necessary
+            return frame;
+        }
+
+        // reset cached swscale instance if it does not match input frame
+        if let Some(scale) = self.scale.as_ref() {
+            if scale.input_settings() != &input_picture {
+                self.scale = None;
+            }
+        }
+
+        let scale = self.scale.get_or_insert_with(|| {
+            eprintln!("new dynamic rescaler from: {:?}", input_picture);
+            eprintln!("                       to: {:?}", output_picture);
+            SwsContext::new(input_picture, output_picture)
+        });
+
+        scale.process(frame, &mut self.frame);
+        self.frame.set_presentation_timestamp(frame.presentation_timestamp());
+        // self.frame.copy_props_from(frame);
+
+        &mut self.frame
     }
 }

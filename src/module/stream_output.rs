@@ -9,6 +9,7 @@ use tokio::net::TcpStream;
 use tokio::runtime;
 use tokio::sync::oneshot;
 
+use mixlab_codec::ffmpeg::PictureSettings;
 use mixlab_protocol::{StreamOutputParams, LineType, Terminal, StreamOutputIndication, StreamOutputLiveStatus};
 use mixlab_util::time::MediaTime;
 
@@ -17,7 +18,7 @@ use crate::module::ModuleT;
 use crate::rtmp;
 use crate::rtmp::packet::{AudioPacket, VideoPacket, VideoFrameType, VideoPacketType};
 use crate::rtmp::client::{self, StreamMetadata, PublishInfo, PublishClient};
-use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, PixelFormat, Profile};
+use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, Profile};
 
 const OUTPUT_WIDTH: usize = 1120;
 const OUTPUT_HEIGHT: usize = 700;
@@ -345,10 +346,8 @@ impl LiveOutput {
         publish.publish_audio(AudioPacket::AacSequenceHeader(asc), RtmpTimestamp::new(0)).expect("TODO");
 
         let video_ctx = VideoCtx::new(VideoParams {
-            width: OUTPUT_WIDTH,
-            height: OUTPUT_HEIGHT,
+            picture: PictureSettings::yuv420p(OUTPUT_WIDTH, OUTPUT_HEIGHT),
             time_base: SAMPLE_RATE,
-            pixel_format: PixelFormat::Yuv420p,
             profile: Profile::Stream,
         });
 
