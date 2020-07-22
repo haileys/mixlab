@@ -78,7 +78,7 @@ impl Component for OutputDevice {
 
         html! {
             <>
-                <div class="output-device-status-bar">
+                <div class="status-light-bar">
                     <div class={warning_class(self.props.indication.clip)}>{"CLIP"}</div>
                     <div class={warning_class(self.props.indication.lag)}>{"LAG"}</div>
                 </div>
@@ -152,8 +152,8 @@ impl Component for OutputDevice {
 
 fn warning_class(warning_status: Option<OutputDeviceWarning>) -> &'static str {
     match warning_status {
-        None => "output-device-status",
-        Some(OutputDeviceWarning::Active) => "output-device-status output-device-status-red-active",
-        Some(OutputDeviceWarning::Recent) => "output-device-status output-device-status-red",
+        None => "status-light",
+        Some(OutputDeviceWarning::Active) => "status-light status-light-red-active",
+        Some(OutputDeviceWarning::Recent) => "status-light status-light-red",
     }
 }

@@ -469,18 +469,18 @@ checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
 
 [[package]]
 name = "fdk-aac"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7eb764f13b9a320a4cfecf4b3680114dd7c973ee37c08b638bdbb74b1c0786f4"
+checksum = "a8f295617a979ab0bdceab08e16f3edb82ae876b48c25354fa56fed4d276b0db"
 dependencies = [
  "fdk-aac-sys",
 ]
 
 [[package]]
 name = "fdk-aac-sys"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3da86857fb55bd2f779fa0e04622ae0628623ca33bb5666d88fafa183cf51ab1"
+checksum = "0ccdef9ea77a8aa82f37b62ef0d847356e15f1f12b9f894b5ca7e8de048e17fc"
 dependencies = [
  "cc",
 ]
@@ -1095,6 +1095,7 @@ dependencies = [
  "mixlab-codec",
  "mixlab-mux",
  "mixlab-protocol",
+ "mixlab-util",
  "mpeg2ts",
  "num-rational",
  "ringbuf",
@@ -1102,6 +1103,7 @@ dependencies = [
  "serde",
  "structopt",
  "tokio",
+ "url",
  "uuid",
  "warp",
 ]
@@ -1125,6 +1127,7 @@ name = "mixlab-mux"
 version = "0.0.0"
 dependencies = [
  "bytes",
+ "mixlab-util",
  "mse_fmp4",
  "serde",
  "serde_derive",
@@ -1135,9 +1138,20 @@ name = "mixlab-protocol"
 version = "0.0.0"
 dependencies = [
  "mixlab-mux",
+ "mixlab-util",
  "serde",
  "serde_derive",
  "uuid",
+]
+
+[[package]]
+name = "mixlab-util"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "num-rational",
+ "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -1230,6 +1244,7 @@ dependencies = [
  "num-bigint",
  "num-integer",
  "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -2053,9 +2068,9 @@ checksum = "53953d2d3a5ad81d9f844a32f14ebb121f50b650cd59d0ee2a07cf13c617efed"
 
 [[package]]
 name = "tokio"
-version = "0.2.18"
+version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34ef16d072d2b6dc8b4a56c70f5c5ced1a37752116f8e7c1e80c659aa7cb6713"
+checksum = "d099fa27b9702bed751524694adbe393e18b36b204da91eb1cbbbbb4a5ee2d58"
 dependencies = [
  "bytes",
  "fnv",

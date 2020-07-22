@@ -8,4 +8,5 @@ pub mod oscillator;
 pub mod output_device;
 pub mod plotter;
 pub mod stream_input;
+pub mod stream_output;
 pub mod trigger;

@@ -7,10 +7,11 @@ use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError
 use std::thread;
 use std::time::{Instant, Duration};
 
-use num_rational::Rational64;
+use tokio::runtime;
 use tokio::sync::{oneshot, broadcast};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ServerUpdate, Indication, LineType, ClientSequence, ClientOp};
+use mixlab_util::time::MediaDuration;
 
 use crate::module::Module;
 use crate::util::Sequence;
@@ -59,7 +60,7 @@ pub struct EngineSession {
     cmd_tx: SyncSender<EngineMessage>,
 }
 
-pub fn start() -> EngineHandle {
+pub fn start(tokio_runtime: runtime::Handle) -> EngineHandle {
     let (cmd_tx, cmd_rx) = mpsc::sync_channel(8);
     let (log_tx, _) = broadcast::channel(64);
 
@@ -75,7 +76,11 @@ pub fn start() -> EngineHandle {
             indications: HashMap::new(),
         };
 
-        engine.run();
+        // enter the tokio runtime context for the engine thread
+        // this allows modules to spawn async tasks
+        tokio_runtime.enter(|| {
+            engine.run();
+        });
     });
 
     EngineHandle { cmd_tx }
@@ -151,7 +156,7 @@ impl Engine {
         let mut tick = 0;
 
         loop {
-            let indications = self.run_tick(tick);
+            let indications = time_tick(|| self.run_tick(tick));
             tick += 1;
 
             for (module_id, indication) in indications {
@@ -175,6 +180,21 @@ impl Engine {
                     Err(RecvTimeoutError::Disconnected) => { return; }
                 }
             }
+        }
+
+        fn time_tick<T>(f: impl FnOnce() -> T) -> T {
+            let before = Instant::now();
+            let retn = f();
+            let after = Instant::now();
+
+            let elapsed = after - before;
+            let budget = Duration::from_millis(1_000 / TICKS_PER_SECOND as u64);
+
+            if elapsed > budget {
+                eprintln!("WARNING: tick ran over time! elapsed {} us, budget {} us", elapsed.as_micros(), budget.as_micros());
+            }
+
+            retn
         }
     }
 
@@ -434,12 +454,12 @@ impl Engine {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct VideoFrame {
     pub data: Arc<video::Frame>,
 
     // frame timestamp in fractional seconds after enclosing tick begins:
-    pub tick_offset: Rational64,
+    pub tick_offset: MediaDuration,
 }
 
 pub enum InputRef<'a> {

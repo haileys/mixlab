@@ -1,5 +1,7 @@
-use num_rational::Rational64;
+pub mod encode;
+
 use mixlab_codec::ffmpeg::AvFrame;
+use mixlab_util::time::MediaDuration;
 
 #[derive(Debug)]
 pub struct Frame {
@@ -7,5 +9,5 @@ pub struct Frame {
 
     // frame duration in fractional seconds, possibly an estimate if frame
     // duration information is not available:
-    pub duration_hint: Rational64,
+    pub duration_hint: MediaDuration,
 }

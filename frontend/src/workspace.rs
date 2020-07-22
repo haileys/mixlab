@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams};
 
 use crate::component::midi_target::MidiUiMode;
 use crate::module::amplifier::Amplifier;
@@ -15,6 +15,7 @@ use crate::module::envelope::Envelope;
 use crate::module::eq_three::EqThree;
 use crate::module::fm_sine::FmSine;
 use crate::module::stream_input::StreamInput;
+use crate::module::stream_output::StreamOutput;
 use crate::module::mixer::Mixer;
 use crate::module::oscillator::Oscillator;
 use crate::module::output_device::OutputDevice;
@@ -476,6 +477,7 @@ impl Workspace {
             ("Stereo Panner", ModuleParams::StereoPanner(())),
             ("Stereo Splitter", ModuleParams::StereoSplitter(())),
             ("Stream Input", ModuleParams::StreamInput(StreamInputParams::default())),
+            ("Stream Output", ModuleParams::StreamOutput(StreamOutputParams::default())),
             ("EQ Three", ModuleParams::EqThree(EqThreeParams::default())),
             ("Monitor", ModuleParams::Monitor(())),
         ];
@@ -626,7 +628,7 @@ impl Component for Window {
                 style={window_style}
                 ref={self.props.refs.module.clone()}
                 onmousedown={stop_propagation()}
-                oncontextmenu={prevent_default()}
+                oncontextmenu={stop_propagation()}
             >
                 <div class="module-window-title"
                     onmousedown={self.link.callback(WindowMsg::DragStart)}
@@ -756,6 +758,13 @@ impl Window {
             ModuleParams::StreamInput(params) => {
                 html! { <StreamInput id={self.props.id} module={self.link.clone()} params={params} /> }
             }
+            ModuleParams::StreamOutput(params) => {
+                if let Some(Indication::StreamOutput(indication)) = &self.props.indication {
+                    html! { <StreamOutput id={self.props.id} module={self.link.clone()} params={params} indication={indication} /> }
+                } else {
+                    unreachable!()
+                }
+            }
             ModuleParams::EqThree(params) => {
                 html! { <EqThree id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
@@ -812,6 +821,7 @@ impl Component for Terminal {
                 onmousedown={self.props.onmousedown.clone()}
                 onmouseover={self.link.callback(|_| true)}
                 onmouseout={self.link.callback(|_| false)}
+                oncontextmenu={prevent_default()}
             >
                 <div class="terminal-label">
                     {format!("{}", &self.props.terminal.label.as_ref().unwrap_or(&"".to_string()))}

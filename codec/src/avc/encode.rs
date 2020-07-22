@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use std::mem::MaybeUninit;
 use std::os::raw::c_int;
 use std::ptr;
 use std::slice;
@@ -7,7 +8,7 @@ use bytes::Bytes;
 use ffmpeg_dev::sys as ff;
 
 use crate::avc::{bitstream, nal, AvcError, DecoderConfigurationRecord};
-use crate::ffmpeg::{AvCodecContext, AvFrame, AvError, AvDict, AvPacket};
+use crate::ffmpeg::{AvCodecContext, AvFrame, AvError, AvDict, AvPacket, PixelFormat};
 
 #[derive(Debug)]
 pub struct AvcEncoder {
@@ -16,10 +17,43 @@ pub struct AvcEncoder {
 
 pub struct AvcParams {
     pub time_base: usize,
-    pub pixel_format: ff::AVPixelFormat,
+    pub pixel_format: PixelFormat,
     pub color_space: ff::AVColorSpace,
     pub picture_width: usize,
     pub picture_height: usize,
+    pub rate_control: RateControl,
+    pub preset: Preset,
+    pub tune: Option<Tune>,
+    pub gop_size: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub enum RateControl {
+    ConstantBitRate { bitrate: usize },
+    ConstantQuality { crf: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Preset {
+    Ultrafast,
+    Superfast,
+    Veryfast,
+    Faster,
+    Fast,
+    Medium,
+    Slow,
+    Slower,
+    Veryslow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tune {
+    Film,
+    Animation,
+    Grain,
+    Stillimage,
+    Fastdecode,
+    Zerolatency,
 }
 
 impl AvcEncoder {
@@ -34,16 +68,54 @@ impl AvcEncoder {
 
         let mut opts = AvDict::new();
 
-        // 17 is more or less visually lossless:
-        opts.set("crf", "17");
+        // preset
+        opts.set("preset", match params.preset {
+            Preset::Ultrafast => "ultrafast",
+            Preset::Superfast => "superfast",
+            Preset::Veryfast => "veryfast",
+            Preset::Faster => "faster",
+            Preset::Fast => "fast",
+            Preset::Medium => "medium",
+            Preset::Slow => "slow",
+            Preset::Slower => "slower",
+            Preset::Veryslow => "veryslow",
+        });
 
-        // chosen arbitrarily
-        opts.set("preset", "veryfast");
+        // tune
+        if let Some(tune) = params.tune {
+            opts.set("tune", match tune {
+                Tune::Film => "film",
+                Tune::Animation => "animation",
+                Tune::Grain => "grain",
+                Tune::Stillimage => "stillimage",
+                Tune::Fastdecode => "fastdecode",
+                Tune::Zerolatency => "zerolatency",
+            });
+        }
 
-        // zero latency
-        opts.set("tune", "zerolatency");
+        // quality/bitrate
+        match params.rate_control {
+            RateControl::ConstantBitRate { bitrate } => {
+                let bitrate_str = bitrate.to_string();
+                opts.set("b", &bitrate_str);
 
-        // disable annex-b encoding (on by default)
+                // tune for constant bitrate encoding unless we're tuned for zero latency
+                opts.set("minrate", &bitrate_str);
+                opts.set("maxrate", &bitrate_str);
+
+                // inserts filler NALs to ensure the stream maintains the configured
+                // bitrate for transmission stability
+                opts.set("nal-hrd", "cbr");
+
+                let bufsize_str = (bitrate * 2).to_string();
+                opts.set("bufsize", &bufsize_str);
+            }
+            RateControl::ConstantQuality { crf } => {
+                opts.set("crf", &crf.to_string());
+            }
+        }
+
+        // force disable annex-b encoding (on by default) - this gives us length prefixed NALs
         opts.set("x264-params", "annexb=0");
 
         // set codec context params
@@ -54,10 +126,14 @@ impl AvcEncoder {
             avctx.width = params.picture_width.try_into().expect("picture_width too large");
             avctx.height = params.picture_height.try_into().expect("picture_height too large");
             avctx.colorspace = params.color_space;
-            avctx.pix_fmt = params.pixel_format;
+            avctx.pix_fmt = params.pixel_format.into_raw();
             avctx.time_base.num = 1;
             avctx.time_base.den = params.time_base as c_int;
             avctx.flags |= ff::AV_CODEC_FLAG_GLOBAL_HEADER as i32;
+
+            if let Some(gop_size) = params.gop_size {
+                avctx.gop_size = gop_size.try_into().expect("gop_size too large");
+            }
         }
 
         // open codec
@@ -108,7 +184,7 @@ impl AvcEncoder {
         }
     }
 
-    pub fn send_frame(&mut self, frame: AvFrame) -> Result<(), AvError> {
+    pub fn send_frame(&mut self, frame: &AvFrame) -> Result<(), AvError> {
         let rc = unsafe { ff::avcodec_send_frame(self.ctx.as_mut_ptr(), frame.as_ptr()) };
 
         if rc < 0 {
@@ -119,30 +195,17 @@ impl AvcEncoder {
     }
 
     pub fn recv_packet(&mut self) -> Result<AvPacket, AvError> {
-        // set up zeroed packet:
-        let mut packet = unsafe {
-            AvPacket::new(ff::AVPacket {
-                buf: ptr::null_mut(),
-                pts: 0,
-                dts: 0,
-                data: ptr::null_mut(),
-                size: 0,
-                stream_index: 0,
-                flags: 0,
-                side_data: ptr::null_mut(),
-                side_data_elems: 0,
-                duration: 0,
-                pos: 0,
-                convergence_duration: 0,
-            })
-        };
+        unsafe {
+            let mut packet = MaybeUninit::<ff::AVPacket>::uninit();
+            ff::av_init_packet(packet.as_mut_ptr());
 
-        let rc = unsafe { ff::avcodec_receive_packet(self.ctx.as_mut_ptr(), packet.as_mut_ptr()) };
+            let rc = ff::avcodec_receive_packet(self.ctx.as_mut_ptr(), packet.as_mut_ptr());
 
-        if rc < 0 {
-            return Err(AvError(rc));
+            if rc < 0 {
+                Err(AvError(rc))
+            } else {
+                Ok(AvPacket::new(packet.assume_init()))
+            }
         }
-
-        Ok(packet)
     }
 }

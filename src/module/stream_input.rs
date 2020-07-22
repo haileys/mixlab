@@ -1,14 +1,13 @@
 use std::cmp;
 
-use num_rational::Rational64;
-
 use mixlab_protocol::{StreamInputParams, LineType, Terminal, StreamProtocol};
+use mixlab_util::time::{MediaTime, MediaDuration};
 
 use crate::engine::{InputRef, OutputRef, Sample, VideoFrame, SAMPLE_RATE};
 use crate::icecast;
 use crate::module::ModuleT;
 use crate::rtmp;
-use crate::source::{SourceRecv, SourceId, Timestamp, Frame, AudioData, VideoData};
+use crate::source::{SourceRecv, SourceId, Frame, AudioData, VideoData};
 use crate::util;
 
 #[derive(Debug)]
@@ -25,7 +24,7 @@ pub struct StreamInput {
 #[derive(Debug)]
 struct SourceTiming {
     id: SourceId,
-    epoch: Timestamp,
+    epoch: MediaTime,
 }
 
 impl ModuleT for StreamInput {
@@ -73,14 +72,14 @@ impl ModuleT for StreamInput {
     }
 
     fn run_tick(&mut self, engine_time: u64, _: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
-        let engine_time = Timestamp::new(engine_time as i64, SAMPLE_RATE as i64);
+        let engine_time = MediaTime::new(engine_time as i64, SAMPLE_RATE as i64);
 
         let (video_out, mut audio_out) = match outputs {
             [video, audio] => (video.expect_video(), audio.expect_stereo()),
             _ => unimplemented!(),
         };
 
-        let tick_duration = Rational64::new(audio_out.len() as i64 / 2, SAMPLE_RATE as i64);
+        let tick_duration = MediaDuration::new(audio_out.len() as i64 / 2, SAMPLE_RATE as i64);
 
         let video_frame = self.video_frame.take()
             .or_else(|| {
@@ -104,7 +103,7 @@ impl ModuleT for StreamInput {
                     // source changed
                     self.source = Some(SourceTiming {
                         id: frame.source_id,
-                        epoch: engine_time - frame.source_time,
+                        epoch: engine_time.remove_epoch(frame.source_time),
                     });
                 }
 
@@ -129,10 +128,10 @@ impl ModuleT for StreamInput {
         *video_out = video_frame.and_then(|frame| {
             let tick_offset = self.source.as_ref()
                 .map(|source| {
-                    (source.epoch + frame.source_time) - engine_time
+                    frame.source_time.add_epoch(source.epoch) - engine_time
                 })
-                .filter(|tick_offset| *tick_offset >= Rational64::new(0, 1))
-                .unwrap_or(Rational64::new(0, 1));
+                .filter(|tick_offset| *tick_offset >= MediaDuration::zero())
+                .unwrap_or(MediaDuration::zero());
 
             if tick_offset > tick_duration {
                 // frame is not due for this tick, put it back

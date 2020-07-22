@@ -320,6 +320,7 @@ name = "mixlab-mux"
 version = "0.0.0"
 dependencies = [
  "bytes",
+ "mixlab-util",
  "mse_fmp4",
  "serde",
  "serde_derive",
@@ -330,9 +331,20 @@ name = "mixlab-protocol"
 version = "0.0.0"
 dependencies = [
  "mixlab-mux",
+ "mixlab-util",
  "serde",
  "serde_derive",
  "uuid",
+]
+
+[[package]]
+name = "mixlab-util"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "num-rational",
+ "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -353,6 +365,40 @@ dependencies = [
  "byteorder",
  "mpeg2ts",
  "trackable",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f3fc75e3697059fb1bc465e3d8cca6cf92f56854f201158b3f9c77d5a3cfa0"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.43"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d59457e662d541ba17869cf51cf177c0b5f0cbf476c66bdc90bf1edac4f875b"
+dependencies = [
+ "autocfg",
+ "num-traits",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5b4d7360f362cfb50dde8143501e6940b22f644be75a4cc90b2d81968908138"
+dependencies = [
+ "autocfg",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "serde",
 ]
 
 [[package]]

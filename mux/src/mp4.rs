@@ -11,13 +11,14 @@ use mse_fmp4::fmp4::{
 };
 use mse_fmp4::io::WriteTo;
 use serde::{Deserialize, Serialize};
+use mixlab_util::time::{MediaDuration, MediaTime};
 
 #[derive(Debug)]
 pub struct Mp4Mux {
     sequence: u32,
     timescale: u32,
-    cumulative_audio_duration: u32,
-    cumulative_video_duration: u32,
+    audio_time: MediaTime,
+    video_time: MediaTime,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -26,7 +27,7 @@ pub struct AdtsFrame(pub Bytes);
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AvcFrame {
     pub is_key_frame: bool,
-    pub composition_time: u32,
+    pub composition_time: MediaDuration,
     pub data: Bytes,
 }
 
@@ -49,8 +50,8 @@ impl Mp4Mux {
         let mux = Mp4Mux {
             sequence: 0,
             timescale: params.timescale,
-            cumulative_audio_duration: 0,
-            cumulative_video_duration: 0,
+            audio_time: MediaTime::new(0, 1),
+            video_time: MediaTime::new(0, 1),
         };
 
         let init = make_init_segment(&mux, params);
@@ -58,7 +59,7 @@ impl Mp4Mux {
         (mux, to_bytes(init))
     }
 
-    pub fn write_track(&mut self, duration: u32, data: &TrackData) -> Bytes {
+    pub fn write_track(&mut self, duration: MediaDuration, data: &TrackData) -> Bytes {
         let media = make_media_segment(self, duration, data);
 
         to_bytes(media)
@@ -223,7 +224,7 @@ fn make_init_segment(
 
 fn make_media_segment(
     mux: &mut Mp4Mux,
-    duration: u32,
+    duration: MediaDuration,
     track_data: &TrackData,
 ) -> MediaSegment {
     use mse_fmp4::fmp4::{
@@ -233,6 +234,12 @@ fn make_media_segment(
     let (traf, mdat) = match track_data {
         TrackData::Audio(adts_frame) => {
             let raw_aac = &(adts_frame.0)[7..]; // snip off 7 byte ADTS header
+
+            let time_start_in_mux_base = mux.audio_time.round_to_base(i64::from(mux.timescale));
+            let time_end = mux.audio_time + duration;
+            let time_end_in_mux_base = time_end.round_to_base(i64::from(mux.timescale));
+            let duration_in_mux_base = time_end_in_mux_base - time_start_in_mux_base;
+            mux.audio_time = time_end;
 
             let audio_frag = TrackFragmentBox {
                 tfhd_box: TrackFragmentHeaderBox {
@@ -246,21 +253,19 @@ fn make_media_segment(
                     default_sample_flags: None,
                 },
                 tfdt_box: Some(TrackFragmentBaseMediaDecodeTimeBox {
-                    base_media_decode_time: mux.cumulative_audio_duration,
+                    base_media_decode_time: time_start_in_mux_base as u32,
                 }),
                 trun_box: TrackRunBox {
                     data_offset: Some(0), // dummy for length calculation
                     first_sample_flags: None,
                     samples: vec![Sample {
-                        duration: Some(duration),
+                        duration: Some(duration_in_mux_base as u32),
                         size: Some(raw_aac.len() as u32),
                         composition_time_offset: None,
                         flags: None,
                     }],
                 }
             };
-
-            mux.cumulative_audio_duration += duration;
 
             (audio_frag, MediaDataBox {
                 // TODO - remove to_vec and borrow here:
@@ -281,6 +286,12 @@ fn make_media_segment(
                 sample_degradation_priority: 0,
             };
 
+            let time_start_in_mux_base = mux.video_time.round_to_base(i64::from(mux.timescale));
+            let time_end = mux.video_time + duration;
+            let time_end_in_mux_base = time_end.round_to_base(i64::from(mux.timescale));
+            let duration_in_mux_base = time_end_in_mux_base - time_start_in_mux_base;
+            mux.video_time = time_end;
+
             let video_frag = TrackFragmentBox {
                 tfhd_box: TrackFragmentHeaderBox {
                     track_id: VIDEO_TRACK,
@@ -293,21 +304,19 @@ fn make_media_segment(
                     default_sample_flags: None,
                 },
                 tfdt_box: Some(TrackFragmentBaseMediaDecodeTimeBox {
-                    base_media_decode_time: mux.cumulative_video_duration,
+                    base_media_decode_time: time_start_in_mux_base as u32, // TODO is this affected by composition time?
                 }),
                 trun_box: TrackRunBox {
                     data_offset: Some(0), // dummy for length calculation
                     first_sample_flags: None,
                     samples: vec![Sample {
-                        duration: Some(duration),
+                        duration: Some(duration_in_mux_base as u32),
                         size: Some(avc_frame.data.len() as u32),
-                        composition_time_offset: Some(avc_frame.composition_time as i32),
+                        composition_time_offset: Some(avc_frame.composition_time.round_to_base(i64::from(mux.timescale)) as i32),
                         flags: Some(sample_flags),
                     }],
                 }
             };
-
-            mux.cumulative_video_duration += duration;
 
             (video_frag, MediaDataBox {
                 data: avc_frame.data.to_vec(),

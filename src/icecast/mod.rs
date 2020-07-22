@@ -5,15 +5,15 @@ use std::io::{self, Read};
 use std::thread;
 
 use derive_more::From;
-use num_rational::Ratio;
 use tokio::io::AsyncWriteExt;
 
 use mixlab_codec::ogg::{self, OggStream};
 use mixlab_codec::{AudioStream, StreamRead, StreamError};
+use mixlab_util::time::{MediaTime, MediaDuration};
 
 use crate::engine::SAMPLE_RATE;
 use crate::listen::PeekTcpStream;
-use crate::source::{Registry, ListenError, SourceRecv, SourceSend, Timestamp};
+use crate::source::{Registry, ListenError, SourceRecv, SourceSend};
 use crate::throttle::AudioThrottle;
 use crate::util::SyncRead;
 
@@ -96,7 +96,7 @@ fn run_decode_thread(mut send: SourceSend, stream: impl io::Read, content_type: 
         return Ok(());
     }
 
-    let mut timestamp = Timestamp::new(0, audio.sample_rate() as i64);
+    let mut timestamp = MediaTime::zero();
     let mut throttle = AudioThrottle::new();
 
     while let Some(packet) = audio.read().transpose() {
@@ -125,7 +125,7 @@ fn run_decode_thread(mut send: SourceSend, stream: impl io::Read, content_type: 
                 send.write_audio(timestamp, samples)
                     .map_err(|()| DecodeThreadError::ListenerDisconnected)?;
 
-                timestamp += Ratio::new(sample_count as i64, audio.sample_rate() as i64);
+                timestamp += MediaDuration::new(sample_count as i64, audio.sample_rate() as i64);
                 throttle.send_samples(sample_count);
             }
             Ok(StreamRead::Metadata(_)) => {

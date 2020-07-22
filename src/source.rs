@@ -4,13 +4,12 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use num_rational::Rational64;
 use ringbuf::{RingBuffer, Producer, Consumer};
+
+use mixlab_util::time::MediaTime;
 
 use crate::util::Sequence;
 use crate::video;
-
-pub type Timestamp = Rational64;
 
 #[derive(Clone)]
 pub struct Registry {
@@ -67,7 +66,7 @@ pub type VideoData = Arc<video::Frame>;
 #[derive(Debug)]
 pub struct Frame<T> {
     pub source_id: SourceId,
-    pub source_time: Timestamp,
+    pub source_time: MediaTime,
     pub data: T,
 }
 
@@ -151,7 +150,7 @@ impl SourceSend {
         self.shared.recv_online.load(Ordering::Relaxed)
     }
 
-    pub fn write_audio(&mut self, timestamp: Timestamp, data: AudioData) -> Result<(), ()> {
+    pub fn write_audio(&mut self, timestamp: MediaTime, data: AudioData) -> Result<(), ()> {
         if self.connected() {
             // tx is always Some for a valid (non-dropped) SourceSend:
             let tx = self.tx.as_mut().unwrap();
@@ -168,7 +167,7 @@ impl SourceSend {
         }
     }
 
-    pub fn write_video(&mut self, timestamp: Timestamp, data: VideoData) -> Result<(), ()> {
+    pub fn write_video(&mut self, timestamp: MediaTime, data: VideoData) -> Result<(), ()> {
         if self.connected() {
             // tx is always Some for a valid (non-dropped) SourceSend:
             let tx = self.tx.as_mut().unwrap();

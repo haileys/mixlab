@@ -141,7 +141,6 @@ impl Component for Monitor {
                     &source_buffer, "update", {
                         let link = self.link.clone();
                         move |_| {
-                            // crate::log!("update fired!");
                             link.send_message(MonitorMsg::SourceBufferUpdate)
                         }
                     });
@@ -242,8 +241,11 @@ impl PlayState {
     fn ready(&mut self) {
         if self.ready {
             let mut fragment = mem::take(&mut self.fragment);
-            self.append_buffer(&mut fragment);
-            self.ready = false;
+
+            if fragment.len() > 0 {
+                self.append_buffer(&mut fragment);
+                self.ready = false;
+            }
         }
     }
 

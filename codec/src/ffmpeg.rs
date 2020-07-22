@@ -8,9 +8,13 @@ use sys as ff;
 
 mod frame;
 mod packet;
+mod pixfmt;
+mod scale;
 
-pub use frame::AvFrame;
+pub use frame::{AvFrame, PictureSettings, PictureData, PictureDataMut};
 pub use packet::AvPacket;
+pub use scale::SwsContext;
+pub use pixfmt::{PixelFormat, PixFmtDescriptor, PlaneInfo, ColorFormat};
 
 #[derive(Debug)]
 pub struct AvCodecContext {
@@ -48,6 +52,12 @@ impl Drop for AvCodecContext {
 }
 
 pub struct AvError(pub(crate) c_int);
+
+impl AvError {
+    pub fn again(&self) -> bool {
+        self.0 == -(ff::EAGAIN as c_int)
+    }
+}
 
 impl Display for AvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
