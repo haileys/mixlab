@@ -3,7 +3,7 @@ use std::ptr;
 
 use ffmpeg_dev::sys as ff;
 
-use crate::ffmpeg::{AvFrame, PictureSettings, PictureData, PictureDataMut};
+use crate::ffmpeg::{PictureSettings, PictureData, PictureDataMut};
 
 #[derive(Debug)]
 pub struct SwsContext {

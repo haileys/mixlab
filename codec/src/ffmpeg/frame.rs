@@ -5,7 +5,7 @@ use std::ptr;
 
 use ffmpeg_dev::sys as ff;
 
-use crate::ffmpeg::{AvError, PixelFormat, PixFmtDescriptor, ColorFormat};
+use crate::ffmpeg::{AvError, PixelFormat, ColorFormat};
 
 #[derive(Debug)]
 pub struct AvFrame {

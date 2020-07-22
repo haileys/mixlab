@@ -273,7 +273,7 @@ impl VideoCtx {
 
         VideoCtx {
             codec,
-            scaler: DynamicScaler::new(&picture),
+            scaler: DynamicScaler::new(picture.clone()),
             blank_frame: AvFrame::blank(&picture),
             time_base: time_base.try_into().unwrap(),
         }
@@ -308,16 +308,23 @@ impl VideoCtx {
 
 #[derive(Debug)]
 struct DynamicScaler {
-    scale: Option<SwsContext>,
+    scale: Option<ScaleSetting>,
+    output: PictureSettings,
+}
+
+#[derive(Debug)]
+struct ScaleSetting {
+    ctx: SwsContext,
+    letterbox_x: usize,
+    letterbox_y: usize,
+    scaled_width: usize,
+    scaled_height: usize,
     frame: AvFrame,
 }
 
 impl DynamicScaler {
-    pub fn new(output: &PictureSettings) -> Self {
-        DynamicScaler {
-            scale: None,
-            frame: AvFrame::blank(&output),
-        }
+    pub fn new(output: PictureSettings) -> Self {
+        DynamicScaler { scale: None, output }
     }
 
     // the returned reference can either by borrowed from self, or borrowed
@@ -325,56 +332,62 @@ impl DynamicScaler {
     // express that the output lifetime is outlived by both self and arg
     fn scale<'this: 'out, 'arg: 'out, 'out>(&'this mut self, frame: &'arg mut AvFrame) -> &'out mut AvFrame {
         let input_picture = frame.picture_settings();
-        let output_picture = self.frame.picture_settings();
+        let output_picture = &self.output;
 
-        if frame.picture_settings() == output_picture {
+        if &frame.picture_settings() == output_picture {
             // no scaling necessary
             return frame;
         }
 
         // reset cached swscale instance if it does not match input frame
         if let Some(scale) = self.scale.as_ref() {
-            if scale.input_settings() != &input_picture {
+            if scale.frame.picture_settings() != input_picture {
                 self.scale = None;
             }
         }
 
-        let width_ratio = Ratio::<usize>::new(output_picture.width, input_picture.width);
-        let height_ratio = Ratio::<usize>::new(output_picture.height, input_picture.height);
-        let scale_factor = cmp::min(width_ratio, height_ratio);
-
-        let pixdesc = output_picture.pixel_format.descriptor();
-
-        let scaled_width = pixdesc.align_horizontal(
-            (scale_factor * input_picture.width).to_integer());
-
-        let scaled_height = pixdesc.align_vertical(
-            (scale_factor * input_picture.height).to_integer());
-
-        let scaled_picture = PictureSettings {
-            width: scaled_width,
-            height: scaled_height,
-            pixel_format: output_picture.pixel_format,
-        };
-
-        let scaled_x = pixdesc.align_horizontal((output_picture.width - scaled_width) / 2);
-        let scaled_y = pixdesc.align_vertical((output_picture.height - scaled_height) / 2);
-
         let scale = self.scale.get_or_insert_with(|| {
-            eprintln!("new dynamic rescaler from: {:?}", input_picture);
-            eprintln!("                       to: {:?}", output_picture);
-            SwsContext::new(input_picture, scaled_picture)
+            let width_ratio = Ratio::<usize>::new(output_picture.width, input_picture.width);
+            let height_ratio = Ratio::<usize>::new(output_picture.height, input_picture.height);
+            let scale_factor = cmp::min(width_ratio, height_ratio);
+
+            let pixdesc = output_picture.pixel_format.descriptor();
+
+            let scaled_width = pixdesc.align_horizontal(
+                (scale_factor * input_picture.width).to_integer());
+
+            let scaled_height = pixdesc.align_vertical(
+                (scale_factor * input_picture.height).to_integer());
+
+            let scaled_picture = PictureSettings {
+                width: scaled_width,
+                height: scaled_height,
+                pixel_format: output_picture.pixel_format,
+            };
+
+            let letterbox_x = pixdesc.align_horizontal((output_picture.width - scaled_width) / 2);
+            let letterbox_y = pixdesc.align_vertical((output_picture.height - scaled_height) / 2);
+
+            ScaleSetting {
+                ctx: SwsContext::new(input_picture, scaled_picture),
+                letterbox_x,
+                letterbox_y,
+                scaled_width,
+                scaled_height,
+                frame: AvFrame::blank(output_picture),
+            }
         });
 
-        scale.process(
+        scale.ctx.process(
             &frame.frame_data(),
-            &mut self.frame.subframe_data_mut(
-                scaled_x, scaled_y,
-                scaled_width, scaled_height,
+            &mut scale.frame.subframe_data_mut(
+                scale.letterbox_x, scale.letterbox_y,
+                scale.scaled_width, scale.scaled_height,
             ),
         );
-        self.frame.copy_props_from(frame);
 
-        &mut self.frame
+        scale.frame.copy_props_from(frame);
+
+        &mut scale.frame
     }
 }
