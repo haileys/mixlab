@@ -341,7 +341,7 @@ impl DynamicScaler {
 
         // reset cached swscale instance if it does not match input frame
         if let Some(scale) = self.scale.as_ref() {
-            if scale.frame.picture_settings() != input_picture {
+            if scale.frame.picture_settings() != *output_picture {
                 self.scale = None;
             }
         }

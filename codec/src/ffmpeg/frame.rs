@@ -28,6 +28,8 @@ impl AvFrame {
     }
 
     pub fn blank(settings: &PictureSettings) -> Self {
+        println!("blank");
+
         let mut frame = Self::new();
 
         let underlying = frame.as_underlying_mut();
@@ -37,6 +39,55 @@ impl AvFrame {
 
         unsafe {
             ff::av_frame_get_buffer(frame.as_mut_ptr(), 0);
+        }
+
+        // zero frame
+
+        let frame_data = frame.frame_data_mut();
+        let pixdesc = settings.pixel_format.descriptor();
+        let mut cleared = [false; 8];
+
+        for (idx, comp) in pixdesc.components().iter().enumerate() {
+            let plane = comp.plane();
+
+            if cleared[plane] {
+                continue;
+            }
+
+            cleared[plane] = true;
+
+            let is_chroma = match pixdesc.color() {
+                ColorFormat::Yuv => idx > 0,
+                _ => false,
+            };
+
+            let width = if is_chroma {
+                settings.width >> pixdesc.log2_chroma_w()
+            } else {
+                settings.width
+            };
+
+            let height = if is_chroma {
+                settings.height >> pixdesc.log2_chroma_h()
+            } else {
+                settings.height
+            };
+
+            let stride: usize = frame_data.stride[plane].try_into().unwrap();
+            let data = frame_data.data[plane];
+
+            // we must be careful not to use stride for every line lest we
+            // overrun the end of the buffer. the padding in stride is only
+            // guaranteed to exist between lines.
+            let size = stride * height.saturating_sub(1) + comp.step() * width;
+
+            let byte = if is_chroma {
+                0x80
+            } else {
+                0
+            };
+
+            unsafe { ptr::write_bytes(data, byte, size); }
         }
 
         frame
