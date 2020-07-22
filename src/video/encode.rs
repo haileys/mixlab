@@ -1,8 +1,10 @@
+use std::cmp;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 
 use bytes::Bytes;
 use fdk_aac::enc as aac;
+use num_rational::Ratio;
 
 use mixlab_codec::avc::DecoderConfigurationRecord;
 use mixlab_codec::avc::encode::{AvcEncoder, AvcParams, Preset, Tune, RateControl};
@@ -337,15 +339,41 @@ impl DynamicScaler {
             }
         }
 
+        let width_ratio = Ratio::<usize>::new(output_picture.width, input_picture.width);
+        let height_ratio = Ratio::<usize>::new(output_picture.height, input_picture.height);
+        let scale_factor = cmp::min(width_ratio, height_ratio);
+
+        let pixdesc = output_picture.pixel_format.descriptor();
+
+        let scaled_width = pixdesc.align_horizontal(
+            (scale_factor * input_picture.width).to_integer());
+
+        let scaled_height = pixdesc.align_vertical(
+            (scale_factor * input_picture.height).to_integer());
+
+        let scaled_picture = PictureSettings {
+            width: scaled_width,
+            height: scaled_height,
+            pixel_format: output_picture.pixel_format,
+        };
+
+        let scaled_x = pixdesc.align_horizontal((output_picture.width - scaled_width) / 2);
+        let scaled_y = pixdesc.align_vertical((output_picture.height - scaled_height) / 2);
+
         let scale = self.scale.get_or_insert_with(|| {
             eprintln!("new dynamic rescaler from: {:?}", input_picture);
             eprintln!("                       to: {:?}", output_picture);
-            SwsContext::new(input_picture, output_picture)
+            SwsContext::new(input_picture, scaled_picture)
         });
 
-        scale.process(frame, &mut self.frame);
-        self.frame.set_presentation_timestamp(frame.presentation_timestamp());
-        // self.frame.copy_props_from(frame);
+        scale.process(
+            &frame.frame_data(),
+            &mut self.frame.subframe_data_mut(
+                scaled_x, scaled_y,
+                scaled_width, scaled_height,
+            ),
+        );
+        self.frame.copy_props_from(frame);
 
         &mut self.frame
     }

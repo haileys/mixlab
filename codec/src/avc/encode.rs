@@ -8,7 +8,7 @@ use bytes::Bytes;
 use ffmpeg_dev::sys as ff;
 
 use crate::avc::{bitstream, nal, AvcError, DecoderConfigurationRecord};
-use crate::ffmpeg::{AvCodecContext, AvFrame, AvError, AvDict, AvPacket};
+use crate::ffmpeg::{AvCodecContext, AvFrame, AvError, AvDict, AvPacket, PixelFormat};
 
 #[derive(Debug)]
 pub struct AvcEncoder {
@@ -17,7 +17,7 @@ pub struct AvcEncoder {
 
 pub struct AvcParams {
     pub time_base: usize,
-    pub pixel_format: ff::AVPixelFormat,
+    pub pixel_format: PixelFormat,
     pub color_space: ff::AVColorSpace,
     pub picture_width: usize,
     pub picture_height: usize,
@@ -126,7 +126,7 @@ impl AvcEncoder {
             avctx.width = params.picture_width.try_into().expect("picture_width too large");
             avctx.height = params.picture_height.try_into().expect("picture_height too large");
             avctx.colorspace = params.color_space;
-            avctx.pix_fmt = params.pixel_format;
+            avctx.pix_fmt = params.pixel_format.into_raw();
             avctx.time_base.num = 1;
             avctx.time_base.den = params.time_base as c_int;
             avctx.flags |= ff::AV_CODEC_FLAG_GLOBAL_HEADER as i32;

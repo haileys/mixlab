@@ -63,12 +63,6 @@ pub enum VideoFrameType {
     VideoInfoFrame,
 }
 
-impl VideoFrameType {
-    pub fn is_key_frame(&self) -> bool {
-        *self == VideoFrameType::KeyFrame || *self == VideoFrameType::GeneratedKeyFrame
-    }
-}
-
 #[derive(Debug)]
 pub enum VideoPacketError {
     Eof,

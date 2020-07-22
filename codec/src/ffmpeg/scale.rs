@@ -1,10 +1,9 @@
 use std::convert::TryInto;
-use std::os::raw::c_int;
 use std::ptr;
 
 use ffmpeg_dev::sys as ff;
 
-use crate::ffmpeg::{AvFrame, PictureSettings};
+use crate::ffmpeg::{AvFrame, PictureSettings, PictureData, PictureDataMut};
 
 #[derive(Debug)]
 pub struct SwsContext {
@@ -22,8 +21,8 @@ impl SwsContext {
 
         let ptr = unsafe {
             ff::sws_getContext(
-                input_width, input_height, input.pixel_format,
-                output_width, output_height, output.pixel_format,
+                input_width, input_height, input.pixel_format.into_raw(),
+                output_width, output_height, output.pixel_format.into_raw(),
                 ff::SWS_BICUBIC as i32, ptr::null_mut(), ptr::null_mut(), ptr::null(),
             )
         };
@@ -47,20 +46,17 @@ impl SwsContext {
         &self.output
     }
 
-    pub fn process(&mut self, input: &AvFrame, output: &mut AvFrame) {
+    pub fn process(&mut self, input: &PictureData, output: &mut PictureDataMut) {
         let input_settings = input.picture_settings();
         let output_settings = output.picture_settings();
 
-        if input_settings != self.input {
+        if input_settings != &self.input {
             panic!("wrong picture settings for input frame: {:?}; expected: {:?}", input_settings, self.input);
         }
 
-        if output_settings != self.output {
-            panic!("wrong picture settings for output frame: {:?}; expected: {:?}", input_settings, self.input);
+        if output_settings != &self.output {
+            panic!("wrong picture settings for output frame: {:?}; expected: {:?}", output_settings, self.output);
         }
-
-        let input = input.frame_data();
-        let output = output.frame_data_mut();
 
         let input_data = input.data.as_ptr() as *const *const _;
         let input_stride = input.stride.as_ptr();
