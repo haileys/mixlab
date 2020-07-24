@@ -329,8 +329,6 @@ struct LiveOutput {
     epoch: MediaTime,
     encode: EncodeStream,
     publish: PublishClient,
-    audio_time: MediaTime,
-    video_time: MediaTime,
 }
 
 impl LiveOutput {
@@ -368,8 +366,6 @@ impl LiveOutput {
             epoch,
             encode,
             publish,
-            audio_time: MediaTime::zero(),
-            video_time: MediaTime::zero(),
         }
     }
 
