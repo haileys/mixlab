@@ -1,7 +1,5 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 use fdk_aac::enc as aac;
@@ -11,7 +9,7 @@ use uuid::Uuid;
 use warp::ws::{self, WebSocket};
 
 use mixlab_codec::ffmpeg::PictureSettings;
-use mixlab_mux::mp4::{Mp4Mux, Mp4Params, TrackData, AdtsFrame, AvcFrame};
+use mixlab_mux::mp4::{Mp4Params, TrackData, AdtsFrame, AvcFrame};
 use mixlab_protocol::{LineType, Terminal, MonitorIndication, MonitorTransportPacket};
 use mixlab_util::time::MediaTime;
 
@@ -75,18 +73,10 @@ async fn send_packet(websocket: &mut WebSocket, packet: MonitorTransportPacket) 
 }
 
 #[derive(Debug)]
-struct AacFrame {
-    data: Vec<u8>,
-    timestamp: u64,
-}
-
-#[derive(Debug)]
 pub struct Monitor {
     epoch: Option<MediaTime>,
     socket_id: Uuid,
     segments_tx: Arc<broadcast::Sender<StreamSegment>>,
-    file: File,
-    mux: Mp4Mux,
     encode: EncodeStream,
     inputs: Vec<Terminal>,
 }
@@ -123,14 +113,6 @@ impl ModuleT for Monitor {
             }
         };
 
-        // set up mp4 params and create mux
-        let (mux, init_segment) = Mp4Mux::new(mp4_params.clone());
-
-        // create dump file and write init segment
-        let mut file = File::create("dump.mp4").unwrap();
-        println!("writing init ({} bytes)", init_segment.len());
-        file.write_all(&init_segment).unwrap();
-
         // register socket
         let socket_id = Uuid::new_v4();
         let (segments_tx, _) = broadcast::channel(1024);
@@ -148,8 +130,6 @@ impl ModuleT for Monitor {
             encode,
             socket_id,
             segments_tx,
-            mux,
-            file,
             inputs: vec![
                 LineType::Video.labeled("Video"),
                 LineType::Stereo.labeled("Audio"),
