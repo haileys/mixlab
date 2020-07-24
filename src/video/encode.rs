@@ -307,7 +307,7 @@ impl VideoCtx {
 }
 
 #[derive(Debug)]
-struct DynamicScaler {
+pub struct DynamicScaler {
     scale: Option<ScaleSetting>,
     output: PictureSettings,
 }
@@ -330,7 +330,7 @@ impl DynamicScaler {
     // the returned reference can either by borrowed from self, or borrowed
     // from our argument, so we need to set up a few lifetime constraints to
     // express that the output lifetime is outlived by both self and arg
-    fn scale<'this: 'out, 'arg: 'out, 'out>(&'this mut self, frame: &'arg mut AvFrame) -> &'out mut AvFrame {
+    pub fn scale<'this: 'out, 'arg: 'out, 'out>(&'this mut self, frame: &'arg mut AvFrame) -> &'out mut AvFrame {
         let input_picture = frame.picture_settings();
         let output_picture = &self.output;
 

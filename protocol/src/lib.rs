@@ -184,6 +184,7 @@ pub enum ModuleParams {
     StreamInput(StreamInputParams),
     StreamOutput(StreamOutputParams),
     Trigger(GateState),
+    VideoMixer(VideoMixerParams),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -202,6 +203,7 @@ pub enum Indication {
     StreamInput(()),
     StreamOutput(StreamOutputIndication),
     Trigger(()),
+    VideoMixer(()),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Copy, PartialEq)]
@@ -372,6 +374,25 @@ pub enum StreamOutputLiveStatus {
 pub struct StreamSource {
     pub codec: String,
     pub kbps: usize,
+}
+
+pub const VIDEO_MIXER_CHANNELS: usize = 4;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct VideoMixerParams {
+    pub a: Option<usize>,
+    pub b: Option<usize>,
+    pub fader: f64,
+}
+
+impl Default for VideoMixerParams {
+    fn default() -> Self {
+        VideoMixerParams {
+            a: None,
+            b: None,
+            fader: 1.0, // start at A
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]

@@ -487,3 +487,56 @@ body {
 .monitor-overlay-playing:hover .monitor-overlay-icon {
     display:block;
 }
+
+.video-mixer {
+    display:flex;
+    flex-flow:row nowrap;
+    gap:16px;
+}
+
+.video-mixer-channels {
+    display:flex;
+    flex-flow:column nowrap;
+}
+
+.video-mixer-channel-row {
+    display:flex;
+    flex-flow:row nowrap;
+    gap:16px;
+    padding-bottom:32px;
+    border-bottom:1px solid #f0f0f5;
+    margin-bottom:32px;
+}
+
+.video-mixer-channel-row:last-child {
+    padding-bottom:0px;
+    border-bottom:none;
+    margin-bottom:0px;
+}
+
+.video-mixer-channel-select-btn {
+    border:none;
+    color:#8d8bb0;
+    background:#f0f0f5;
+    line-height:18px;
+    text-align:center;
+    vertical-align:middle;
+    font-size:18px;
+    cursor:pointer;
+    width:48px;
+    height:48px;
+}
+
+.video-mixer-channel-select-btn:hover {
+    background:#f4f4fa;
+}
+
+.video-mixer-channel-selected-a, .video-mixer-channel-selected-a:hover {
+    background-color:#c0f5c0;
+    color:#00aa00;
+}
+
+.video-mixer-channel-selected-b, .video-mixer-channel-selected-b:hover {
+    background-color:#f5c0c0;
+    color:#aa0000;
+}

@@ -10,3 +10,4 @@ pub mod plotter;
 pub mod stream_input;
 pub mod stream_output;
 pub mod trigger;
+pub mod video_mixer;

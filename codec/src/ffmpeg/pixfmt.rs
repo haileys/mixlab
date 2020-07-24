@@ -9,7 +9,7 @@ use ffmpeg_dev::sys as ff;
 pub struct PixelFormat(ff::AVPixelFormat);
 
 impl PixelFormat {
-    pub fn yuv420p() -> Self {
+    pub const fn yuv420p() -> Self {
         PixelFormat(ff::AVPixelFormat_AV_PIX_FMT_YUV420P)
     }
 

@@ -315,6 +315,14 @@ impl<'a> PictureData<'a> {
     pub fn picture_settings(&self) -> &PictureSettings {
         &self.picture
     }
+
+    pub unsafe fn data(&self) -> &PlanarData {
+        &self.data
+    }
+
+    pub unsafe fn stride(&self) -> &PlanarStride {
+        &self.stride
+    }
 }
 
 pub struct PictureDataMut<'a> {
@@ -327,6 +335,14 @@ pub struct PictureDataMut<'a> {
 impl<'a> PictureDataMut<'a> {
     pub fn picture_settings(&self) -> &PictureSettings {
         &self.picture
+    }
+
+    pub unsafe fn data(&self) -> &PlanarData {
+        &self.data
+    }
+
+    pub unsafe fn stride(&self) -> &PlanarStride {
+        &self.stride
     }
 }
 

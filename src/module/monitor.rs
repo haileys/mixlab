@@ -18,8 +18,8 @@ use crate::engine::{self, InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
 use crate::video::encode::{EncodeStream, AudioCtx, AudioParams, VideoCtx, VideoParams, StreamSegment, Profile};
 
-const MONITOR_WIDTH: usize = 1120;
-const MONITOR_HEIGHT: usize = 700;
+const MONITOR_WIDTH: usize = 560;
+const MONITOR_HEIGHT: usize = 350;
 
 lazy_static::lazy_static! {
     static ref SOCKETS: Mutex<HashMap<Uuid, Stream>> = Mutex::new(HashMap::new());
