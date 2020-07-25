@@ -28,8 +28,6 @@ impl AvFrame {
     }
 
     pub fn blank(settings: &PictureSettings) -> Self {
-        println!("blank");
-
         let mut frame = Self::new();
 
         let underlying = frame.as_underlying_mut();
