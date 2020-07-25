@@ -146,57 +146,52 @@ impl ModuleT for VideoMixer {
                 .and_then(|ch| ch.stored.as_ref())
                 .map(|stored| stored.frame.frame_data());
 
-            let crossfade = (self.params.fader * 255.0) as u32;
+            let crossfade = (self.params.fader * 255.0) as u8;
 
             unsafe {
-                for (plane, plane_info) in pixfmt.components().iter().enumerate() {
-                    let height =
-                        if plane == 0 {
-                            pict.height
-                        } else {
-                            pict.height >> pixfmt.log2_chroma_h()
-                        };
+                for component in pixfmt.components() {
+                    // we assume 1 byte per pixel per plane
+                    assert!(component.step() == 1);
+                    assert!(component.offset() == 0);
 
-                    let width =
-                        if plane == 0 {
-                            pict.width
-                        } else {
-                            pict.width >> pixfmt.log2_chroma_w()
-                        };
+                    let width = pict.width >> component.log2_horz();
+                    let height = pict.height >> component.log2_vert();
+                    let plane = component.plane();
 
                     let (a_ptr, a_linesize) = match channel_a.as_ref() {
-                        Some(a) => (a.data()[plane], a.stride()[plane] as usize),
-                        None => (output.data()[plane], output.stride()[plane] as usize),
+                        Some(a) => (a.data(plane), a.stride(plane)),
+                        None => (output.data(plane) as *const _, output.stride(plane)),
                     };
 
                     let (b_ptr, b_linesize) = match channel_b.as_ref() {
-                        Some(b) => (b.data()[plane], b.stride()[plane] as usize),
-                        None => (output.data()[plane], output.stride()[plane] as usize),
+                        Some(b) => (b.data(plane), b.stride(plane)),
+                        None => (output.data(plane) as *const _, output.stride(plane)),
                     };
 
-                    let out_ptr = output.data()[plane];
-                    let out_linesize = output.stride()[plane] as usize;
+                    let out_ptr = output.data(plane);
+                    let out_linesize = output.stride(plane) as usize;
 
                     for y in 0..height {
                         let a_ptr = a_ptr.add(y * a_linesize);
                         let b_ptr = b_ptr.add(y * b_linesize);
                         let out_ptr = out_ptr.add(y * out_linesize);
 
-                        for x in 0..width {
-                            let a_ptr = a_ptr.add(x);
-                            let b_ptr = b_ptr.add(x);
-                            let out_ptr = out_ptr.add(x);
+                        fade_line(out_ptr, a_ptr, b_ptr, width, crossfade);
 
-                            // TODO we assume 1 byte per pixel per plane here
-                            let value_a = ptr::read(a_ptr);
-                            let value_b = ptr::read(b_ptr);
+                        #[inline(never)]
+                        unsafe fn fade_line(mut out: *mut u8, mut a: *const u8, mut b: *const u8, len: usize, fade: u8) {
+                            let fade = fade as u16;
 
-                            let crossfaded =
-                                ((value_a as u32) * crossfade
-                                   + (value_b as u32) * (255 - crossfade))
-                                    / 255;
+                            for x in 0..len {
+                                let a_component = ptr::read(a) as u16 * fade;
+                                let b_component = ptr::read(b) as u16 * (255 - fade);
+                                let crossfaded = (a_component + b_component) / 255;
+                                ptr::write(out, crossfaded as u8);
 
-                            ptr::write(out_ptr, crossfaded as u8);
+                                a = a.add(1);
+                                b = b.add(1);
+                                out = out.add(1);
+                            }
                         }
                     }
                 }

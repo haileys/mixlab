@@ -43,18 +43,28 @@ impl Debug for PixelFormat {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct PixFmtDescriptor {
     desc: &'static ff::AVPixFmtDescriptor,
 }
 
 impl PixFmtDescriptor {
-    pub fn components(&self) -> &[PlaneInfo] {
-        unsafe {
-            let ptr = self.desc.comp.as_ptr() as *const PlaneInfo;
+    pub fn components(&self) -> impl Iterator<Item = PlaneInfo> {
+        let components = unsafe {
+            let ptr = self.desc.comp.as_ptr() as *const ff::AVComponentDescriptor;
             let len = self.desc.nb_components.into();
             slice::from_raw_parts(ptr, len)
-        }
+        };
+
+        let desc = *self;
+
+        components.iter().enumerate().map(move |(idx, comp)| {
+            PlaneInfo {
+                desc,
+                idx,
+                comp,
+            }
+        })
     }
 
     pub fn planar(&self) -> bool {
@@ -100,7 +110,7 @@ impl PixFmtDescriptor {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorFormat {
     Yuv,
     Rgb,
@@ -109,15 +119,34 @@ pub enum ColorFormat {
     PseudoPalette,
 }
 
-#[repr(transparent)]
 #[derive(Debug)]
 pub struct PlaneInfo {
-    comp: ff::AVComponentDescriptor,
+    desc: PixFmtDescriptor,
+    idx: usize,
+    comp: &'static ff::AVComponentDescriptor,
 }
 
 impl PlaneInfo {
     pub fn plane(&self) -> usize {
         self.comp.plane.try_into().unwrap()
+    }
+
+    pub fn log2_horz(&self) -> usize {
+        if self.desc.color() == ColorFormat::Yuv && self.idx == 0 {
+            // luma
+            0
+        } else {
+            self.desc.log2_chroma_w()
+        }
+    }
+
+    pub fn log2_vert(&self) -> usize {
+        if self.desc.color() == ColorFormat::Yuv && self.idx == 0 {
+            // luma
+            0
+        } else {
+            self.desc.log2_chroma_h()
+        }
     }
 
     pub fn step(&self) -> usize {
