@@ -32,8 +32,8 @@ struct StoredFrame {
 }
 
 const OUTPUT_SETTINGS: PictureSettings = PictureSettings {
-    width: 560,
-    height: 350,
+    width: 1120,
+    height: 700,
     pixel_format: PixelFormat::yuv420p(),
 };
 
@@ -180,17 +180,28 @@ impl ModuleT for VideoMixer {
 
                         #[inline(never)]
                         unsafe fn fade_line(mut out: *mut u8, mut a: *const u8, mut b: *const u8, len: usize, fade: u8) {
-                            let fade = fade as u16;
+                            use std::slice;
+                            use packed_simd::{u8x32, u16x32, Cast};
 
-                            for x in 0..len {
-                                let a_component = ptr::read(a) as u16 * fade;
-                                let b_component = ptr::read(b) as u16 * (255 - fade);
-                                let crossfaded = (a_component + b_component) / 255;
-                                ptr::write(out, crossfaded as u8);
+                            let a_fade = u16x32::splat(fade as u16);
+                            let b_fade = u16x32::splat((255 - fade) as u16);
+                            let div = u16x32::splat(255);
 
-                                a = a.add(1);
-                                b = b.add(1);
-                                out = out.add(1);
+                            let end = out.add(len);
+                            while out < end {
+                                let a_vals: u16x32 = u8x32::from_slice_aligned_unchecked(slice::from_raw_parts(a, 32)).cast();
+                                let b_vals: u16x32 = u8x32::from_slice_aligned_unchecked(slice::from_raw_parts(b, 32)).cast();
+
+                                let a_comp = a_vals * a_fade;
+                                let b_comp = b_vals * b_fade;
+
+                                let crossfaded: u8x32 = ((a_comp + b_comp) / div).cast();
+
+                                crossfaded.write_to_slice_aligned_unchecked(slice::from_raw_parts_mut(out, 32));
+
+                                a = a.add(32);
+                                b = b.add(32);
+                                out = out.add(32);
                             }
                         }
                     }
