@@ -10,7 +10,7 @@ use crate::workspace::{Window, WindowMsg};
 pub type VideoMixer = Pure<VideoMixerParams>;
 
 impl PureModule for VideoMixerParams {
-    fn view(&self, id: ModuleId, module: ComponentLink<Window>, _: MidiUiMode) -> Html {
+    fn view(&self, _: ModuleId, module: ComponentLink<Window>, midi_mode: MidiUiMode) -> Html {
         html! {
             <>
                 <div class="video-mixer">
@@ -28,12 +28,19 @@ impl PureModule for VideoMixerParams {
                         </div>
                     </div>
                     <div class="video-mixer-fader">
-                        <Fader
-                            value={self.fader}
+                        <MidiRangeTarget
+                            ui_mode={midi_mode}
                             onchange={module.callback(
                                 update_params(self, move |params, fader|
                                     VideoMixerParams { fader, ..params }))}
-                        />
+                        >
+                            <Fader
+                                value={self.fader}
+                                onchange={module.callback(
+                                    update_params(self, move |params, fader|
+                                        VideoMixerParams { fader, ..params }))}
+                            />
+                        </MidiRangeTarget>
                     </div>
                 </div>
             </>
