@@ -1,10 +1,10 @@
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback, MouseEvent};
+use yew::{html, ComponentLink, Html, Callback};
 
 use mixlab_protocol::{ModuleId, ModuleParams, VideoMixerParams, VIDEO_MIXER_CHANNELS};
 
 use crate::component::pure_module::{Pure, PureModule};
 use crate::component::midi_target::{MidiRangeTarget, MidiUiMode};
-use crate::control::{Fader, Rotary};
+use crate::control::Fader;
 use crate::workspace::{Window, WindowMsg};
 
 pub type VideoMixer = Pure<VideoMixerParams>;
@@ -81,20 +81,3 @@ fn update_params<T>(params: &VideoMixerParams, f: impl Fn(VideoMixerParams, T) -
     let params = params.clone();
     move |arg| WindowMsg::UpdateParams(ModuleParams::VideoMixer(f(params.clone(), arg)))
 }
-
-
-/*
-                <div class="video-mixer-channel-row">
-                    {for (0..VIDEO_MIXER_CHANNELS).map(|i| {
-                        html! {
-                            <button
-                                class="video-mixer-channel-select-btn"
-                                onclick={module.callback(update_params(self,
-                                    move |params| VideoMixerParams { b: Some(i), ..params }))}
-                            >
-                                {(i + 1).to_string()}
-                            </button>
-                        }
-                    })}
-                </div>
-*/

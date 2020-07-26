@@ -1,13 +1,11 @@
-use std::ptr;
 use std::sync::Arc;
 
 use mixlab_codec::ffmpeg::{AvFrame, PictureSettings, PixelFormat};
 use mixlab_protocol::{VideoMixerParams, LineType, Terminal, VIDEO_MIXER_CHANNELS};
 use mixlab_util::time::{MediaTime, MediaDuration};
 
-use crate::engine::{self, Sample, InputRef, OutputRef, SAMPLE_RATE, TICKS_PER_SECOND};
+use crate::engine::{self, InputRef, OutputRef, SAMPLE_RATE, TICKS_PER_SECOND};
 use crate::module::ModuleT;
-use crate::util;
 use crate::video;
 use crate::video::encode::DynamicScaler;
 
@@ -85,21 +83,15 @@ impl ModuleT for VideoMixer {
 
         // send channel specific outputs
         {
-            let in_a = self.params.a
+            *out_a = self.params.a
                 .and_then(|a| inputs.get(a))
-                .and_then(|input| input.expect_video());
+                .and_then(|input| input.expect_video())
+                .cloned();
 
-            let in_b = self.params.b
+            *out_b = self.params.b
                 .and_then(|b| inputs.get(b))
-                .and_then(|input| input.expect_video());
-
-            if let Some(a) = self.params.a {
-                *out_a = in_a.cloned();
-            }
-
-            if let Some(b) = self.params.b {
-                *out_b = in_b.cloned();
-            }
+                .and_then(|input| input.expect_video())
+                .cloned();
         }
 
         let absolute_timestamp = MediaTime::new(t as i64, SAMPLE_RATE as i64);
@@ -134,7 +126,7 @@ impl ModuleT for VideoMixer {
         {
             let pict = output_frame.picture_settings();
             let pixfmt = pict.pixel_format.descriptor();
-            let mut output = output_frame.frame_data_mut();
+            let output = output_frame.frame_data_mut();
 
             let channel_a = self.params.a
                 .and_then(|a| self.channels.get(a))

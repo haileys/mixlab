@@ -33,7 +33,7 @@ impl ModuleT for Plotter {
         None
     }
 
-    fn run_tick(&mut self, t: u64, inputs: &[InputRef], _: &mut [OutputRef]) -> Option<Self::Indication> {
+    fn run_tick(&mut self, _: u64, inputs: &[InputRef], _: &mut [OutputRef]) -> Option<Self::Indication> {
         self.count += 1;
 
         if self.count % 6 == 0 && inputs[0].connected() {
