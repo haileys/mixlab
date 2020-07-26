@@ -265,7 +265,7 @@ impl VideoCtx {
             },
             gop_size: match params.profile {
                 Profile::Monitor => Some(1), // every frame is key frame
-                Profile::Stream => None,
+                Profile::Stream => Some(60),
             },
         };
 
