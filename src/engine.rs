@@ -44,7 +44,7 @@ impl PartialOrd for OpClock {
 
 pub const CHANNELS: usize = 2;
 pub const SAMPLE_RATE: usize = 44100;
-pub const TICKS_PER_SECOND: usize = 100;
+pub const TICKS_PER_SECOND: usize = 60;
 const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
 pub static ZERO_BUFFER_STEREO: [Sample; SAMPLES_PER_TICK * CHANNELS] = [0.0; SAMPLES_PER_TICK * CHANNELS];
