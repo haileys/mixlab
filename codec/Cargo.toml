@@ -13,5 +13,5 @@ ogg = "0.7"
 serde = "1.0"
 serde_derive = "1.0"
 
-# https://github.com/imager-io/ffmpeg-dev-rs/pull/7
-ffmpeg-dev = { git = "https://github.com/charliesome/ffmpeg-dev-rs", rev = "1f315aa21d85a7111bf3f3101e7fe7c5bf22f6f1", features = ["gpl", "x264"] }
+# see main Cargo.toml
+ffmpeg-dev = { git = "https://github.com/charliesome/ffmpeg-dev-rs", rev = "a9bdafb368ec8a049232f91efaf7560c9dd035fb", features = ["gpl", "x264"] }

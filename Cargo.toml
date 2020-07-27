@@ -39,8 +39,4 @@ cpal = { git = "https://github.com/rustaudio/cpal", rev = "f3e7c462055004d0841cb
 rml_rtmp = { git = "https://github.com/KallDrexx/rust-media-libs", rev = "eb7f41d8cfda5b3a13372c983e737d527de413ad" }
 
 # https://github.com/imager-io/ffmpeg-dev-rs/pull/7
-ffmpeg-dev = { git = "https://github.com/charliesome/ffmpeg-dev-rs", rev = "1f315aa21d85a7111bf3f3101e7fe7c5bf22f6f1", features = ["gpl", "x264"] }
-
-[patch."https://github.com/charliesome/ffmpeg-dev-rs"]
-# https://github.com/imager-io/x264-dev/pull/1
-x264-dev = { git = "https://github.com/charliesome/x264-dev", rev = "ae4ae4ee9b8f0119a678160338824344205655bb" }
+ffmpeg-dev = { git = "https://github.com/charliesome/ffmpeg-dev-rs", rev = "a9bdafb368ec8a049232f91efaf7560c9dd035fb", features = ["gpl", "x264"] }
