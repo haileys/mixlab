@@ -35,7 +35,7 @@ enum MouseMode {
     Drag(DragState),
 }
 
-#[derive(Properties, Clone)]
+#[derive(Properties, Debug, Clone)]
 pub struct FaderProps {
     pub value: f64,
     pub onchange: Callback<f64>,

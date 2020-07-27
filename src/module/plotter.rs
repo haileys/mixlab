@@ -7,6 +7,7 @@ use mixlab_protocol::{PlotterIndication, LineType, Terminal};
 pub struct Plotter {
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
+    count: usize,
 }
 
 impl ModuleT for Plotter {
@@ -18,6 +19,7 @@ impl ModuleT for Plotter {
             Self {
                 inputs: vec![LineType::Stereo.unlabeled()],
                 outputs: vec![],
+                count: 0,
             },
             Self::Indication { inputs: vec![vec![], vec![]] }
         )
@@ -31,8 +33,10 @@ impl ModuleT for Plotter {
         None
     }
 
-    fn run_tick(&mut self, t: u64, inputs: &[InputRef], _: &mut [OutputRef]) -> Option<Self::Indication> {
-        if t % 10 == 1 && inputs[0].connected() {
+    fn run_tick(&mut self, _: u64, inputs: &[InputRef], _: &mut [OutputRef]) -> Option<Self::Indication> {
+        self.count += 1;
+
+        if self.count % 6 == 0 && inputs[0].connected() {
             let input = inputs[0].expect_stereo();
 
             let samples = input.len() / 2;

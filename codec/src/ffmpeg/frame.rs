@@ -28,8 +28,6 @@ impl AvFrame {
     }
 
     pub fn blank(settings: &PictureSettings) -> Self {
-        println!("blank");
-
         let mut frame = Self::new();
 
         let underlying = frame.as_underlying_mut();
@@ -47,7 +45,7 @@ impl AvFrame {
         let pixdesc = settings.pixel_format.descriptor();
         let mut cleared = [false; 8];
 
-        for (idx, comp) in pixdesc.components().iter().enumerate() {
+        for (idx, comp) in pixdesc.components().enumerate() {
             let plane = comp.plane();
 
             if cleared[plane] {
@@ -248,7 +246,7 @@ impl AvFrame {
 
         // TODO - this should work just fine for non-planar pixfmts as long as
         // we don't mutate data - only assign into it from underlying.data
-        for (idx, component) in pixdesc.components().iter().enumerate() {
+        for (idx, component) in pixdesc.components().enumerate() {
             let is_chroma = match pixdesc.color() {
                 ColorFormat::Yuv => idx > 0,
                 _ => false,
@@ -315,6 +313,14 @@ impl<'a> PictureData<'a> {
     pub fn picture_settings(&self) -> &PictureSettings {
         &self.picture
     }
+
+    pub unsafe fn data(&self, plane: usize) -> *const u8 {
+        self.data[plane] as *const u8
+    }
+
+    pub unsafe fn stride(&self, plane: usize) -> usize {
+        self.stride[plane] as usize
+    }
 }
 
 pub struct PictureDataMut<'a> {
@@ -327,6 +333,14 @@ pub struct PictureDataMut<'a> {
 impl<'a> PictureDataMut<'a> {
     pub fn picture_settings(&self) -> &PictureSettings {
         &self.picture
+    }
+
+    pub unsafe fn data(&self, plane: usize) -> *mut u8 {
+        self.data[plane]
+    }
+
+    pub unsafe fn stride(&self, plane: usize) -> usize {
+        self.stride[plane] as usize
     }
 }
 
