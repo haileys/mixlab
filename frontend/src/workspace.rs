@@ -373,41 +373,39 @@ impl Component for Workspace {
         }
 
         html! {
-            <>
-                <div class="workspace"
-                    onmouseup={self.link.callback(WorkspaceMsg::MouseUp)}
-                    onmousemove={self.link.callback(WorkspaceMsg::MouseMove)}
-                    onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
-                    oncontextmenu={prevent_default()}
-                >
-                    { for self.window_refs.iter().map(|(id, refs)| {
-                        let state = self.props.state.borrow();
-                        let module = state.modules.get(id);
-                        let geometry = state.geometry.get(id);
-                        let workspace = self.link.clone();
-                        let indication = state.indications.get(id);
+            <div class="workspace"
+                onmouseup={self.link.callback(WorkspaceMsg::MouseUp)}
+                onmousemove={self.link.callback(WorkspaceMsg::MouseMove)}
+                onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
+                oncontextmenu={prevent_default()}
+            >
+                { for self.window_refs.iter().map(|(id, refs)| {
+                    let state = self.props.state.borrow();
+                    let module = state.modules.get(id);
+                    let geometry = state.geometry.get(id);
+                    let workspace = self.link.clone();
+                    let indication = state.indications.get(id);
 
-                        if let (Some(module), Some(geometry)) = (module, geometry) {
-                            let name = format!("{:?}", module).chars().take_while(|c| c.is_alphanumeric()).collect::<String>();
-                            html! { <Window
-                                id={id}
-                                module={module}
-                                refs={refs}
-                                name={name}
-                                workspace={workspace}
-                                geometry={geometry}
-                                indication={indication.cloned()}
-                            /> }
-                        } else {
-                            html! {}
-                        }
-                    }) }
+                    if let (Some(module), Some(geometry)) = (module, geometry) {
+                        let name = format!("{:?}", module).chars().take_while(|c| c.is_alphanumeric()).collect::<String>();
+                        html! { <Window
+                            id={id}
+                            module={module}
+                            refs={refs}
+                            name={name}
+                            workspace={workspace}
+                            geometry={geometry}
+                            indication={indication.cloned()}
+                        /> }
+                    } else {
+                        html! {}
+                    }
+                }) }
 
-                    <Connections connections={connections} width={self.props.width} height={self.props.height} />
+                <Connections connections={connections} width={self.props.width} height={self.props.height} />
 
-                    {self.view_context_menu()}
-                </div>
-            </>
+                {self.view_context_menu()}
+            </div>
         }
     }
 

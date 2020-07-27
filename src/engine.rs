@@ -7,15 +7,20 @@ use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError
 use std::thread;
 use std::time::{Instant, Duration};
 
+use futures::future;
+use futures::stream::{Stream, StreamExt};
 use tokio::runtime;
-use tokio::sync::{oneshot, broadcast};
+use tokio::sync::{oneshot, broadcast, watch};
 
-use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ServerUpdate, Indication, LineType, ClientSequence, ClientOp};
+use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, TerminalId, WorkspaceState, WindowGeometry, ServerUpdate, Indication, LineType, ClientSequence, ClientOp, PerformanceInfo};
 use mixlab_util::time::MediaDuration;
 
 use crate::module::Module;
 use crate::util::Sequence;
 use crate::video;
+
+mod timing;
+use timing::{EngineStat, TickStat};
 
 pub type Sample = f32;
 
@@ -53,6 +58,7 @@ pub enum EngineMessage {
 
 pub struct EngineHandle {
     cmd_tx: SyncSender<EngineMessage>,
+    perf_rx: watch::Receiver<Option<Arc<PerformanceInfo>>>,
 }
 
 pub struct EngineSession {
@@ -63,11 +69,13 @@ pub struct EngineSession {
 pub fn start(tokio_runtime: runtime::Handle) -> EngineHandle {
     let (cmd_tx, cmd_rx) = mpsc::sync_channel(8);
     let (log_tx, _) = broadcast::channel(64);
+    let (perf_tx, perf_rx) = watch::channel(None);
 
     thread::spawn(move || {
         let mut engine = Engine {
             cmd_rx,
             log_tx,
+            perf_tx,
             session_seq: Sequence::new(),
             modules: HashMap::new(),
             geometry: HashMap::new(),
@@ -83,7 +91,7 @@ pub fn start(tokio_runtime: runtime::Handle) -> EngineHandle {
         });
     });
 
-    EngineHandle { cmd_tx }
+    EngineHandle { cmd_tx, perf_rx }
 }
 
 #[derive(Debug)]
@@ -122,6 +130,10 @@ impl EngineHandle {
             session_id,
         }))
     }
+
+    pub fn performance_info(&self) -> impl Stream<Item = Arc<PerformanceInfo>> {
+        self.perf_rx.clone().filter_map(|info| future::ready(info))
+    }
 }
 
 impl EngineSession {
@@ -142,6 +154,7 @@ impl EngineSession {
 pub struct Engine {
     cmd_rx: Receiver<EngineMessage>,
     log_tx: broadcast::Sender<EngineOp>,
+    perf_tx: watch::Sender<Option<Arc<PerformanceInfo>>>,
     session_seq: Sequence,
     modules: HashMap<ModuleId, Module>,
     geometry: HashMap<ModuleId, WindowGeometry>,
@@ -153,48 +166,50 @@ pub struct Engine {
 impl Engine {
     fn run(&mut self) {
         let start = Instant::now();
+        let mut stat = EngineStat::new();
         let mut tick = 0;
 
         loop {
-            let indications = time_tick(|| self.run_tick(tick));
+            let this_tick = tick;
             tick += 1;
 
+            // we don't simply calculate `tick * TICK_BUDGET` here to prevent loss of precision over time:
+            let scheduled_tick_end = start + Duration::from_millis((tick * 1_000) / TICKS_PER_SECOND as u64);
+
+            // run tick
+            let indications = stat.record_tick(scheduled_tick_end,
+                |tick_stat| self.run_tick(this_tick, tick_stat));
+
+            // send out indication updates
             for (module_id, indication) in indications {
                 self.indications.insert(module_id, indication.clone());
                 self.log_op(ServerUpdate::UpdateModuleIndication(module_id, indication));
             }
 
-            let sleep_until = start + Duration::from_millis(tick * 1_000 / TICKS_PER_SECOND as u64);
+            // send out performance metrics
+            if (this_tick % (TICKS_PER_SECOND as u64 / 2)) == 0 {
+                let _ = self.perf_tx.broadcast(Some(Arc::new(stat.report())));
+            }
 
+            // wait for next tick and process commands while waiting
             loop {
                 let now = Instant::now();
 
-                if now >= sleep_until {
+                if now >= scheduled_tick_end {
                     break;
                 }
 
-                match self.cmd_rx.recv_timeout(sleep_until - now) {
-                    Ok(EngineMessage::ConnectSession(tx)) => { let _ = tx.send(self.connect_session()); }
-                    Ok(EngineMessage::ClientMessage(session, msg)) => { self.client_update(session, msg); }
+                match self.cmd_rx.recv_timeout(scheduled_tick_end - now) {
+                    Ok(EngineMessage::ConnectSession(tx)) => {
+                        let _ = tx.send(self.connect_session());
+                    }
+                    Ok(EngineMessage::ClientMessage(session, msg)) => {
+                        self.client_update(session, msg, &mut stat);
+                    }
                     Err(RecvTimeoutError::Timeout) => { break; }
                     Err(RecvTimeoutError::Disconnected) => { return; }
                 }
             }
-        }
-
-        fn time_tick<T>(f: impl FnOnce() -> T) -> T {
-            let before = Instant::now();
-            let retn = f();
-            let after = Instant::now();
-
-            let elapsed = after - before;
-            let budget = Duration::from_millis(1_000 / TICKS_PER_SECOND as u64);
-
-            if elapsed > budget {
-                eprintln!("WARNING: tick ran over time! elapsed {} us, budget {} us", elapsed.as_micros(), budget.as_micros());
-            }
-
-            retn
         }
     }
 
@@ -244,7 +259,7 @@ impl Engine {
         let _ = self.log_tx.send(EngineOp::Sync(clock));
     }
 
-    fn client_update(&mut self, session_id: SessionId, msg: ClientMessage) {
+    fn client_update(&mut self, session_id: SessionId, msg: ClientMessage, stat: &mut EngineStat) {
         let clock = OpClock(session_id, msg.sequence);
 
         match msg.op {
@@ -304,6 +319,8 @@ impl Engine {
                     self.modules.remove(&module_id);
                     self.log_op(ServerUpdate::DeleteModule(module_id));
                 }
+
+                stat.remove_module(module_id);
             }
             ClientOp::CreateConnection(input_id, output_id) => {
                 let input_type = match terminal_line_type(self, TerminalId::Input(input_id)) {
@@ -349,7 +366,7 @@ impl Engine {
         }
     }
 
-    fn run_tick(&mut self, tick: u64) -> Vec<(ModuleId, Indication)> {
+    fn run_tick(&mut self, tick: u64, stat: &mut TickStat) -> Vec<(ModuleId, Indication)> {
         // find terminal modules - modules which do not send their output to
         // the input of any other module
 
@@ -437,7 +454,11 @@ impl Engine {
 
                 let t = tick * SAMPLES_PER_TICK as u64;
 
-                match module.run_tick(t, &input_refs, &mut output_refs) {
+                let result = stat.record_module(*module_id, || {
+                    module.run_tick(t, &input_refs, &mut output_refs)
+                });
+
+                match result {
                     None => {}
                     Some(indic) => {
                         indications.push((*module_id, indic));

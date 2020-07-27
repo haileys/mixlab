@@ -9,14 +9,79 @@ body {
     background-color:#f0f0f5;
 }
 
-.workspace {
+.app {
     position:absolute;
     left:0px;
     top:0px;
     width:100%;
     height:100%;
-    z-index:0;
     user-select:none;
+    display:flex;
+    flex-flow:row nowrap;
+}
+
+.sidebar {
+    width:160px;
+    height:100%;
+    border-left:1px solid #0b0b10;
+    background-color:#ffffff;
+    display:flex;
+    flex-flow:column nowrap;
+    gap:12px;
+    padding:12px;
+}
+
+.sidebar-title {
+    background-color:#8d8bb0;
+    padding:12px;
+    color:#f0f0f5;
+    font-size:24px;
+    line-height:24px;
+    font-weight:bold;
+    margin-top:-12px;
+    margin-left:-12px;
+    margin-right:-12px;
+}
+
+.perf-info {
+}
+
+.perf-info-tick-util {
+    text-align:right;
+    padding:12px;
+    font-size:24px;
+    color:#8d8bb0;
+}
+
+.perf-info-accounts-table {
+    width:100%;
+    border-collapse:collapse;
+}
+
+.perf-info-accounts-table tr {
+    border-top:1px solid #f0f0f5;
+}
+
+.perf-info-accounts-table td {
+    padding:4px 0px;
+    line-height:16px;
+}
+
+.perf-info-accounts-table tr:last-child {
+    border-bottom:1px solid #f0f0f5;
+}
+
+.perf-info-metric {
+    width:48px;
+    text-align:right;
+}
+
+.workspace {
+    flex:1;
+    height:100%;
+    position:relative;
+    z-index:0;
+    overflow:scroll;
 }
 
 .workspace-connections {

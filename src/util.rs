@@ -1,9 +1,12 @@
 use std::io;
 use std::num::NonZeroUsize;
+use std::time::Duration;
 
 use num_rational::Rational64;
 use futures::executor::block_on;
 use tokio::io::AsyncRead;
+
+use mixlab_protocol::TemporalWarningStatus;
 
 #[derive(Debug)]
 pub struct Sequence(usize);
@@ -38,4 +41,19 @@ impl<T: AsyncRead + Unpin> io::Read for SyncRead<T> {
 pub fn decimal(ratio: Rational64) -> String {
     let micros = (ratio * 1_000_000).to_integer();
     format!("{:.3}", micros as f64 / 1_000_000.0)
+}
+
+pub fn temporal_warning(time_since_event: Option<Duration>) -> Option<TemporalWarningStatus> {
+    const ACTIVE: Duration = Duration::from_millis(100);
+    const RECENT: Duration = Duration::from_millis(5000);
+
+    time_since_event.and_then(|dur| {
+        if dur < ACTIVE {
+            Some(TemporalWarningStatus::Active)
+        } else if dur < RECENT {
+            Some(TemporalWarningStatus::Recent)
+        } else {
+            None
+        }
+    })
 }

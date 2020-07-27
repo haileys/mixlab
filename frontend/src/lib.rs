@@ -4,6 +4,7 @@ mod component;
 mod control;
 mod module;
 mod service;
+mod sidebar;
 mod util;
 mod workspace;
 
@@ -18,8 +19,9 @@ use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
 
-use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ServerUpdate, Indication, Terminal, ClientOp, ClientSequence};
+use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ServerUpdate, Indication, Terminal, ClientOp, ClientSequence, PerformanceInfo};
 
+use sidebar::Sidebar;
 use util::Sequence;
 use workspace::Workspace;
 
@@ -32,6 +34,7 @@ pub struct App {
     root_element: Element,
     viewport_width: usize,
     viewport_height: usize,
+    performance_info: Option<Rc<PerformanceInfo>>,
     // must be kept alive while app is running:
     _resize_listener: EventListener,
 }
@@ -64,7 +67,7 @@ impl From<WorkspaceState> for State {
 pub enum AppMsg {
     NoOp,
     WindowResize,
-    ServerMessage(ServerMessage),
+    ServerMessage(ServerMessage<'static>),
     ClientUpdate(ClientOp),
 }
 
@@ -122,6 +125,7 @@ impl Component for App {
             root_element,
             viewport_width,
             viewport_height,
+            performance_info: None,
             _resize_listener: resize_listener,
         }
     }
@@ -199,6 +203,12 @@ impl Component for App {
                         // our changes have successfully round-tripped
                         self.synced()
                     }
+                    ServerMessage::Performance(perf_info) => {
+                        self.performance_info = Some(Rc::new(perf_info.into_owned()));
+
+                        // TODO we should rerender perf pane but not workspace even if not synced
+                        self.synced()
+                    }
                 }
             }
             AppMsg::ClientUpdate(op) => {
@@ -221,12 +231,19 @@ impl Component for App {
         match &self.state {
             Some(state) => {
                 html! {
-                    <Workspace
-                        app={self.link.clone()}
-                        state={state}
-                        width={self.viewport_width}
-                        height={self.viewport_height}
-                    />
+                    <div class="app">
+                        <Workspace
+                            app={self.link.clone()}
+                            state={state}
+                            width={self.viewport_width}
+                            height={self.viewport_height}
+                        />
+
+                        <Sidebar
+                            state={state}
+                            performance_info={self.performance_info.clone()}
+                        />
+                    </div>
                 }
             }
             None => html! {}

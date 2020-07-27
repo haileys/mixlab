@@ -4,7 +4,7 @@ use std::iter;
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 use yew::components::Select;
 
-use mixlab_protocol::{ModuleId, ModuleParams, OutputDeviceParams, OutputDeviceIndication, OutputDeviceWarning};
+use mixlab_protocol::{ModuleId, ModuleParams, OutputDeviceParams, OutputDeviceIndication, TemporalWarningStatus};
 
 use crate::workspace::{Window, WindowMsg};
 
@@ -150,10 +150,10 @@ impl Component for OutputDevice {
     }
 }
 
-fn warning_class(warning_status: Option<OutputDeviceWarning>) -> &'static str {
+fn warning_class(warning_status: Option<TemporalWarningStatus>) -> &'static str {
     match warning_status {
         None => "status-light",
-        Some(OutputDeviceWarning::Active) => "status-light status-light-red-active",
-        Some(OutputDeviceWarning::Recent) => "status-light status-light-red",
+        Some(TemporalWarningStatus::Active) => "status-light status-light-red-active",
+        Some(TemporalWarningStatus::Recent) => "status-light status-light-red",
     }
 }

@@ -2,12 +2,12 @@ use std::f32;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Instant, Duration};
+use std::time::Instant;
 
 use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use ringbuf::{RingBuffer, Producer};
 
-use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType, Terminal, OutputDeviceWarning};
+use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType, Terminal};
 
 use crate::engine::{Sample, InputRef, OutputRef, CHANNELS};
 use crate::module::ModuleT;
@@ -218,7 +218,7 @@ impl ModuleT for OutputDevice {
 
         let mut indication_changed = false;
 
-        let new_clip_status = warning_status(
+        let new_clip_status = util::temporal_warning(
             self.last_clip.map(|time| now - time));
 
         if self.indication.clip != new_clip_status {
@@ -226,7 +226,7 @@ impl ModuleT for OutputDevice {
             indication_changed = true;
         }
 
-        let new_lag_status = warning_status(
+        let new_lag_status = util::temporal_warning(
             self.last_lag.map(|time| now - time));
 
         if self.indication.lag != new_lag_status {
@@ -248,19 +248,4 @@ impl ModuleT for OutputDevice {
     fn outputs(&self)-> &[Terminal] {
         &self.outputs
     }
-}
-
-fn warning_status(time_since: Option<Duration>) -> Option<OutputDeviceWarning> {
-    const ACTIVE: Duration = Duration::from_millis(100);
-    const RECENT: Duration = Duration::from_millis(5000);
-
-    time_since.and_then(|dur| {
-        if dur < ACTIVE {
-            Some(OutputDeviceWarning::Active)
-        } else if dur < RECENT {
-            Some(OutputDeviceWarning::Recent)
-        } else {
-            None
-        }
-    })
 }

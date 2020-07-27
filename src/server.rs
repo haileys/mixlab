@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -11,7 +12,7 @@ use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
-use mixlab_protocol::{ClientMessage, ServerMessage};
+use mixlab_protocol::{ClientMessage, ServerMessage, PerformanceInfo};
 
 use crate::engine::{self, EngineHandle, EngineOp};
 use crate::module;
@@ -145,6 +146,8 @@ fn wasm() -> impl Reply {
 async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
     let (mut tx, rx) = websocket.split();
 
+    let perf_info = engine.performance_info();
+
     let (state, engine_ops, engine) = engine.connect().await
         .expect("engine.connect");
 
@@ -158,12 +161,14 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
     enum Event {
         ClientMessage(Result<ws::Message, warp::Error>),
         EngineOp(Result<EngineOp, broadcast::RecvError>),
+        Performance(Arc<PerformanceInfo>),
     }
 
     let mut events = stream::select(
         rx.map(Event::ClientMessage),
-        engine_ops.map(Event::EngineOp),
-    );
+        stream::select(
+            engine_ops.map(Event::EngineOp),
+            perf_info.map(Event::Performance)));
 
     while let Some(event) = events.next().await {
         match event {
@@ -214,6 +219,20 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
                             // client disconnected
                             return;
                         }
+                    }
+                }
+            }
+            Event::Performance(perf_info) => {
+                let msg = ServerMessage::Performance(Cow::Borrowed(&perf_info));
+
+                let msg = bincode::serialize(&msg)
+                    .expect("bincode::serialize");
+
+                match tx.send(ws::Message::binary(msg)).await {
+                    Ok(()) => {}
+                    Err(_) => {
+                        // client disconnected
+                        return;
                     }
                 }
             }

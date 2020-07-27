@@ -1,5 +1,6 @@
 use std::fmt;
 use std::num::NonZeroUsize;
+use std::borrow::Cow;
 
 use serde_derive::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -10,10 +11,11 @@ use mixlab_util::time::MediaDuration;
 pub type Sample = f32;
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum ServerMessage {
+pub enum ServerMessage<'a> {
     WorkspaceState(WorkspaceState),
     Update(ServerUpdate),
     Sync(ClientSequence),
+    Performance(Cow<'a, PerformanceInfo>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -25,6 +27,35 @@ pub struct WorkspaceState {
     pub inputs: Vec<(ModuleId, Vec<Terminal>)>,
     pub outputs: Vec<(ModuleId, Vec<Terminal>)>,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PerformanceInfo {
+    pub realtime: bool,
+    pub lag: Option<TemporalWarningStatus>,
+    pub tick_rate: usize,
+    pub tick_budget: Microseconds,
+    pub accounts: Vec<(PerformanceAccount, PerformanceMetric)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TemporalWarningStatus {
+    Active,
+    Recent,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum PerformanceAccount {
+    Engine,
+    Module(ModuleId),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PerformanceMetric {
+    pub last: Microseconds,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
+pub struct Microseconds(pub u64);
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ClientMessage {
@@ -214,16 +245,10 @@ pub struct OutputDeviceParams {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct OutputDeviceIndication {
-    pub clip: Option<OutputDeviceWarning>,
-    pub lag: Option<OutputDeviceWarning>,
+    pub clip: Option<TemporalWarningStatus>,
+    pub lag: Option<TemporalWarningStatus>,
     pub default_device: Option<String>,
     pub devices: Option<Vec<(String, usize)>>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum OutputDeviceWarning {
-    Active,
-    Recent,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
