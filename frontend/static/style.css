@@ -22,7 +22,6 @@ body {
 
 .sidebar {
     width:160px;
-    height:100%;
     border-left:1px solid #0b0b10;
     background-color:#ffffff;
     display:flex;
