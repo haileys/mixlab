@@ -67,8 +67,11 @@ fn handle_connection(conn: TcpStream, mut out: Sender<Disambiguation>) {
             Ok(conn) => {
                 let _: Result<_, _> = out.send(conn).await;
             }
+            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                // ignore
+            }
             Err(e) => {
-                eprintln!("listen: disambiguation error: {:?}", e);
+                eprintln!("listen: error receiving new connection: {:?}", e);
             }
         }
     });
