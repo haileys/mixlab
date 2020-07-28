@@ -473,7 +473,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg-dev"
 version = "0.3.8"
-source = "git+https://github.com/charliesome/ffmpeg-dev-rs?rev=bbc1b9c8cd3d36c2d8e1e534b354d8b6cb0e1a77#bbc1b9c8cd3d36c2d8e1e534b354d8b6cb0e1a77"
+source = "git+https://github.com/charliesome/ffmpeg-dev-rs?rev=a9bdafb368ec8a049232f91efaf7560c9dd035fb#a9bdafb368ec8a049232f91efaf7560c9dd035fb"
 dependencies = [
  "bindgen 0.51.1",
  "cc",
