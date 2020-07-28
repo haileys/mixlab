@@ -163,6 +163,16 @@ impl ModuleT for VideoMixer {
                     let out_ptr = output.data(plane);
                     let out_linesize = output.stride(plane) as usize;
 
+                    // assert that pointers and linesizes all have expected
+                    // alignments before hitting loop, so that we can skip
+                    // alignment checks within
+                    assert!(a_ptr.align_offset(32) == 0);
+                    assert!(b_ptr.align_offset(32) == 0);
+                    assert!(out_ptr.align_offset(32) == 0);
+                    assert!(a_linesize % 32 == 0);
+                    assert!(b_linesize % 32 == 0);
+                    assert!(out_linesize % 32 == 0);
+
                     for y in 0..height {
                         let a_ptr = a_ptr.add(y * a_linesize);
                         let b_ptr = b_ptr.add(y * b_linesize);
