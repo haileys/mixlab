@@ -26,7 +26,7 @@ $ make run       # build frontend and run backend
     Mixlab also requires a few additional packages from pacman, MSYS2's package manager. In an MSYS2 bash session, run:
 
     ```sh-session
-    $ pacman -S make nasm pkgconfig
+    $ pacman -S make nasm
     ```
 
 3. Open "x64 Native Tools Command Prompt" from the Start Menu, and type:
