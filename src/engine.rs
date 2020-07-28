@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::f32;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError};
+use std::sync::mpsc::{self, SyncSender, Receiver, RecvTimeoutError, TrySendError, TryRecvError};
 use std::thread;
 use std::time::{Instant, Duration};
 
@@ -191,6 +191,15 @@ impl Engine {
                 let _ = self.perf_tx.broadcast(Some(Arc::new(stat.report())));
             }
 
+            // process all waiting commands immediately
+            loop {
+                match self.cmd_rx.try_recv() {
+                    Ok(msg) => { self.process_message(msg, &mut stat); }
+                    Err(TryRecvError::Empty) => { break; }
+                    Err(TryRecvError::Disconnected) => { return; }
+                }
+            }
+
             // wait for next tick and process commands while waiting
             loop {
                 let now = Instant::now();
@@ -200,15 +209,21 @@ impl Engine {
                 }
 
                 match self.cmd_rx.recv_timeout(scheduled_tick_end - now) {
-                    Ok(EngineMessage::ConnectSession(tx)) => {
-                        let _ = tx.send(self.connect_session());
-                    }
-                    Ok(EngineMessage::ClientMessage(session, msg)) => {
-                        self.client_update(session, msg, &mut stat);
-                    }
+                    Ok(msg) => { self.process_message(msg, &mut stat); }
                     Err(RecvTimeoutError::Timeout) => { break; }
                     Err(RecvTimeoutError::Disconnected) => { return; }
                 }
+            }
+        }
+    }
+
+    fn process_message(&mut self, msg: EngineMessage, stat: &mut EngineStat) {
+        match msg {
+            EngineMessage::ConnectSession(tx) => {
+                let _ = tx.send(self.connect_session());
+            }
+            EngineMessage::ClientMessage(session, msg) => {
+                self.client_update(session, msg, stat);
             }
         }
     }
