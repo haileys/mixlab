@@ -21,7 +21,7 @@ impl Component for Sidebar {
     type Properties = SidebarProps;
     type Message = ();
 
-    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
+    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
         Sidebar {
             props,
         }
@@ -32,7 +32,7 @@ impl Component for Sidebar {
         true
     }
 
-    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+    fn update(&mut self, _: Self::Message) -> ShouldRender {
         false
     }
 
