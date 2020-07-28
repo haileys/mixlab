@@ -17,25 +17,37 @@ $ make run       # build frontend and run backend
 
 ### Windows
 
-Requirements:
+1. Install Microsoft Visual C++
 
-* **MinGW + MSYS**
+2. Install MSYS2 - a distribution of core GNU utilities for Windows. Required for dependencies that have unixy build systems with configure scripts and such.
 
-    Core GNU utilities for Windows. Required for dependencies that rely on tools such as `tar` or `make` in their build scripts.
+    https://www.msys2.org/
 
-    http://www.mingw.org/wiki/getting_started
+    Mixlab also requires a few additional packages from pacman, MSYS2's package manager. In an MSYS2 bash session, run:
 
-* **LLVM**
+    ```sh-session
+    $ pacman -S make nasm pkgconfig
+    ```
 
-    Some dependencies generate bindings with bindgen on the fly in their build scripts. bindgen relies on `libclang.dll` from LLVM.
+3. Open "x64 Native Tools Command Prompt" from the Start Menu, and type:
 
-    See https://github.com/rust-lang/rust-bindgen/blob/master/book/src/requirements.md for install instructions
+    ```
+    > C:\msys64\msys2_shell.cmd -mingw64 -full-path
+    ```
 
-``` sh-session
-$ .\Build-Project.ps1 [-Build] [-Release]  # Build (optionally in release mode)
-$ .\Build-Project.ps1 -Check [-Release]    # Check project (optionally in release mode)
-$ .\Build-Project.ps1 -Run [-Release]      # Build frontend and run backend (optionally in release mode)
-```
+    A bash shell will appear. You will use this bash shell for the rest of the instructions and for building Mixlab.
+
+4. Rename `/usr/bin/link.exe` to `/usr/bin/link2.exe`.
+
+    This is pretty gross but as far as I can tell seems to be required to prevent MSYS2's `link.exe` from clashing with MSVC's. See the "Gotchas" section of http://anadoxin.org/blog/bringing-visual-studio-compiler-into-msys2-environment.html for more information.
+
+5. Set the `CC` environment variable to `cl`
+
+    ```sh-session
+    $ export CC=cl
+    ```
+
+Then run `make` as described in the Unices section above.
 
 ## Running
 
