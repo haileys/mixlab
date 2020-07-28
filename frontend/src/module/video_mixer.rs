@@ -1,4 +1,4 @@
-use yew::{html, ComponentLink, Html, Callback};
+use yew::{html, ComponentLink, Html, Callback, MouseEvent};
 
 use mixlab_protocol::{ModuleId, ModuleParams, VideoMixerParams, VIDEO_MIXER_CHANNELS};
 
@@ -6,6 +6,7 @@ use crate::component::pure_module::{Pure, PureModule};
 use crate::component::midi_target::{MidiRangeTarget, MidiUiMode};
 use crate::control::Fader;
 use crate::workspace::{Window, WindowMsg};
+use crate::util::prevent_default;
 
 pub type VideoMixer = Pure<VideoMixerParams>;
 
@@ -68,7 +69,15 @@ fn view_channel_row(sel: Selector, current: Option<usize>, onchange: Callback<Op
             html! {
                 <button
                     class={class}
-                    onclick={onchange.reform(move |_| Some(i))}
+                    onmousedown={onchange.reform(move |ev: MouseEvent| {
+                        if (ev.buttons() & 2) != 0 {
+                            // right mouse
+                            None
+                        } else {
+                            Some(i)
+                        }
+                    })}
+                    oncontextmenu={prevent_default()}
                 >
                     {(i + 1).to_string()}
                 </button>
