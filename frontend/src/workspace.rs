@@ -4,7 +4,7 @@ use std::mem;
 use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
+use web_sys::{CanvasRenderingContext2d, Element, HtmlElement, HtmlCanvasElement, MouseEvent};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
 use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams, VideoMixerParams};
@@ -29,6 +29,7 @@ use crate::{App, AppMsg, State};
 pub struct Workspace {
     link: ComponentLink<Self>,
     props: WorkspaceProps,
+    workspace_ref: NodeRef,
     gen_z_index: Sequence,
     mouse: MouseMode,
     window_refs: BTreeMap<ModuleId, WindowRef>,
@@ -38,8 +39,6 @@ pub struct Workspace {
 pub struct WorkspaceProps {
     pub app: ComponentLink<App>,
     pub state: Rc<RefCell<State>>,
-    pub width: usize,
-    pub height: usize,
 }
 
 pub enum MouseMode {
@@ -77,6 +76,7 @@ impl Component for Workspace {
         let mut workspace = Workspace {
             link,
             props,
+            workspace_ref: NodeRef::default(),
             gen_z_index: Sequence::new(),
             mouse: MouseMode::Normal,
             window_refs: BTreeMap::new(),
@@ -379,6 +379,7 @@ impl Component for Workspace {
                 onmousemove={self.link.callback(WorkspaceMsg::MouseMove)}
                 onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
                 oncontextmenu={prevent_default()}
+                ref={self.workspace_ref.clone()}
             >
                 { for self.window_refs.iter().map(|(id, refs)| {
                     let state = self.props.state.borrow();
@@ -403,7 +404,7 @@ impl Component for Workspace {
                     }
                 }) }
 
-                <Connections connections={connections} width={self.props.width} height={self.props.height} />
+                <Connections connections={connections} />
 
                 {self.view_context_menu()}
             </div>
@@ -411,6 +412,9 @@ impl Component for Workspace {
     }
 
     fn mounted(&mut self) -> ShouldRender {
+        let workspace = self.workspace_ref.cast::<Element>().unwrap();
+        crate::log!("{} x {}", workspace.client_width(), workspace.client_height());
+
         // always re-render after first mount because rendering correctly
         // requires noderefs
         true
@@ -848,14 +852,12 @@ impl Component for Terminal {
 
 pub struct Connections {
     canvas: NodeRef,
-    ctx: Option<RefCell<CanvasRenderingContext2d>>,
+    ctx: Option<CanvasRenderingContext2d>,
     props: ConnectionsProps,
 }
 
 #[derive(Properties, Clone, PartialEq, Eq)]
 pub struct ConnectionsProps {
-    width: usize,
-    height: usize,
     connections: Vec<(Coords, Coords)>,
 }
 
@@ -872,15 +874,78 @@ impl Component for Connections {
     }
 
     fn view(&self) -> Html {
+        html! {
+            <canvas
+                class="workspace-connections"
+                ref={self.canvas.clone()}
+            />
+        }
+    }
+
+    fn update(&mut self, _: Self::Message) -> ShouldRender {
+        false
+    }
+
+    fn change(&mut self, props: Self::Properties) -> ShouldRender {
+        if self.props.connections != props.connections {
+            self.props.connections = props.connections;
+            self.draw_connections();
+        }
+
+        false
+    }
+
+    fn mounted(&mut self) -> ShouldRender {
+        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
+            crate::log!("canvas");
+
+            let ctx = canvas.get_context("2d")
+                .expect("canvas.get_context")
+                .expect("canvas.get_context");
+
+            let ctx = ctx
+                .dyn_into::<CanvasRenderingContext2d>()
+                .expect("dyn_ref::<CanvasRenderingContext2d>");
+
+            self.ctx = Some(ctx);
+
+            self.draw_connections();
+        }
+
+        true
+    }
+}
+
+impl Connections {
+    fn draw_connections(&self) {
+        use std::cmp::max;
+
+        // plan multi-segment lines for all connections
+        let lines = self.props.connections.iter()
+            .map(|(a, b)| plan_line_points(*a, *b))
+            .collect::<Vec<_>>();
+
+        // calculate required canvas size for all points
+        let Coords { x: width, y: height } = lines.iter()
+            .flat_map(|segments| segments)
+            .fold(Coords { x: 0, y: 0 }, |area, point| {
+                Coords {
+                    x: max(area.x, point.x),
+                    y: max(area.y, point.y),
+                }
+            });
+
+        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
+            canvas.set_width(width as u32 + 1);
+            canvas.set_height(height as u32 + 1);
+        }
+
+        // draw lines
         if let Some(ref ctx) = self.ctx {
-            let ctx = ctx.borrow_mut();
+            ctx.clear_rect(0f64, 0f64, width as f64, height as f64);
 
-            ctx.clear_rect(0f64, 0f64, self.props.width as f64, self.props.height as f64);
-
-            for conn in &self.props.connections {
+            for points in lines {
                 ctx.begin_path();
-
-                let points = plan_line_points(conn.0, conn.1);
 
                 ctx.move_to(points[0].x as f64, points[0].y as f64);
 
@@ -891,41 +956,6 @@ impl Component for Connections {
                 ctx.stroke();
             }
         }
-
-        html! {
-            <canvas
-                class="workspace-connections"
-                width={self.props.width}
-                height={self.props.height}
-                ref={self.canvas.clone()}
-            />
-        }
-    }
-
-    fn update(&mut self, _: Self::Message) -> ShouldRender {
-        false
-    }
-
-    fn change(&mut self, mut props: Self::Properties) -> ShouldRender {
-        mem::swap(&mut self.props, &mut props);
-
-        props != self.props
-    }
-
-    fn mounted(&mut self) -> ShouldRender {
-        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
-            let ctx = canvas.get_context("2d")
-                .expect("canvas.get_context")
-                .expect("canvas.get_context");
-
-            let ctx = ctx
-                .dyn_into::<CanvasRenderingContext2d>()
-                .expect("dyn_ref::<CanvasRenderingContext2d>");
-
-            self.ctx = Some(RefCell::new(ctx));
-        }
-
-        true
     }
 }
 

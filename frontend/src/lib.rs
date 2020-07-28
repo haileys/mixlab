@@ -235,8 +235,6 @@ impl Component for App {
                         <Workspace
                             app={self.link.clone()}
                             state={state}
-                            width={self.viewport_width}
-                            height={self.viewport_height}
                         />
 
                         <Sidebar
