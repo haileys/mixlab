@@ -2,13 +2,14 @@ use std::io;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
-use num_rational::Rational64;
 use futures::executor::block_on;
+use num_rational::Rational64;
+use serde::{Serialize, Deserialize};
 use tokio::io::AsyncRead;
 
 use mixlab_protocol::TemporalWarningStatus;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Sequence(usize);
 
 impl Sequence {

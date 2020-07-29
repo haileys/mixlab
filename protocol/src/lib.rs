@@ -395,13 +395,13 @@ impl Default for VideoMixerParams {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Coords {
     pub x: i32,
     pub y: i32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct WindowGeometry {
     pub position: Coords,
     pub z_index: usize,
