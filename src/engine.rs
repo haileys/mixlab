@@ -49,7 +49,7 @@ pub const TICKS_PER_SECOND: usize = 60;
 pub const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
 pub enum EngineMessage {
-    ConnectSession(oneshot::Sender<(SessionId, WorkspaceState, EngineOps)>),
+    ConnectSession(oneshot::Sender<(SessionId, WorkspaceState, EngineEvents)>),
     ClientMessage(SessionId, ClientMessage),
 }
 
@@ -106,16 +106,16 @@ impl<T> From<TrySendError<T>> for EngineError {
     }
 }
 
-pub type EngineOps = broadcast::Receiver<EngineOp>;
+pub type EngineEvents = broadcast::Receiver<EngineEvent>;
 
 #[derive(Debug, Clone)]
-pub enum EngineOp {
+pub enum EngineEvent {
     Sync(OpClock),
     ServerUpdate(ServerUpdate),
 }
 
 impl EngineHandle {
-    pub async fn connect(&self) -> Result<(WorkspaceState, EngineOps, EngineSession), EngineError> {
+    pub async fn connect(&self) -> Result<(WorkspaceState, EngineEvents, EngineSession), EngineError> {
         let cmd_tx = self.cmd_tx.clone();
 
         let (tx, rx) = oneshot::channel();
@@ -150,7 +150,7 @@ impl EngineSession {
 
 pub struct Engine {
     cmd_rx: Receiver<EngineMessage>,
-    log_tx: broadcast::Sender<EngineOp>,
+    log_tx: broadcast::Sender<EngineEvent>,
     perf_tx: watch::Sender<Option<Arc<PerformanceInfo>>>,
     session_seq: Sequence,
     modules: HashMap<ModuleId, Module>,
@@ -225,7 +225,7 @@ impl Engine {
         }
     }
 
-    fn connect_session(&mut self) -> (SessionId, WorkspaceState, EngineOps) {
+    fn connect_session(&mut self) -> (SessionId, WorkspaceState, EngineEvents) {
         let session_id = SessionId(self.session_seq.next());
         let log_rx = self.log_tx.subscribe();
         let state = self.dump_state();
@@ -264,11 +264,11 @@ impl Engine {
     }
 
     fn log_op(&mut self, op: ServerUpdate) {
-        let _ = self.log_tx.send(EngineOp::ServerUpdate(op));
+        let _ = self.log_tx.send(EngineEvent::ServerUpdate(op));
     }
 
     fn sync_log(&mut self, clock: OpClock) {
-        let _ = self.log_tx.send(EngineOp::Sync(clock));
+        let _ = self.log_tx.send(EngineEvent::Sync(clock));
     }
 
     fn client_update(&mut self, session_id: SessionId, msg: ClientMessage, stat: &mut EngineStat) {

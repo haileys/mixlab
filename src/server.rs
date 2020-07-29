@@ -14,7 +14,7 @@ use warp::ws::{self, Ws, WebSocket};
 
 use mixlab_protocol::{ClientMessage, ServerMessage, PerformanceInfo};
 
-use crate::engine::{self, EngineHandle, EngineOp};
+use crate::engine::{self, EngineHandle, EngineEvent};
 use crate::module;
 use crate::{icecast, rtmp};
 use crate::listen::{self, Disambiguation};
@@ -160,14 +160,14 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
 
     enum Event {
         ClientMessage(Result<ws::Message, warp::Error>),
-        EngineOp(Result<EngineOp, broadcast::RecvError>),
+        Engine(Result<EngineEvent, broadcast::RecvError>),
         Performance(Arc<PerformanceInfo>),
     }
 
     let mut events = stream::select(
         rx.map(Event::ClientMessage),
         stream::select(
-            engine_ops.map(Event::EngineOp),
+            engine_ops.map(Event::Engine),
             perf_info.map(Event::Performance)));
 
     while let Some(event) = events.next().await {
@@ -188,19 +188,19 @@ async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
                     println!("Engine update failed: {:?}", e);
                 }
             }
-            Event::EngineOp(Err(broadcast::RecvError::Lagged(skipped))) => {
+            Event::Engine(Err(broadcast::RecvError::Lagged(skipped))) => {
                 println!("disconnecting client: lagged {} messages behind", skipped);
                 return;
             }
-            Event::EngineOp(Err(broadcast::RecvError::Closed)) => {
+            Event::Engine(Err(broadcast::RecvError::Closed)) => {
                 // TODO we should tell the user that the engine has stopped
                 unimplemented!()
             }
-            Event::EngineOp(Ok(op)) => {
+            Event::Engine(Ok(event)) => {
                 // sequence is only applicable if it belongs to this session:
-                let msg = match op {
-                    EngineOp::ServerUpdate(update) => Some(ServerMessage::Update(update)),
-                    EngineOp::Sync(clock) => {
+                let msg = match event {
+                    EngineEvent::ServerUpdate(update) => Some(ServerMessage::Update(update)),
+                    EngineEvent::Sync(clock) => {
                         if clock.0 == engine.session_id() {
                             Some(ServerMessage::Sync(clock.1))
                         } else {
