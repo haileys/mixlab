@@ -3,7 +3,7 @@ pub mod encode;
 use mixlab_codec::ffmpeg::AvFrame;
 use mixlab_util::time::MediaDuration;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Frame {
     pub decoded: AvFrame,
 

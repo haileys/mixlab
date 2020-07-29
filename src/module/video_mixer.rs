@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use mixlab_codec::ffmpeg::{AvFrame, PictureSettings, PixelFormat};
 use mixlab_protocol::{VideoMixerParams, LineType, Terminal, VIDEO_MIXER_CHANNELS};
 use mixlab_util::time::{MediaTime, MediaDuration};
@@ -212,10 +210,10 @@ impl ModuleT for VideoMixer {
         }
 
         *out = Some(engine::VideoFrame {
-            data: Arc::new(video::Frame {
+            data: video::Frame {
                 decoded: output_frame,
                 duration_hint: MediaDuration::new(1, TICKS_PER_SECOND as i64), // TODO this assumes 1 output frame per tick
-            }),
+            },
             tick_offset: MediaDuration::new(0, 1),
         });
 

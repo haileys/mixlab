@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use mixlab_protocol::LineType;
 use mixlab_util::time::MediaDuration;
 
@@ -12,7 +10,7 @@ pub static ZERO_BUFFER_MONO: [Sample; SAMPLES_PER_TICK] = [0.0; SAMPLES_PER_TICK
 
 #[derive(Debug, Clone)]
 pub struct VideoFrame {
-    pub data: Arc<video::Frame>,
+    pub data: video::Frame,
 
     // frame timestamp in fractional seconds after enclosing tick begins:
     pub tick_offset: MediaDuration,

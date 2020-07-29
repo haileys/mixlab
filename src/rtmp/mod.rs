@@ -1,6 +1,5 @@
 use std::io;
 use std::mem;
-use std::sync::Arc;
 use std::thread;
 
 use bytes::Bytes;
@@ -299,10 +298,10 @@ fn receive_video_packet(
                     Ok(decoded) => {
                         let timestamp = MediaTime::new(decoded.presentation_timestamp(), TIME_BASE);
 
-                        let frame = Arc::new(video::Frame {
+                        let frame = video::Frame {
                             decoded: decoded,
                             duration_hint: meta.video_frame_duration,
-                        });
+                        };
 
                         let _ = ctx.source.write_video(timestamp, frame);
                     }
