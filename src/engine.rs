@@ -335,25 +335,7 @@ impl Engine {
                 stat.remove_module(module_id);
             }
             ClientOp::CreateConnection(input_id, output_id) => {
-                let input_type = match terminal_line_type(self, TerminalId::Input(input_id)) {
-                    Some(ty) => ty,
-                    None => return,
-                };
-
-                let output_type = match terminal_line_type(self, TerminalId::Output(output_id)) {
-                    Some(ty) => ty,
-                    None => return,
-                };
-
-                if input_type == output_type {
-                    if let Some(_) = self.connections.insert(input_id, output_id) {
-                        self.log_op(ServerUpdate::DeleteConnection(input_id));
-                    }
-
-                    self.log_op(ServerUpdate::CreateConnection(input_id, output_id));
-                } else {
-                    // type mismatch, don't connect
-                }
+                self.create_connection(input_id, output_id);
             }
             ClientOp::DeleteConnection(input_id) => {
                 if let Some(_) = self.connections.remove(&input_id) {
@@ -363,7 +345,9 @@ impl Engine {
         }
 
         return self.sync_log(clock);
+    }
 
+    fn create_connection(&mut self, input_id: InputId, output_id: OutputId) {
         fn terminal_line_type(engine: &Engine, terminal: TerminalId) -> Option<LineType> {
             engine.modules.get(&terminal.module_id()).and_then(|module| {
                 match terminal {
@@ -375,6 +359,26 @@ impl Engine {
                     }
                 }
             })
+        }
+
+        let input_type = match terminal_line_type(self, TerminalId::Input(input_id)) {
+            Some(ty) => ty,
+            None => return,
+        };
+
+        let output_type = match terminal_line_type(self, TerminalId::Output(output_id)) {
+            Some(ty) => ty,
+            None => return,
+        };
+
+        if input_type == output_type {
+            if let Some(_) = self.connections.insert(input_id, output_id) {
+                self.log_op(ServerUpdate::DeleteConnection(input_id));
+            }
+
+            self.log_op(ServerUpdate::CreateConnection(input_id, output_id));
+        } else {
+            // type mismatch, don't connect
         }
     }
 
