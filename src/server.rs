@@ -5,8 +5,6 @@ use std::sync::Arc;
 
 use futures::{StreamExt, SinkExt, stream};
 use structopt::StructOpt;
-use tokio::io;
-use tokio::runtime;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -16,10 +14,10 @@ use warp::ws::{self, Ws, WebSocket};
 
 use mixlab_protocol::{ClientMessage, ServerMessage, PerformanceInfo};
 
-use crate::engine::{self, EngineHandle, EngineEvent, Persist, persist};
+use crate::engine::EngineEvent;
 use crate::listen::{self, Disambiguation};
-use crate::module;
-use crate::{icecast, rtmp};
+use crate::project::{self, ProjectHandle};
+use crate::{icecast, module, rtmp};
 
 #[derive(StructOpt)]
 pub struct RunOpts {
@@ -28,28 +26,9 @@ pub struct RunOpts {
     workspace_path: PathBuf,
 }
 
-#[derive(Debug)]
-enum CreateOrOpenError {
-    Open(persist::OpenError),
-    Create(io::Error),
-}
-
-async fn create_or_open_workspace(workspace_path: PathBuf) -> Result<Persist, CreateOrOpenError> {
-    match Persist::open(workspace_path.clone()).await {
-        Ok(persist) => Ok(persist),
-        Err(persist::OpenError::NotFound) => {
-            Persist::create(workspace_path).await
-                .map_err(CreateOrOpenError::Create)
-        }
-        Err(e) => Err(CreateOrOpenError::Open(e)),
-    }
-}
-
 pub async fn run(opts: RunOpts) {
-    let persist = create_or_open_workspace(opts.workspace_path).await
-        .expect("create_or_open_workspace");
-
-    let engine = Arc::new(engine::start(runtime::Handle::current(), persist));
+    let project = project::open_or_create(opts.workspace_path).await
+        .expect("create_or_open_project");
 
     let index = warp::path::end()
         .map(index);
@@ -73,10 +52,9 @@ pub async fn run(opts: RunOpts) {
         .and(warp::path("session"))
         .and(warp::ws())
         .map(move |ws: Ws| {
-            let engine = engine.clone();
+            let project = project.clone();
             ws.on_upgrade(move |websocket| {
-                let engine = engine.clone();
-                session(websocket, engine)
+                session(websocket, project.clone())
             })
         });
 
@@ -166,12 +144,12 @@ fn wasm() -> impl Reply {
     content("application/wasm", app_wasm)
 }
 
-async fn session(websocket: WebSocket, engine: Arc<EngineHandle>) {
+async fn session(websocket: WebSocket, project: ProjectHandle) {
     let (mut tx, rx) = websocket.split();
 
-    let perf_info = engine.performance_info();
+    let perf_info = project.performance_info();
 
-    let (state, engine_ops, engine) = engine.connect().await
+    let (state, engine_ops, engine) = project.connect_engine().await
         .expect("engine.connect");
 
     let state_msg = bincode::serialize(&ServerMessage::WorkspaceState(state))

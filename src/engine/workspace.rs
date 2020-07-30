@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
-use std::sync::Arc;
 
-use tokio::task;
-use tokio::sync::Mutex;
+use tokio::sync::watch;
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, TerminalId, WindowGeometry, Indication, LineType};
 
-use crate::engine::persist::{self, Persist};
+use crate::engine::persist;
 use crate::module::Module;
 use crate::util::Sequence;
 
@@ -125,20 +123,33 @@ pub enum ConnectError {
     TypeMismatch,
 }
 
+pub struct WorkspaceEmbryo {
+    workspace: persist::Workspace,
+    persist_tx: watch::Sender<persist::Workspace>,
+}
+
+impl WorkspaceEmbryo {
+    pub fn new(workspace: persist::Workspace) -> (WorkspaceEmbryo, watch::Receiver<persist::Workspace>) {
+        let (persist_tx, persist_rx) = watch::channel(workspace.clone());
+        (WorkspaceEmbryo { workspace, persist_tx }, persist_rx)
+    }
+
+    pub fn spawn(self) -> SyncWorkspace {
+        let workspace = Workspace::from_persist(&self.workspace);
+
+        SyncWorkspace {
+            workspace,
+            persist_tx: self.persist_tx,
+        }
+    }
+}
+
 pub struct SyncWorkspace {
     workspace: Workspace,
-    persist: Arc<Mutex<Persist>>,
+    persist_tx: watch::Sender<persist::Workspace>,
 }
 
 impl SyncWorkspace {
-    pub fn new(persist: Persist) -> SyncWorkspace {
-        let workspace = Workspace::from_persist(persist.workspace());
-        SyncWorkspace {
-            workspace,
-            persist: Arc::new(Mutex::new(persist)),
-        }
-    }
-
     // indications are not persisted, so we can hand out direct access
     pub fn indications_mut(&mut self) -> &mut HashMap<ModuleId, Indication> {
         &mut self.workspace.indications
@@ -163,12 +174,9 @@ pub struct WorkspaceBorrowMut<'a> {
 
 impl<'a> Drop for WorkspaceBorrowMut<'a> {
     fn drop(&mut self) {
-        let persist = self.sync.persist.clone();
         let workspace = self.sync.workspace.to_persist();
-
-        task::spawn(async move {
-            persist.lock().await.update_workspace(workspace).await
-        });
+        // nothing we can do if this fails
+        let _ = self.sync.persist_tx.broadcast(workspace);
     }
 }
 

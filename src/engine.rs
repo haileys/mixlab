@@ -26,7 +26,7 @@ use timing::{EngineStat, TickStat};
 use workspace::SyncWorkspace;
 
 pub use io::{InputRef, OutputRef, Output, VideoFrame};
-pub use persist::Persist;
+pub use workspace::WorkspaceEmbryo;
 
 pub type Sample = f32;
 
@@ -58,6 +58,7 @@ pub enum EngineMessage {
     ClientMessage(SessionId, ClientMessage),
 }
 
+#[derive(Clone)]
 pub struct EngineHandle {
     cmd_tx: SyncSender<EngineMessage>,
     perf_rx: watch::Receiver<Option<Arc<PerformanceInfo>>>,
@@ -68,7 +69,7 @@ pub struct EngineSession {
     cmd_tx: SyncSender<EngineMessage>,
 }
 
-pub fn start(tokio_runtime: runtime::Handle, persist: Persist) -> EngineHandle {
+pub fn start(tokio_runtime: runtime::Handle, workspace: WorkspaceEmbryo) -> EngineHandle {
     let (cmd_tx, cmd_rx) = mpsc::sync_channel(8);
     let (log_tx, _) = broadcast::channel(64);
     let (perf_tx, perf_rx) = watch::channel(None);
@@ -79,7 +80,7 @@ pub fn start(tokio_runtime: runtime::Handle, persist: Persist) -> EngineHandle {
             log_tx,
             perf_tx,
             session_seq: Sequence::new(),
-            workspace: SyncWorkspace::new(persist),
+            workspace: workspace.spawn(),
         };
 
         // enter the tokio runtime context for the engine thread
