@@ -7,7 +7,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent, Element};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams, VideoMixerParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, WorkspaceOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams, VideoMixerParams};
 
 use crate::component::midi_target::MidiUiMode;
 use crate::module::amplifier::Amplifier;
@@ -182,7 +182,7 @@ impl Component for Workspace {
                         if let Some(geometry) = state.geometry.get(&drag.module) {
                             self.props.app.send_message(
                                 AppMsg::ClientUpdate(
-                                    ClientOp::UpdateWindowGeometry(drag.module, geometry.clone())));
+                                    WorkspaceOp::UpdateWindowGeometry(drag.module, geometry.clone())));
                         }
 
                         self.mouse = MouseMode::Normal;
@@ -230,7 +230,7 @@ impl Component for Workspace {
 
                                     self.props.app.send_message(
                                         AppMsg::ClientUpdate(
-                                            ClientOp::CreateConnection(input, output)));
+                                            WorkspaceOp::CreateConnection(input, output)));
 
                                     true
                                 } else {
@@ -257,7 +257,7 @@ impl Component for Workspace {
 
                         self.props.app.send_message(
                             AppMsg::ClientUpdate(
-                                ClientOp::DeleteConnection(input)));
+                                WorkspaceOp::DeleteConnection(input)));
                     }
                     TerminalId::Output(output) => {
                         let mut msgs = Vec::new();
@@ -267,7 +267,7 @@ impl Component for Workspace {
                         for (in_, out_) in &state.connections {
                             if *out_ == output {
                                 msgs.push(AppMsg::ClientUpdate(
-                                    ClientOp::DeleteConnection(*in_)));
+                                    WorkspaceOp::DeleteConnection(*in_)));
                             }
                         }
 
@@ -290,7 +290,7 @@ impl Component for Workspace {
 
                 self.props.app.send_message(
                     AppMsg::ClientUpdate(
-                        ClientOp::DeleteModule(module)));
+                        WorkspaceOp::DeleteModule(module)));
 
                 true
             }
@@ -305,7 +305,7 @@ impl Component for Workspace {
 
                         self.props.app.send_message(
                             AppMsg::ClientUpdate(
-                                ClientOp::UpdateModuleParams(module, params)));
+                                WorkspaceOp::UpdateModuleParams(module, params)));
 
                         true
                     } else {
@@ -325,7 +325,7 @@ impl Component for Workspace {
 
                 self.props.app.send_message(
                     AppMsg::ClientUpdate(
-                        ClientOp::CreateModule(module, geometry)));
+                        WorkspaceOp::CreateModule(module, geometry)));
 
                 true
             }

@@ -58,16 +58,21 @@ pub struct PerformanceMetric {
 pub struct Microseconds(pub u64);
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ClientMessage {
-    pub sequence: ClientSequence,
-    pub op: ClientOp,
+pub enum ClientMessage {
+    Workspace(WorkspaceMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ClientSequence(pub NonZeroUsize);
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum ClientOp {
+pub struct WorkspaceMessage {
+    pub sequence: ClientSequence,
+    pub op: WorkspaceOp,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum WorkspaceOp {
     CreateModule(ModuleParams, WindowGeometry),
     UpdateModuleParams(ModuleId, ModuleParams),
     UpdateWindowGeometry(ModuleId, WindowGeometry),

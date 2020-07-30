@@ -12,7 +12,7 @@ use futures::stream::{Stream, StreamExt};
 use tokio::runtime;
 use tokio::sync::{oneshot, broadcast, watch};
 
-use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, WorkspaceState, ServerUpdate, Indication, ClientSequence, ClientOp, PerformanceInfo};
+use mixlab_protocol::{ModuleId, InputId, OutputId, WorkspaceState, ServerUpdate, Indication, ClientSequence, WorkspaceMessage, WorkspaceOp, PerformanceInfo};
 
 use crate::module::Module;
 use crate::util::Sequence;
@@ -54,7 +54,7 @@ pub const SAMPLES_PER_TICK: usize = SAMPLE_RATE / TICKS_PER_SECOND;
 
 pub enum EngineMessage {
     ConnectSession(oneshot::Sender<(SessionId, WorkspaceState, EngineEvents)>),
-    ClientMessage(SessionId, ClientMessage),
+    Workspace(SessionId, WorkspaceMessage),
 }
 
 #[derive(Clone)]
@@ -140,8 +140,8 @@ impl EngineSession {
     }
 
     /// TODO - maybe pass log position in here and detect conflicts?
-    pub fn update(&self, msg: ClientMessage) -> Result<(), EngineError> {
-        self.send_message(EngineMessage::ClientMessage(self.session_id, msg))
+    pub fn update(&self, msg: WorkspaceMessage) -> Result<(), EngineError> {
+        self.send_message(EngineMessage::Workspace(self.session_id, msg))
     }
 
     fn send_message(&self, msg: EngineMessage) -> Result<(), EngineError> {
@@ -216,7 +216,7 @@ impl Engine {
             EngineMessage::ConnectSession(tx) => {
                 let _ = tx.send(self.connect_session());
             }
-            EngineMessage::ClientMessage(session, msg) => {
+            EngineMessage::Workspace(session, msg) => {
                 self.client_update(session, msg, stat);
             }
         }
@@ -270,11 +270,11 @@ impl Engine {
         let _ = self.log_tx.send(EngineEvent::Sync(clock));
     }
 
-    fn client_update(&mut self, session_id: SessionId, msg: ClientMessage, stat: &mut EngineStat) {
+    fn client_update(&mut self, session_id: SessionId, msg: WorkspaceMessage, stat: &mut EngineStat) {
         let clock = OpClock(session_id, msg.sequence);
 
         match msg.op {
-            ClientOp::CreateModule(params, geometry) => {
+            WorkspaceOp::CreateModule(params, geometry) => {
                 // TODO - the audio engine is not actually concerned with
                 // window geometry and so should not own this data and force
                 // all accesses to it to go via the live audio thread
@@ -300,7 +300,7 @@ impl Engine {
 
                 self.log_op(op);
             }
-            ClientOp::UpdateModuleParams(module_id, params) => {
+            WorkspaceOp::UpdateModuleParams(module_id, params) => {
                 let op = {
                     let mut workspace = self.workspace.borrow_mut();
 
@@ -314,7 +314,7 @@ impl Engine {
                     self.log_op(op);
                 }
             }
-            ClientOp::UpdateWindowGeometry(module_id, geometry) => {
+            WorkspaceOp::UpdateWindowGeometry(module_id, geometry) => {
                 let op = {
                     let mut workspace = self.workspace.borrow_mut();
 
@@ -328,7 +328,7 @@ impl Engine {
                     self.log_op(op);
                 }
             }
-            ClientOp::DeleteModule(module_id) => {
+            WorkspaceOp::DeleteModule(module_id) => {
                 let mut operations = Vec::new();
 
                 {
@@ -364,7 +364,7 @@ impl Engine {
 
                 stat.remove_module(module_id);
             }
-            ClientOp::CreateConnection(input_id, output_id) => {
+            WorkspaceOp::CreateConnection(input_id, output_id) => {
                 let previous = self.workspace.borrow_mut().connect(input_id, output_id);
 
                 match previous {
@@ -381,7 +381,7 @@ impl Engine {
                     }
                 }
             }
-            ClientOp::DeleteConnection(input_id) => {
+            WorkspaceOp::DeleteConnection(input_id) => {
                 let previous = self.workspace.borrow_mut().disconnect(input_id);
 
                 if let Some(_) = previous {

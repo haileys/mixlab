@@ -185,8 +185,12 @@ async fn session(websocket: WebSocket, project: ProjectHandle) {
                 let msg = bincode::deserialize::<ClientMessage>(msg.as_bytes())
                     .expect("bincode::deserialize");
 
-                if let Err(e) = engine.update(msg) {
-                    println!("Engine update failed: {:?}", e);
+                match msg {
+                    ClientMessage::Workspace(msg) => {
+                        if let Err(e) = engine.update(msg) {
+                            println!("Engine update failed: {:?}", e);
+                        }
+                    }
                 }
             }
             Event::Engine(Err(broadcast::RecvError::Lagged(skipped))) => {

@@ -20,7 +20,7 @@ use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Callback, Properties};
 
-use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ServerUpdate, Indication, Terminal, ClientOp, ClientSequence, PerformanceInfo};
+use mixlab_protocol::{ClientMessage, WorkspaceMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ServerUpdate, Indication, Terminal, WorkspaceOp, ClientSequence, PerformanceInfo};
 
 use library::MediaLibrary;
 use sidebar::Sidebar;
@@ -73,7 +73,7 @@ impl From<WorkspaceState> for State {
 pub enum AppMsg {
     NoOp,
     ServerMessage(ServerMessage<'static>),
-    ClientUpdate(ClientOp),
+    ClientUpdate(WorkspaceOp),
     ChangeTab(Tab),
 }
 
@@ -197,10 +197,10 @@ impl Component for App {
                 }
             }
             AppMsg::ClientUpdate(op) => {
-                let msg = ClientMessage {
+                let msg = ClientMessage::Workspace(WorkspaceMessage {
                     sequence: ClientSequence(self.client_seq.next()),
                     op: op,
-                };
+                });
 
                 let packet = bincode::serialize(&msg)
                     .expect("bincode::serialize");
