@@ -17,16 +17,16 @@ use mixlab_protocol::{ModuleId, InputId, OutputId, ClientMessage, WorkspaceState
 use crate::module::Module;
 use crate::util::Sequence;
 
-mod timing;
-use timing::{EngineStat, TickStat};
-
 mod io;
-pub use io::{InputRef, OutputRef, Output, VideoFrame};
-
-mod save;
-
+pub mod persist;
+mod timing;
 mod workspace;
-use workspace::Workspace;
+
+use timing::{EngineStat, TickStat};
+use workspace::SyncWorkspace;
+
+pub use io::{InputRef, OutputRef, Output, VideoFrame};
+pub use persist::Persist;
 
 pub type Sample = f32;
 
@@ -68,7 +68,7 @@ pub struct EngineSession {
     cmd_tx: SyncSender<EngineMessage>,
 }
 
-pub fn start(tokio_runtime: runtime::Handle) -> EngineHandle {
+pub fn start(tokio_runtime: runtime::Handle, persist: Persist) -> EngineHandle {
     let (cmd_tx, cmd_rx) = mpsc::sync_channel(8);
     let (log_tx, _) = broadcast::channel(64);
     let (perf_tx, perf_rx) = watch::channel(None);
@@ -79,7 +79,7 @@ pub fn start(tokio_runtime: runtime::Handle) -> EngineHandle {
             log_tx,
             perf_tx,
             session_seq: Sequence::new(),
-            workspace: Workspace::new(),
+            workspace: SyncWorkspace::new(persist),
         };
 
         // enter the tokio runtime context for the engine thread
@@ -154,7 +154,7 @@ pub struct Engine {
     log_tx: broadcast::Sender<EngineEvent>,
     perf_tx: watch::Sender<Option<Arc<PerformanceInfo>>>,
     session_seq: Sequence,
-    workspace: Workspace,
+    workspace: SyncWorkspace,
 }
 
 impl Engine {
@@ -176,7 +176,7 @@ impl Engine {
 
             // send out indication updates
             for (module_id, indication) in indications {
-                self.workspace.indications.insert(module_id, indication.clone());
+                self.workspace.indications_mut().insert(module_id, indication.clone());
                 self.log_op(ServerUpdate::UpdateModuleIndication(module_id, indication));
             }
 
@@ -239,21 +239,23 @@ impl Engine {
             outputs: Vec::new(),
         };
 
-        for (module_id, module) in &self.workspace.modules {
+        let workspace = self.workspace.borrow();
+
+        for (module_id, module) in &workspace.modules {
             state.modules.push((*module_id, module.params()));
             state.inputs.push((*module_id, module.inputs().to_vec()));
             state.outputs.push((*module_id, module.outputs().to_vec()));
         }
 
-        for (module_id, geometry) in &self.workspace.geometry {
+        for (module_id, geometry) in &workspace.geometry {
             state.geometry.push((*module_id, geometry.clone()));
         }
 
-        for (module_id, indication) in &self.workspace.indications {
+        for (module_id, indication) in &workspace.indications {
             state.indications.push((*module_id, indication.clone()));
         }
 
-        for (input, output) in &self.workspace.connections {
+        for (input, output) in &workspace.connections {
             state.connections.push((*input, *output));
         }
 
@@ -276,63 +278,96 @@ impl Engine {
                 // TODO - the audio engine is not actually concerned with
                 // window geometry and so should not own this data and force
                 // all accesses to it to go via the live audio thread
-                let id = ModuleId(self.workspace.module_seq.next());
-                let (module, indication) = Module::create(params.clone());
-                let inputs = module.inputs().to_vec();
-                let outputs = module.outputs().to_vec();
-                self.workspace.modules.insert(id, module);
-                self.workspace.geometry.insert(id, geometry.clone());
-                self.workspace.indications.insert(id, indication.clone());
+                let op = {
+                    let mut workspace = self.workspace.borrow_mut();
+                    let id = ModuleId(workspace.module_seq.next());
+                    let (module, indication) = Module::create(params.clone());
+                    let inputs = module.inputs().to_vec();
+                    let outputs = module.outputs().to_vec();
+                    workspace.modules.insert(id, module);
+                    workspace.geometry.insert(id, geometry.clone());
+                    workspace.indications.insert(id, indication.clone());
 
-                self.log_op(ServerUpdate::CreateModule {
-                    id,
-                    params,
-                    geometry,
-                    indication,
-                    inputs,
-                    outputs,
-                });
+                    ServerUpdate::CreateModule {
+                        id,
+                        params,
+                        geometry,
+                        indication,
+                        inputs,
+                        outputs,
+                    }
+                };
+
+                self.log_op(op);
             }
             ClientOp::UpdateModuleParams(module_id, params) => {
-                if let Some(module) = self.workspace.modules.get_mut(&module_id) {
-                    module.update(params.clone());
-                    self.log_op(ServerUpdate::UpdateModuleParams(module_id, params));
+                let op = {
+                    let mut workspace = self.workspace.borrow_mut();
+
+                    workspace.modules.get_mut(&module_id).map(|module| {
+                        module.update(params.clone());
+                        ServerUpdate::UpdateModuleParams(module_id, module.params())
+                    })
+                };
+
+                if let Some(op) = op {
+                    self.log_op(op);
                 }
             }
             ClientOp::UpdateWindowGeometry(module_id, geometry) => {
-                if let Some(geom) = self.workspace.geometry.get_mut(&module_id) {
-                    *geom = geometry.clone();
-                    self.log_op(ServerUpdate::UpdateWindowGeometry(module_id, geometry));
+                let op = {
+                    let mut workspace = self.workspace.borrow_mut();
+
+                    workspace.geometry.get_mut(&module_id).map(|geom| {
+                        *geom = geometry.clone();
+                        ServerUpdate::UpdateWindowGeometry(module_id, geometry)
+                    })
+                };
+
+                if let Some(op) = op {
+                    self.log_op(op);
                 }
             }
             ClientOp::DeleteModule(module_id) => {
-                // find any connections connected to this module's inputs or
-                // outputs and delete them, generating oplog entries
+                let mut operations = Vec::new();
 
-                let mut deleted_connections = Vec::new();
+                {
+                    let mut workspace = self.workspace.borrow_mut();
 
-                for (input, output) in &self.workspace.connections {
-                    if input.module_id() == module_id || output.module_id() == module_id {
-                        deleted_connections.push(*input);
+                    // find any connections connected to this module's inputs or
+                    // outputs and delete them, generating oplog entries
+
+                    let mut deleted_connections = Vec::new();
+
+                    for (input, output) in &workspace.connections {
+                        if input.module_id() == module_id || output.module_id() == module_id {
+                            deleted_connections.push(*input);
+                        }
+                    }
+
+                    for deleted_connection in deleted_connections {
+                        workspace.connections.remove(&deleted_connection);
+                        operations.push(ServerUpdate::DeleteConnection(deleted_connection));
+                    }
+
+                    // finally, delete the module:
+
+                    if workspace.modules.contains_key(&module_id) {
+                        workspace.modules.remove(&module_id);
+                        operations.push(ServerUpdate::DeleteModule(module_id));
                     }
                 }
 
-                for deleted_connection in deleted_connections {
-                    self.workspace.connections.remove(&deleted_connection);
-                    self.log_op(ServerUpdate::DeleteConnection(deleted_connection));
-                }
-
-                // finally, delete the module:
-
-                if self.workspace.modules.contains_key(&module_id) {
-                    self.workspace.modules.remove(&module_id);
-                    self.log_op(ServerUpdate::DeleteModule(module_id));
+                for op in operations {
+                    self.log_op(op);
                 }
 
                 stat.remove_module(module_id);
             }
             ClientOp::CreateConnection(input_id, output_id) => {
-                match self.workspace.connect(input_id, output_id) {
+                let previous = self.workspace.borrow_mut().connect(input_id, output_id);
+
+                match previous {
                     Ok(old_output) => {
                         if let Some(_) = old_output {
                             self.log_op(ServerUpdate::DeleteConnection(input_id));
@@ -347,7 +382,9 @@ impl Engine {
                 }
             }
             ClientOp::DeleteConnection(input_id) => {
-                if let Some(_) = self.workspace.connections.remove(&input_id) {
+                let previous = self.workspace.borrow_mut().disconnect(input_id);
+
+                if let Some(_) = previous {
                     self.log_op(ServerUpdate::DeleteConnection(input_id));
                 }
             }
@@ -357,16 +394,20 @@ impl Engine {
     }
 
     fn run_tick(&mut self, tick: u64, stat: &mut TickStat) -> Vec<(ModuleId, Indication)> {
+        // tick is not allowed to update any persisted information such as
+        // module params or connections
+        let workspace = self.workspace.borrow_mut_without_sync();
+
         // find terminal modules - modules which do not send their output to
         // the input of any other module
 
         let mut terminal_modules = HashSet::new();
 
-        for (id, _) in &self.workspace.modules {
+        for (id, _) in &workspace.modules {
             terminal_modules.insert(*id);
         }
 
-        for (_, output) in &self.workspace.connections {
+        for (_, output) in &workspace.connections {
             terminal_modules.remove(&output.module_id());
         }
 
@@ -374,8 +415,8 @@ impl Engine {
         // terminal modules
 
         let mut topsort = Topsort {
-            modules: &self.workspace.modules,
-            connections: &self.workspace.connections,
+            modules: &workspace.modules,
+            connections: &workspace.connections,
             run_order: Vec::new(),
             seen: HashSet::new(),
         };
@@ -417,10 +458,10 @@ impl Engine {
         let mut indications = Vec::new();
 
         for module_id in topsort.run_order.iter() {
-            let module = self.workspace.modules.get_mut(&module_id)
+            let module = workspace.modules.get_mut(&module_id)
                 .expect("module get_mut");
 
-            let connections = &self.workspace.connections;
+            let connections = &workspace.connections;
 
             let mut output_buffers = module.outputs().iter()
                 .map(|output| Output::from_line_type(output.line_type()))

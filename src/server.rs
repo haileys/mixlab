@@ -1,9 +1,11 @@
 use std::borrow::Cow;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use futures::{StreamExt, SinkExt, stream};
 use structopt::StructOpt;
+use tokio::io;
 use tokio::runtime;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -14,19 +16,40 @@ use warp::ws::{self, Ws, WebSocket};
 
 use mixlab_protocol::{ClientMessage, ServerMessage, PerformanceInfo};
 
-use crate::engine::{self, EngineHandle, EngineEvent};
+use crate::engine::{self, EngineHandle, EngineEvent, Persist, persist};
+use crate::listen::{self, Disambiguation};
 use crate::module;
 use crate::{icecast, rtmp};
-use crate::listen::{self, Disambiguation};
 
 #[derive(StructOpt)]
 pub struct RunOpts {
     #[structopt(short, long, default_value = "127.0.0.1:8000")]
     listen: SocketAddr,
+    workspace_path: PathBuf,
+}
+
+#[derive(Debug)]
+enum CreateOrOpenError {
+    Open(persist::OpenError),
+    Create(io::Error),
+}
+
+async fn create_or_open_workspace(workspace_path: PathBuf) -> Result<Persist, CreateOrOpenError> {
+    match Persist::open(workspace_path.clone()).await {
+        Ok(persist) => Ok(persist),
+        Err(persist::OpenError::NotFound) => {
+            Persist::create(workspace_path).await
+                .map_err(CreateOrOpenError::Create)
+        }
+        Err(e) => Err(CreateOrOpenError::Open(e)),
+    }
 }
 
 pub async fn run(opts: RunOpts) {
-    let engine = Arc::new(engine::start(runtime::Handle::current()));
+    let persist = create_or_open_workspace(opts.workspace_path).await
+        .expect("create_or_open_workspace");
+
+    let engine = Arc::new(engine::start(runtime::Handle::current(), persist));
 
     let index = warp::path::end()
         .map(index);

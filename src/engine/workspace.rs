@@ -1,10 +1,15 @@
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
+
+use tokio::task;
+use tokio::sync::Mutex;
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, TerminalId, WindowGeometry, Indication, LineType};
 
+use crate::engine::persist::{self, Persist};
 use crate::module::Module;
 use crate::util::Sequence;
-use crate::engine::save;
 
 pub struct Workspace {
     pub(in crate::engine) module_seq: Sequence,
@@ -15,18 +20,7 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    pub fn new() -> Self {
-        Workspace {
-            module_seq: Sequence::new(),
-            modules: HashMap::new(),
-            geometry: HashMap::new(),
-            connections: HashMap::new(),
-            indications: HashMap::new(),
-        }
-    }
-
-    #[allow(unused)]
-    pub fn load(save: &save::Workspace) -> Self {
+    pub fn from_persist(save: &persist::Workspace) -> Self {
         let mut modules = HashMap::new();
         let mut geometry = HashMap::new();
         let mut indications = HashMap::new();
@@ -62,9 +56,8 @@ impl Workspace {
         workspace
     }
 
-    #[allow(unused)]
-    pub fn save(&self) -> save::Workspace {
-        save::Workspace {
+    pub fn to_persist(&self) -> persist::Workspace {
+        persist::Workspace {
             module_seq: self.module_seq.clone(),
             modules: self.modules.iter()
                 .map(|(module_id, module)| {
@@ -79,7 +72,7 @@ impl Workspace {
                         .map(|input_id| self.connections.get(&input_id).cloned())
                         .collect();
 
-                    (*module_id, save::Module {
+                    (*module_id, persist::Module {
                         params,
                         geometry,
                         inputs,
@@ -120,10 +113,75 @@ impl Workspace {
             Err(ConnectError::TypeMismatch)
         }
     }
+
+    pub fn disconnect(&mut self, input_id: InputId) -> Option<OutputId> {
+        self.connections.remove(&input_id)
+    }
 }
 
 pub enum ConnectError {
     NoInput,
     NoOutput,
     TypeMismatch,
+}
+
+pub struct SyncWorkspace {
+    workspace: Workspace,
+    persist: Arc<Mutex<Persist>>,
+}
+
+impl SyncWorkspace {
+    pub fn new(persist: Persist) -> SyncWorkspace {
+        let workspace = Workspace::from_persist(persist.workspace());
+        SyncWorkspace {
+            workspace,
+            persist: Arc::new(Mutex::new(persist)),
+        }
+    }
+
+    // indications are not persisted, so we can hand out direct access
+    pub fn indications_mut(&mut self) -> &mut HashMap<ModuleId, Indication> {
+        &mut self.workspace.indications
+    }
+
+    pub fn borrow(&self) -> &Workspace {
+        &self.workspace
+    }
+
+    pub fn borrow_mut<'a>(&'a mut self) -> WorkspaceBorrowMut<'a> {
+        WorkspaceBorrowMut { sync: self }
+    }
+
+    pub fn borrow_mut_without_sync(&mut self) -> &mut Workspace {
+        &mut self.workspace
+    }
+}
+
+pub struct WorkspaceBorrowMut<'a> {
+    sync: &'a mut SyncWorkspace,
+}
+
+impl<'a> Drop for WorkspaceBorrowMut<'a> {
+    fn drop(&mut self) {
+        let persist = self.sync.persist.clone();
+        let workspace = self.sync.workspace.to_persist();
+
+        task::spawn(async move {
+            persist.lock().await.update_workspace(workspace).await
+        });
+    }
+}
+
+impl<'a> Deref for WorkspaceBorrowMut<'a> {
+    type Target = Workspace;
+
+    fn deref(&self) -> &Workspace {
+        &self.sync.workspace
+    }
+}
+
+impl<'a> DerefMut for WorkspaceBorrowMut<'a> {
+    fn deref_mut(&mut self) -> &mut Workspace {
+        &mut self.sync.workspace
+    }
 }

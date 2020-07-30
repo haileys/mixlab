@@ -1052,6 +1052,7 @@ dependencies = [
  "ringbuf",
  "rml_rtmp",
  "serde",
+ "serde_json",
  "structopt",
  "tokio",
  "url",

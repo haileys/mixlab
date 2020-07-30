@@ -9,7 +9,7 @@ use tokio::io::AsyncRead;
 
 use mixlab_protocol::TemporalWarningStatus;
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Sequence(usize);
 
 impl Sequence {
