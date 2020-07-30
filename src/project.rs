@@ -103,18 +103,7 @@ pub async fn open_or_create(path: PathBuf) -> Result<ProjectHandle, OpenError> {
     });
 
     Ok(ProjectHandle { engine })
-    // Ok(ProjectHandle { project })
 }
-
-    // pub fn workspace(&self) -> &persist::Workspace {
-    //     &self.workspace
-    // }
-
-    // pub async fn update_workspace(&mut self, workspace: persist::Workspace) -> Result<(), io::Error> {
-    //     // *self.workspace.lock().unwrap() = workspace;
-    //     // self.base.write_workspace(&self.workspace).await
-    //     todo!()
-    // }
 
 impl ProjectHandle {
     pub async fn connect_engine(&self) -> Result<(WorkspaceState, EngineEvents, EngineSession), EngineError> {
