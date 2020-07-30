@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use mixlab_codec::ffmpeg::{AvFrame, PictureSettings, PixelFormat};
 use mixlab_protocol::{VideoMixerParams, LineType, Terminal, VIDEO_MIXER_CHANNELS};
 use mixlab_util::time::{MediaTime, MediaDuration};
@@ -18,20 +20,15 @@ pub struct VideoMixer {
 #[derive(Debug)]
 struct Channel {
     stored: Option<StoredFrame>,
-    scaler: DynamicScaler,
+    scaler: Option<DynamicScaler>,
 }
 
 #[derive(Debug)]
 struct StoredFrame {
     active_until: MediaTime,
+    input_settings: PictureSettings,
     frame: AvFrame,
 }
-
-const OUTPUT_SETTINGS: PictureSettings = PictureSettings {
-    width: 1120,
-    height: 700,
-    pixel_format: PixelFormat::yuv420p(),
-};
 
 impl ModuleT for VideoMixer {
     type Params = VideoMixerParams;
@@ -49,11 +46,9 @@ impl ModuleT for VideoMixer {
                 LineType::Video.labeled("B"),
             ],
             channels: (0..VIDEO_MIXER_CHANNELS).map(|_| {
-                let scaler = DynamicScaler::new(OUTPUT_SETTINGS);
-
                 Channel {
                     stored: None,
-                    scaler,
+                    scaler: None,
                 }
             }).collect(),
         };
@@ -103,23 +98,55 @@ impl ModuleT for VideoMixer {
             }
         }
 
+        // calculate compatible output picture settings
+        let target = inputs.iter().enumerate()
+            .flat_map(|(idx, input)| {
+                input.expect_video()
+                    .map(|input_video| &input_video.data.decoded)
+                    .or_else(|| self.channels[idx].stored.as_ref().map(|st| &st.frame))
+                    .map(|frame| frame.picture_settings())
+            })
+            .fold1(unify_picture_settings);
+
+        let target = match target {
+            Some(target) => target,
+            None => {
+                // no inputs and no stored pictures - no work for us to do here
+                return None;
+            }
+        };
+
         // receive new input frames
         for (idx, input) in inputs.iter().enumerate() {
+            let channel = &mut self.channels[idx];
+
             if let Some(video) = input.expect_video() {
-                let channel = &mut self.channels[idx];
+                // clear stored frame so we don't wastefully rescale old frame
+                channel.stored = None;
+
+                // retarget scaler if necessary
+                channel.rescale(&target);
+
+                // must exist after rescale
+                let scaler = channel.scaler.as_mut().unwrap();
 
                 let mut frame = video.data.decoded.clone();
-                let scaled = channel.scaler.scale(&mut frame).clone();
+                let input_settings = frame.picture_settings();
+                let scaled = scaler.scale(&mut frame).clone();
 
-                self.channels[idx].stored = Some(StoredFrame {
+                channel.stored = Some(StoredFrame {
                     active_until: absolute_timestamp + video.tick_offset + video.data.duration_hint,
+                    input_settings,
                     frame: scaled,
                 });
+            } else {
+                // no input, rescale stored frame if necessary
+                channel.rescale(&target);
             }
         }
 
         // compose output frame
-        let mut output_frame = AvFrame::blank(&OUTPUT_SETTINGS);
+        let mut output_frame = AvFrame::blank(&target);
 
         {
             let pict = output_frame.picture_settings();
@@ -229,5 +256,40 @@ impl ModuleT for VideoMixer {
     }
 }
 
-// #[inline(never)]
-// fn crossfade(out: &mut FrameDataMut, a: &FrameData, b: &FrameData, crossfade: u16)
+impl Channel {
+    pub fn rescale(&mut self, target: &PictureSettings) {
+        let current = self.scaler.as_ref().map(|scaler| scaler.output());
+
+        if current != Some(target) {
+            self.scaler = Some(DynamicScaler::new(target.clone()));
+
+            if let Some(stored) = &mut self.stored {
+                let scaler = self.scaler.as_mut().unwrap();
+                stored.frame = scaler.scale(&mut stored.frame).clone();
+            }
+        }
+    }
+}
+
+fn unify_picture_settings(a: PictureSettings, b: PictureSettings) -> PictureSettings {
+    use std::cmp;
+
+    let width = cmp::max(a.width, b.width);
+    let height = cmp::max(a.height, b.height);
+
+    // always have frames in yuv420p for now - TODO support RGB too
+    let pixfmt = PixelFormat::yuv420p();
+    let pixdesc = pixfmt.descriptor();
+
+    let horz_mask = (1 << pixdesc.log2_chroma_w()) - 1;
+    let vert_mask = (1 << pixdesc.log2_chroma_h()) - 1;
+
+    let aligned_width = (width + horz_mask) & !horz_mask;
+    let aligned_height = (height + vert_mask) & !vert_mask;
+
+    PictureSettings {
+        width: aligned_width,
+        height: aligned_height,
+        pixel_format: pixfmt,
+    }
+}

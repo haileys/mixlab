@@ -327,6 +327,10 @@ impl DynamicScaler {
         DynamicScaler { scale: None, output }
     }
 
+    pub fn output(&self) -> &PictureSettings {
+        &self.output
+    }
+
     // the returned reference can either by borrowed from self, or borrowed
     // from our argument, so we need to set up a few lifetime constraints to
     // express that the output lifetime is outlived by both self and arg
