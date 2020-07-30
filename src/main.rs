@@ -2,6 +2,7 @@ mod engine;
 mod icecast;
 mod listen;
 mod module;
+mod persist;
 mod project;
 mod rtmp;
 mod server;

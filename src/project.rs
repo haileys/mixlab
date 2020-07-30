@@ -7,8 +7,8 @@ use tokio::{fs, io, task, runtime};
 
 use mixlab_protocol::{WorkspaceState, PerformanceInfo};
 
-use crate::engine::{self, persist, EngineHandle, EngineEvents, EngineError, EngineSession};
-use crate::engine::WorkspaceEmbryo;
+use crate::engine::{self, EngineHandle, EngineEvents, EngineError, EngineSession, WorkspaceEmbryo};
+use crate::persist;
 
 #[derive(Clone)]
 pub struct ProjectHandle {

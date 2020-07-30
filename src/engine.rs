@@ -18,7 +18,6 @@ use crate::module::Module;
 use crate::util::Sequence;
 
 mod io;
-pub mod persist;
 mod timing;
 mod workspace;
 

@@ -5,8 +5,8 @@ use tokio::sync::watch;
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, TerminalId, WindowGeometry, Indication, LineType};
 
-use crate::engine::persist;
 use crate::module::Module;
+use crate::persist;
 use crate::util::Sequence;
 
 pub struct Workspace {
