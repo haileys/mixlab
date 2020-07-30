@@ -18,15 +18,18 @@ js-sys = "0.3"
 lazy_static = "1.4"
 mixlab-mux = { path = "../mux" }
 mixlab-protocol = { path = "../protocol" }
-uuid = "0.8"
+uuid = { version = "0.8", features = ["v4", "wasm-bindgen"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 yew = { version = "0.17", features = ["web_sys"] }
 yew-components = "0.2"
 
 web-sys = { version = "0.3", features = [
+    "Blob",
     "CanvasRenderingContext2d",
     "CssStyleDeclaration",
+    "File",
+    "FileList",
     "HtmlCanvasElement",
     "HtmlMediaElement",
     "HtmlVideoElement",
@@ -40,6 +43,7 @@ web-sys = { version = "0.3", features = [
     "MidiMessageEvent",
     "MidiPort",
     "Navigator",
+    "ReadableStream",
     "SourceBuffer",
     "SourceBufferAppendMode",
     "TimeRanges",

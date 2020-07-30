@@ -2,6 +2,7 @@
 
 mod component;
 mod control;
+mod library;
 mod module;
 mod service;
 mod sidebar;
@@ -10,17 +11,18 @@ mod workspace;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::fmt::Display;
 use std::rc::Rc;
 
-use gloo_events::EventListener;
+use derive_more::Display;
 use wasm_bindgen::prelude::*;
-use web_sys::Element;
 use yew::format::Binary;
 use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
-use yew::{html, Component, ComponentLink, Html, ShouldRender};
+use yew::{html, Component, ComponentLink, Html, ShouldRender, Callback, Properties};
 
 use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ServerUpdate, Indication, Terminal, ClientOp, ClientSequence, PerformanceInfo};
 
+use library::MediaLibrary;
 use sidebar::Sidebar;
 use util::Sequence;
 use workspace::Workspace;
@@ -31,12 +33,8 @@ pub struct App {
     state: Option<Rc<RefCell<State>>>,
     client_seq: Sequence,
     server_seq: Option<ClientSequence>,
-    root_element: Element,
-    viewport_width: usize,
-    viewport_height: usize,
     performance_info: Option<Rc<PerformanceInfo>>,
-    // must be kept alive while app is running:
-    _resize_listener: EventListener,
+    selected_tab: Tab,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +46,14 @@ pub struct State {
     indications: HashMap<ModuleId, Indication>,
     inputs: HashMap<ModuleId, Vec<Terminal>>,
     outputs: HashMap<ModuleId, Vec<Terminal>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Display)]
+pub enum Tab {
+    #[display(fmt = "Workspace")]
+    Workspace,
+    #[display(fmt = "Media Library")]
+    MediaLibrary,
 }
 
 impl From<WorkspaceState> for State {
@@ -66,9 +72,9 @@ impl From<WorkspaceState> for State {
 #[derive(Debug)]
 pub enum AppMsg {
     NoOp,
-    WindowResize,
     ServerMessage(ServerMessage<'static>),
     ClientUpdate(ClientOp),
+    ChangeTab(Tab),
 }
 
 impl Component for App {
@@ -99,32 +105,14 @@ impl Component for App {
             }))
         .expect("websocket.connect_binary");
 
-        let window = web_sys::window()
-            .expect("window");
-
-        let root_element = window.document()
-            .and_then(|doc| doc.document_element())
-            .expect("root element");
-
-        let viewport_width = root_element.client_width() as usize;
-        let viewport_height = root_element.client_height() as usize;
-
-        let resize_listener = EventListener::new(&window, "resize", {
-            let link = link.clone();
-            move |_| { link.send_message(AppMsg::WindowResize) }
-        });
-
         App {
             link,
             websocket,
             state: None,
             client_seq: Sequence::new(),
             server_seq: None,
-            root_element,
-            viewport_width,
-            viewport_height,
             performance_info: None,
-            _resize_listener: resize_listener,
+            selected_tab: Tab::Workspace,
         }
     }
 
@@ -135,11 +123,6 @@ impl Component for App {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             AppMsg::NoOp => false,
-            AppMsg::WindowResize => {
-                self.viewport_width = self.root_element.client_width() as usize;
-                self.viewport_height = self.root_element.client_height() as usize;
-                true
-            }
             AppMsg::ServerMessage(msg) => {
                 match msg {
                     ServerMessage::WorkspaceState(state) => {
@@ -226,6 +209,10 @@ impl Component for App {
 
                 false
             }
+            AppMsg::ChangeTab(tab) => {
+                self.selected_tab = tab;
+                true
+            }
         }
     }
 
@@ -240,19 +227,26 @@ impl Component for App {
                         />
 
                         <div class="main">
-                            <div class="tab-strip">
-                                <div class="tab-strip-tab tab-strip-active">
-                                    {"Workspace"}
-                                </div>
-                                <div class="tab-strip-tab">
-                                    {"Media Library"}
-                                </div>
-                            </div>
-
-                            <Workspace
-                                app={self.link.clone()}
-                                state={state}
+                            <TabBar<Tab>
+                                current={self.selected_tab.clone()}
+                                tabs={vec![
+                                    Tab::Workspace,
+                                    Tab::MediaLibrary,
+                                ]}
+                                onchange={self.link.callback(AppMsg::ChangeTab)}
                             />
+
+                            { match self.selected_tab {
+                                Tab::Workspace => html! {
+                                    <Workspace
+                                        app={self.link.clone()}
+                                        state={state}
+                                    />
+                                },
+                                Tab::MediaLibrary => html! {
+                                    <MediaLibrary />
+                                },
+                            } }
                         </div>
                     </div>
                 }
@@ -277,6 +271,61 @@ impl App {
             false
         } else {
             panic!("server_seq > client_seq, desync")
+        }
+    }
+}
+
+#[derive(Properties, Clone, Debug)]
+pub struct TabBarProps<T: Clone> {
+    current: T,
+    tabs: Vec<T>,
+    onchange: Callback<T>,
+}
+
+struct TabBar<T: Clone> {
+    props: TabBarProps<T>
+}
+
+impl<T: Display + Clone + PartialEq + 'static> Component for TabBar<T> {
+    type Properties = TabBarProps<T>;
+    type Message = ();
+
+    fn create(props: TabBarProps<T>, _: ComponentLink<Self>) -> Self {
+        TabBar { props }
+    }
+
+    fn change(&mut self, props: TabBarProps<T>) -> ShouldRender {
+        self.props = props;
+        true
+    }
+
+    fn update(&mut self, _: ()) -> ShouldRender {
+        false
+    }
+
+    fn view(&self) -> Html {
+        html! {
+            <div class="tab-bar">
+                { for self.props.tabs.iter().map(|tab| {
+                    let class = if tab == &self.props.current {
+                        "tab-bar-tab tab-bar-active"
+                    } else {
+                        "tab-bar-tab"
+                    };
+
+                    html! {
+                        <div
+                            class={class}
+                            onclick={self.props.onchange.reform({
+                                let tab = tab.clone();
+                                move |_| tab.clone()
+                            })}
+                        >
+                            {tab.to_string()}
+                        </div>
+                    }
+                }) }
+            </div>
         }
     }
 }
