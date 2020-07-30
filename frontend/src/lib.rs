@@ -234,15 +234,26 @@ impl Component for App {
             Some(state) => {
                 html! {
                     <div class="app">
-                        <Workspace
-                            app={self.link.clone()}
-                            state={state}
-                        />
-
                         <Sidebar
                             state={state}
                             performance_info={self.performance_info.clone()}
                         />
+
+                        <div class="main">
+                            <div class="tab-strip">
+                                <div class="tab-strip-tab tab-strip-active">
+                                    {"Workspace"}
+                                </div>
+                                <div class="tab-strip-tab">
+                                    {"Media Library"}
+                                </div>
+                            </div>
+
+                            <Workspace
+                                app={self.link.clone()}
+                                state={state}
+                            />
+                        </div>
                     </div>
                 }
             }

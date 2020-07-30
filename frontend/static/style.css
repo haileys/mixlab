@@ -22,7 +22,6 @@ body {
 
 .sidebar {
     width:160px;
-    border-left:1px solid #0b0b10;
     background-color:#ffffff;
     display:flex;
     flex-flow:column nowrap;
@@ -40,6 +39,50 @@ body {
     margin-top:-12px;
     margin-left:-12px;
     margin-right:-12px;
+    border-bottom:1px solid #0b0b10;
+}
+
+.main {
+    flex:1;
+    display:flex;
+    flex-flow:column nowrap;
+}
+
+.tab-strip {
+    background-color:#8d8bb0;
+    height:48px;
+    display:flex;
+    flex-flow:row nowrap;
+    gap:12px;
+    border-bottom:1px solid #0b0b10;
+}
+
+.tab-strip-tab {
+    margin-top:12px;
+    height:36px;
+    line-height:36px;
+    font-size:14px;
+    font-weight:bold;
+    padding-left:12px;
+    padding-right:12px;
+    cursor:pointer;
+    background-color:#c9c8d9;
+}
+
+.tab-strip-tab:hover {
+    background-color:#d3d2e0;
+}
+
+.tab-strip-active {
+    background-color:#f0f0f5;
+    color:#0b0b10;
+    border-top:1px solid #0b0b10;
+    border-left:1px solid #0b0b10;
+    border-right:1px solid #0b0b10;
+}
+
+.tab-strip-active:hover {
+    background-color:#fafafc;
 }
 
 .perf-info {
