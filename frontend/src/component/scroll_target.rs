@@ -1,7 +1,7 @@
 use gloo_events::{EventListener, EventListenerOptions};
 use wasm_bindgen::JsCast;
 use web_sys::{WheelEvent, Element};
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Children, Callback, Renderable};
+use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Children, Callback};
 
 #[derive(Properties, Clone)]
 pub struct ScrollProps {

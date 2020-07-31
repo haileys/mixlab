@@ -1,7 +1,7 @@
 use std::mem;
 
 use web_sys::MouseEvent;
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback, Children, Renderable};
+use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback, Children};
 
 use crate::service::midi::{self, RangeSubscription, MidiRangeId, ConfigureTask};
 

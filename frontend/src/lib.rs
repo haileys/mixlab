@@ -128,7 +128,7 @@ impl Component for App {
         }
     }
 
-    fn change(&mut self, props: ()) -> ShouldRender {
+    fn change(&mut self, _: ()) -> ShouldRender {
         false
     }
 
