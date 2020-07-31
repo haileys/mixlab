@@ -1,7 +1,8 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use futures::{StreamExt, SinkExt, stream};
 use structopt::StructOpt;
@@ -26,9 +27,27 @@ pub struct RunOpts {
     workspace_path: PathBuf,
 }
 
+struct Server {
+    project: ProjectHandle,
+    pending_uploads: Mutex<HashMap<Uuid, project::MediaUpload>>,
+}
+
+type ServerRef = Arc<Server>;
+
+impl Server {
+    pub fn new(project: ProjectHandle) -> Self {
+        Server {
+            project,
+            pending_uploads: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
 pub async fn run(opts: RunOpts) {
     let project = project::open_or_create(opts.workspace_path).await
         .expect("create_or_open_project");
+
+    let server = Arc::new(Server::new(project));
 
     let index = warp::path::end()
         .map(index);
@@ -52,9 +71,9 @@ pub async fn run(opts: RunOpts) {
         .and(warp::path("session"))
         .and(warp::ws())
         .map(move |ws: Ws| {
-            let project = project.clone();
+            let server = server.clone();
             ws.on_upgrade(move |websocket| {
-                session(websocket, project.clone())
+                session(websocket, server.clone())
             })
         });
 
@@ -144,13 +163,13 @@ fn wasm() -> impl Reply {
     content("application/wasm", app_wasm)
 }
 
-async fn session(websocket: WebSocket, project: ProjectHandle) {
+async fn session(websocket: WebSocket, server: ServerRef) {
     let (mut tx, rx) = websocket.split();
 
-    let perf_info = project.performance_info();
+    let perf_info = server.project.performance_info();
 
-    let (state, engine_ops, engine) = project.connect_engine().await
-        .expect("engine.connect");
+    let (state, engine_ops, engine) = server.project.connect_engine().await
+        .expect("connect engine");
 
     let state_msg = bincode::serialize(&ServerMessage::WorkspaceState(state))
         .expect("bincode::serialize");
