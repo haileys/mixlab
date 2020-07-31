@@ -411,14 +411,6 @@ impl Component for Workspace {
             </div>
         }
     }
-
-    fn rendered(&mut self, first_render: bool) {
-        // always re-render after first mount because rendering correctly
-        // requires noderefs
-        if first_render {
-            self.link.send_message(WorkspaceMsg::ReRender);
-        }
-    }
 }
 
 impl Workspace {
