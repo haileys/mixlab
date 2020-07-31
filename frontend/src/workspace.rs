@@ -1,7 +1,5 @@
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
-use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent, Element};
@@ -24,7 +22,7 @@ use crate::module::stream_output::StreamOutput;
 use crate::module::trigger::Trigger;
 use crate::module::video_mixer::VideoMixer;
 use crate::util::{self, stop_propagation, prevent_default, Sequence};
-use crate::{App, AppMsg, State};
+use crate::{App, AppMsg, SessionRef, State};
 
 pub struct Workspace {
     link: ComponentLink<Self>,
@@ -38,7 +36,7 @@ pub struct Workspace {
 #[derive(Properties, Clone)]
 pub struct WorkspaceProps {
     pub app: ComponentLink<App>,
-    pub state: Rc<RefCell<State>>,
+    pub session: SessionRef,
 }
 
 pub enum MouseMode {
@@ -71,7 +69,7 @@ impl Component for Workspace {
     type Properties = WorkspaceProps;
 
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let state = props.state.clone();
+        let session = props.session.clone();
 
         let mut workspace = Workspace {
             link,
@@ -82,7 +80,7 @@ impl Component for Workspace {
             window_refs: BTreeMap::new(),
         };
 
-        let state = state.borrow();
+        let state = session.state.borrow();
         for id in state.modules.keys() {
             let inputs = state.inputs.get(id);
             let outputs = state.outputs.get(id);
@@ -99,7 +97,7 @@ impl Component for Workspace {
         let mut deleted_windows = self.window_refs.keys().copied().collect::<HashSet<_>>();
 
         {
-            let state = new_props.state.borrow();
+            let state = new_props.session.state.borrow();
 
             for id in state.modules.keys() {
                 if deleted_windows.remove(id) {
@@ -128,7 +126,7 @@ impl Component for Workspace {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         return match msg {
             WorkspaceMsg::DragStart(module, ev) => {
-                let mut state = self.props.state.borrow_mut();
+                let mut state = self.props.session.state.borrow_mut();
 
                 if let Some(geom) = state.geometry.get_mut(&module) {
                     self.mouse = MouseMode::Drag(Drag {
@@ -175,7 +173,7 @@ impl Component for Workspace {
                 match self.mouse {
                     MouseMode::Normal => false,
                     MouseMode::Drag(ref mut drag) => {
-                        let mut state = self.props.state.borrow_mut();
+                        let mut state = self.props.session.state.borrow_mut();
 
                         let should_render = drag_event(&mut state, &self.window_refs, drag, ev);
 
@@ -197,7 +195,7 @@ impl Component for Workspace {
                 match &mut self.mouse {
                     MouseMode::Normal | MouseMode::ContextMenu(_) => false,
                     MouseMode::Drag(ref mut drag) => {
-                        drag_event(&mut self.props.state.borrow_mut(), &self.window_refs, drag, ev)
+                        drag_event(&mut self.props.session.state.borrow_mut(), &self.window_refs, drag, ev)
                     }
                     MouseMode::Connect(_, _, ref mut coords) => {
                         let workspace = self.workspace_ref.cast::<HtmlElement>().unwrap();
@@ -221,7 +219,7 @@ impl Component for Workspace {
                         match (terminal_id, *other_terminal_id) {
                             (TerminalId::Input(input), TerminalId::Output(output)) |
                             (TerminalId::Output(output), TerminalId::Input(input)) => {
-                                let mut state = self.props.state.borrow_mut();
+                                let mut state = self.props.session.state.borrow_mut();
 
                                 if terminal_ref.line_type == other_terminal_ref.line_type {
                                     state.connections.insert(input, output);
@@ -251,7 +249,7 @@ impl Component for Workspace {
             WorkspaceMsg::ClearTerminal(terminal) => {
                 match terminal {
                     TerminalId::Input(input) => {
-                        self.props.state.borrow_mut()
+                        self.props.session.state.borrow_mut()
                             .connections
                             .remove(&input);
 
@@ -262,7 +260,7 @@ impl Component for Workspace {
                     TerminalId::Output(output) => {
                         let mut msgs = Vec::new();
 
-                        let mut state = self.props.state.borrow_mut();
+                        let mut state = self.props.session.state.borrow_mut();
 
                         for (in_, out_) in &state.connections {
                             if *out_ == output {
@@ -281,7 +279,7 @@ impl Component for Workspace {
                 true
             }
             WorkspaceMsg::DeleteWindow(module) => {
-                let mut state = self.props.state.borrow_mut();
+                let mut state = self.props.session.state.borrow_mut();
                 state.modules.remove(&module);
                 state.geometry.remove(&module);
                 state.connections.retain(|input, output| {
@@ -295,7 +293,7 @@ impl Component for Workspace {
                 true
             }
             WorkspaceMsg::UpdateModuleParams(module, params) => {
-                let mut state = self.props.state.borrow_mut();
+                let mut state = self.props.session.state.borrow_mut();
 
                 if let Some(module_params) = state.modules.get_mut(&module) {
                     // verify that we're updating the module params with the
@@ -359,7 +357,7 @@ impl Component for Workspace {
     fn view(&self) -> Html {
         let mut connections: Vec<(Coords, Coords)> = vec![];
 
-        for (input, output) in &self.props.state.borrow().connections {
+        for (input, output) in &self.props.session.state.borrow().connections {
             if let Some(input_coords) = self.screen_coords_for_terminal(TerminalId::Input(*input)) {
                 if let Some(output_coords) = self.screen_coords_for_terminal(TerminalId::Output(*output)) {
                     connections.push((output_coords, input_coords));
@@ -390,7 +388,7 @@ impl Component for Workspace {
                 />
 
                 { for self.window_refs.iter().map(|(id, refs)| {
-                    let state = self.props.state.borrow();
+                    let state = self.props.session.state.borrow();
                     let module = state.modules.get(id);
                     let geometry = state.geometry.get(id);
                     let workspace = self.link.clone();
@@ -444,7 +442,7 @@ impl Workspace {
     }
 
     fn screen_coords_for_terminal(&self, terminal_id: TerminalId) -> Option<Coords> {
-        let state = self.props.state.borrow();
+        let state = self.props.session.state.borrow();
         let geometry = state.geometry.get(&terminal_id.module_id())?;
         let refs = self.window_refs.get(&terminal_id.module_id())?;
 

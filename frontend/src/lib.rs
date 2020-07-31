@@ -30,9 +30,7 @@ use workspace::Workspace;
 pub struct App {
     link: ComponentLink<Self>,
     websocket: WebSocketTask,
-    state: Option<Rc<RefCell<State>>>,
-    client_seq: Sequence,
-    server_seq: Option<ClientSequence>,
+    session: Option<SessionRef>,
     performance_info: Option<Rc<PerformanceInfo>>,
     selected_tab: Tab,
 }
@@ -108,9 +106,7 @@ impl Component for App {
         App {
             link,
             websocket,
-            state: None,
-            client_seq: Sequence::new(),
-            server_seq: None,
+            session: None,
             performance_info: None,
             selected_tab: Tab::Workspace,
         }
@@ -126,25 +122,25 @@ impl Component for App {
             AppMsg::ServerMessage(msg) => {
                 match msg {
                     ServerMessage::WorkspaceState(state) => {
-                        self.state = Some(Rc::new(RefCell::new(state.into())));
+                        self.session = Some(Rc::new(Session::new(state.into())));
                         true
                     }
                     ServerMessage::Sync(seq) => {
-                        if Some(seq) <= self.server_seq {
-                            panic!("sequence number repeat, desync");
-                        }
+                        let session = self.session.as_ref()
+                            .expect("PROTOCOL VIOLATION: expect WorkspaceState before any other message");
 
-                        self.server_seq = Some(seq);
+                        session.sync(seq);
 
                         // re-render if this Sync message caused us to consider
                         // ourselves synced - there may be prior updates
                         // waiting for render
-                        self.synced()
+                        session.synced()
                     }
                     ServerMessage::Update(op) => {
-                        let mut state = self.state.as_ref()
-                            .expect("server should always send a WorkspaceState before a ModelOp")
-                            .borrow_mut();
+                        let session = self.session.as_mut()
+                            .expect("PROTOCOL VIOLATION: expect WorkspaceState before any other message");
+
+                        let mut state = session.state.borrow_mut();
 
                         match op {
                             ServerUpdate::CreateModule { id, params, geometry, indication, inputs, outputs } => {
@@ -186,19 +182,25 @@ impl Component for App {
 
                         // only re-render according to server state if all of
                         // our changes have successfully round-tripped
-                        self.synced()
+                        session.synced()
                     }
                     ServerMessage::Performance(perf_info) => {
+                        let session = self.session.as_mut()
+                            .expect("PROTOCOL VIOLATION: expect WorkspaceState before any other message");
+
                         self.performance_info = Some(Rc::new(perf_info.into_owned()));
 
                         // TODO we should rerender perf pane but not workspace even if not synced
-                        self.synced()
+                        session.synced()
                     }
                 }
             }
             AppMsg::ClientUpdate(op) => {
+                let session = self.session.as_mut()
+                    .expect("ClientUpdate should never occur before receiving WorkspaceState");
+
                 let msg = ClientMessage::Workspace(WorkspaceMessage {
-                    sequence: ClientSequence(self.client_seq.next()),
+                    sequence: ClientSequence(session.client_seq.borrow_mut().next()),
                     op: op,
                 });
 
@@ -217,12 +219,12 @@ impl Component for App {
     }
 
     fn view(&self) -> Html {
-        match &self.state {
-            Some(state) => {
+        match &self.session {
+            Some(session) => {
                 html! {
                     <div class="app">
                         <Sidebar
-                            state={state}
+                            session={session}
                             performance_info={self.performance_info.clone()}
                         />
 
@@ -240,7 +242,7 @@ impl Component for App {
                                 Tab::Workspace => html! {
                                     <Workspace
                                         app={self.link.clone()}
-                                        state={state}
+                                        session={session}
                                     />
                                 },
                                 Tab::MediaLibrary => html! {
@@ -252,25 +254,6 @@ impl Component for App {
                 }
             }
             None => html! {}
-        }
-    }
-}
-
-impl App {
-    fn synced(&self) -> bool {
-        // only re-render according to server state if all of
-        // our changes have successfully round-tripped
-
-        let client_seq = self.client_seq.last().map(ClientSequence);
-
-        if self.server_seq == client_seq {
-            // server is up to date, re-render
-            true
-        } else if self.server_seq < client_seq {
-            // server is behind, skip render
-            false
-        } else {
-            panic!("server_seq > client_seq, desync")
         }
     }
 }
@@ -365,4 +348,50 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
     ($($t:tt)*) => (crate::error_str(&format_args!($($t)*).to_string()))
+}
+
+#[derive(Debug)]
+pub struct Session {
+    state: RefCell<State>,
+    client_seq: RefCell<Sequence>,
+    server_seq: RefCell<Option<ClientSequence>>,
+}
+
+pub type SessionRef = Rc<Session>;
+
+impl Session {
+    pub fn new(state: State) -> Self {
+        Session {
+            state: RefCell::new(state),
+            client_seq: RefCell::new(Sequence::new()),
+            server_seq: RefCell::new(None),
+        }
+    }
+
+    fn sync(&self, seq: ClientSequence) {
+        let mut server_seq = self.server_seq.borrow_mut();
+
+        if Some(seq) <= *server_seq {
+            panic!("sequence number repeat, desync");
+        }
+
+        *server_seq = Some(seq);
+    }
+
+    fn synced(&self) -> bool {
+        // only re-render according to server state if all of
+        // our changes have successfully round-tripped
+        let client_seq = self.client_seq.borrow().last().map(ClientSequence);
+        let server_seq = self.server_seq.borrow();
+
+        if *server_seq == client_seq {
+            // server is up to date, re-render
+            true
+        } else if *server_seq < client_seq {
+            // server is behind, skip render
+            false
+        } else {
+            panic!("server_seq > client_seq, desync")
+        }
+    }
 }

@@ -1,11 +1,10 @@
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 
 use mixlab_protocol::{PerformanceInfo, PerformanceAccount, TemporalWarningStatus};
 
-use crate::State;
+use crate::SessionRef;
 
 pub struct Sidebar {
     props: SidebarProps,
@@ -13,7 +12,7 @@ pub struct Sidebar {
 
 #[derive(Properties, Clone, Debug)]
 pub struct SidebarProps {
-    pub state: Rc<RefCell<State>>,
+    pub session: SessionRef,
     pub performance_info: Option<Rc<PerformanceInfo>>,
 }
 
@@ -49,7 +48,7 @@ impl Component for Sidebar {
 impl Sidebar {
     fn view_perf_info(&self) -> Html {
         if let Some(perf_info) = &self.props.performance_info {
-            let state = self.props.state.borrow();
+            let state = self.props.session.state.borrow();
 
             let realtime_status_class = if perf_info.realtime {
                 "status-light status-light-green-active"

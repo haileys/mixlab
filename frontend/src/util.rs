@@ -34,6 +34,7 @@ pub fn clamp<T: PartialOrd>(min: T, max: T, val: T) -> T {
     }
 }
 
+#[derive(Debug)]
 pub struct Sequence(usize);
 
 impl Sequence {
