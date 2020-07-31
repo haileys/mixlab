@@ -91,7 +91,7 @@ impl Component for ScrollTarget {
                 class="scroll-target-container"
                 ref={self.container.clone()}
             >
-                {self.props.children.render()}
+                {self.props.children.clone()}
             </div>
         }
     }

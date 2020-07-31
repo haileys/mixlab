@@ -147,7 +147,7 @@ impl Component for MidiRangeTarget {
         html! {
             <div class="midi-target">
                 {overlay}
-                {self.props.children.render()}
+                {self.props.children.clone()}
             </div>
         }
     }

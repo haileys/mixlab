@@ -175,7 +175,7 @@ impl Component for DragTarget {
                 ref={self.container.clone()}
                 onmousedown={self.filter_callback(DragTargetMsg::MouseDown)}
             >
-                {self.props.children.render()}
+                {self.props.children.clone()}
             </div>
         }
     }
