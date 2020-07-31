@@ -37,10 +37,6 @@ impl Component for Plotter {
         false
     }
 
-    fn mounted(&mut self) -> ShouldRender {
-        true
-    }
-
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
         self.props = props;
 

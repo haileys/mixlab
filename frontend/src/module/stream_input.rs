@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 
 use derive_more::{From, Into};
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback};
-use yew::components::Select;
+use yew_components::Select;
 use yew::events::ChangeData;
 
 use mixlab_protocol::{ModuleId, ModuleParams, StreamInputParams, StreamProtocol};
@@ -48,7 +48,7 @@ impl Component for StreamInput {
                             DisplayProtocol(StreamProtocol::Icecast),
                             DisplayProtocol(StreamProtocol::Rtmp),
                         ]}
-                        onchange={self.callback(move |protocol: DisplayProtocol, params| {
+                        on_change={self.callback(move |protocol: DisplayProtocol, params| {
                             StreamInputParams { protocol: Some(protocol.0), ..params }
                         })}
                     />

@@ -1,7 +1,7 @@
 use gloo_events::{EventListener, EventListenerOptions};
 use wasm_bindgen::JsCast;
 use web_sys::MouseEvent;
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback, Children, Renderable};
+use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef, Callback, Children};
 
 pub struct DragTarget {
     link: ComponentLink<Self>,
@@ -175,7 +175,7 @@ impl Component for DragTarget {
                 ref={self.container.clone()}
                 onmousedown={self.filter_callback(DragTargetMsg::MouseDown)}
             >
-                {self.props.children.render()}
+                {self.props.children.clone()}
             </div>
         }
     }

@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 use yew::events::ChangeData;
-use yew::components::Select;
+use yew_components::Select;
 
 use mixlab_protocol::{ModuleId, ModuleParams, OscillatorParams, Waveform};
 
@@ -73,7 +73,7 @@ impl Component for Oscillator {
                     <Select<SelectableWaveform>
                         selected={SelectableWaveform(params.waveform.clone())}
                         options={waveforms}
-                        onchange={self.props.module.callback({
+                        on_change={self.props.module.callback({
                             let params = self.props.params.clone();
                             move |waveform| {
                                 let SelectableWaveform(waveform) = waveform;

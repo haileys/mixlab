@@ -2,7 +2,7 @@ use std::fmt::{self, Display};
 use std::iter;
 
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
-use yew::components::Select;
+use yew_components::Select;
 
 use mixlab_protocol::{ModuleId, ModuleParams, OutputDeviceParams, OutputDeviceIndication, TemporalWarningStatus};
 
@@ -111,7 +111,7 @@ impl Component for OutputDevice {
                 <Select<String>
                     selected={&self.props.params.device}
                     options={device_names}
-                    onchange={self.props.module.callback({
+                    on_change={self.props.module.callback({
                         let params = self.props.params.clone();
                         move |device: String| {
                             let params = OutputDeviceParams { device: Some(device), ..params.clone() };
@@ -124,7 +124,7 @@ impl Component for OutputDevice {
                 <Select<OutputChannel>
                     selected={OutputChannel(self.props.params.left)}
                     options={channels.clone()}
-                    onchange={self.props.module.callback({
+                    on_change={self.props.module.callback({
                         let params = self.props.params.clone();
                         move |chan: OutputChannel| {
                             let params = OutputDeviceParams { left: chan.0, ..params.clone() };
@@ -137,7 +137,7 @@ impl Component for OutputDevice {
                 <Select<OutputChannel>
                     selected={OutputChannel(self.props.params.right)}
                     options={channels}
-                    onchange={self.props.module.callback({
+                    on_change={self.props.module.callback({
                         let params = self.props.params.clone();
                         move |chan: OutputChannel| {
                             let params = OutputDeviceParams { right: chan.0, ..params.clone() };

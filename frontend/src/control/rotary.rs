@@ -18,7 +18,6 @@ pub struct Rotary<T: Into<f64> + From<f64> + Clone + Copy + Display + PartialEq 
     link: ComponentLink<Self>,
     props: RotaryProps<T>,
     canvas: NodeRef,
-    ctx: Option<CanvasRenderingContext2d>,
     mouse_mode: MouseMode,
 }
 
@@ -78,7 +77,6 @@ impl<T: Into<f64> + From<f64> + Clone + Copy + Display + PartialEq + 'static> Co
             link,
             props,
             canvas: NodeRef::default(),
-            ctx: None,
             mouse_mode: MouseMode::Normal,
         }
     }
@@ -137,7 +135,44 @@ impl<T: Into<f64> + From<f64> + Clone + Copy + Display + PartialEq + 'static> Co
     }
 
     fn view(&self) -> Html {
-        if let Some(ctx) = &self.ctx {
+        let label_value = match &self.mouse_mode {
+            MouseMode::Normal => self.props.value,
+            MouseMode::Drag(state) => T::from(state.value),
+        };
+
+        html! {
+            <div class="control-rotary">
+                <ScrollTarget
+                    on_scroll={self.link.callback(RotaryMsg::Scroll)}
+                >
+                    <DragTarget
+                        on_drag_start={self.link.callback(RotaryMsg::DragStart)}
+                        on_drag={self.link.callback(RotaryMsg::Drag)}
+                        on_drag_end={self.link.callback(RotaryMsg::DragEnd)}
+                    >
+                        <canvas
+                            width={ROTARY_WIDTH}
+                            height={ROTARY_HEIGHT}
+                            ref={self.canvas.clone()}
+                        />
+                    </DragTarget>
+                    <div class="control-rotary-label">{format!("{}", label_value)}</div>
+                </ScrollTarget>
+            </div>
+
+        }
+    }
+
+    fn rendered(&mut self, _: bool) {
+        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
+            let ctx = canvas.get_context("2d")
+                .expect("canvas.get_context")
+                .expect("canvas.get_context");
+
+            let ctx = ctx
+                .dyn_into::<CanvasRenderingContext2d>()
+                .expect("dyn_ref::<CanvasRenderingContext2d>");
+
             const ROTARY_CENTER_X: f64 = ROTARY_WIDTH as f64 / 2.0;
             const ROTARY_CENTER_Y: f64 = ROTARY_HEIGHT as f64 / 2.0;
             const ROTARY_RADIUS: f64 = ROTARY_WIDTH as f64 / 2.0;
@@ -210,48 +245,5 @@ impl<T: Into<f64> + From<f64> + Clone + Copy + Display + PartialEq + 'static> Co
             );
             ctx.fill();
         }
-
-        let label_value = match &self.mouse_mode {
-            MouseMode::Normal => self.props.value,
-            MouseMode::Drag(state) => T::from(state.value),
-        };
-
-        html! {
-            <div class="control-rotary">
-                <ScrollTarget
-                    on_scroll={self.link.callback(RotaryMsg::Scroll)}
-                >
-                    <DragTarget
-                        on_drag_start={self.link.callback(RotaryMsg::DragStart)}
-                        on_drag={self.link.callback(RotaryMsg::Drag)}
-                        on_drag_end={self.link.callback(RotaryMsg::DragEnd)}
-                    >
-                        <canvas
-                            width={ROTARY_WIDTH}
-                            height={ROTARY_HEIGHT}
-                            ref={self.canvas.clone()}
-                        />
-                    </DragTarget>
-                    <div class="control-rotary-label">{format!("{}", label_value)}</div>
-                </ScrollTarget>
-            </div>
-
-        }
-    }
-
-    fn mounted(&mut self) -> ShouldRender {
-        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
-            let ctx = canvas.get_context("2d")
-                .expect("canvas.get_context")
-                .expect("canvas.get_context");
-
-            let ctx = ctx
-                .dyn_into::<CanvasRenderingContext2d>()
-                .expect("dyn_ref::<CanvasRenderingContext2d>");
-
-            self.ctx = Some(ctx);
-        }
-
-        true
     }
 }

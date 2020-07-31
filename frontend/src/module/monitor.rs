@@ -91,9 +91,7 @@ impl Component for Monitor {
                             let media_source = media_source.clone();
 
                             move |_| {
-                                let mut socket = WebSocketService::new();
-
-                                let socket = socket.connect_binary(&socket_url,
+                                let socket = WebSocketService::connect_binary(&socket_url,
                                     Callback::from({
                                         let link = link.clone();
                                         move |msg: Binary| {
@@ -192,10 +190,6 @@ impl Component for Monitor {
                 false
             }
         }
-    }
-
-    fn mounted(&mut self) -> ShouldRender {
-        true
     }
 
     fn change(&mut self, props: Self::Properties) -> ShouldRender {

@@ -7,8 +7,8 @@ pub fn stop_propagation<In>() -> Callback<In>
 where
     In: AsRef<Event>
 {
-    Callback::from(|_: In| {
-        // no-op, yew already stops propagation for us
+    Callback::from(|ev: In| {
+        ev.as_ref().stop_propagation();
     })
 }
 
