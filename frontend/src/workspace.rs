@@ -146,8 +146,6 @@ impl Component for Workspace {
             WorkspaceMsg::MouseDown(ev) => {
                 const RIGHT_MOUSE_BUTTON: u16 = 2;
 
-                crate::log!("WorkspaceMsg::MouseDown: buttons: {}", ev.buttons());
-
                 if (ev.buttons() & RIGHT_MOUSE_BUTTON) != 0 {
                     match self.mouse {
                         MouseMode::Connect(..) => {
@@ -375,12 +373,15 @@ impl Component for Workspace {
 
         html! {
             <div class="workspace"
-                onmouseup={self.link.callback(WorkspaceMsg::MouseUp)}
-                onmousemove={self.link.callback(WorkspaceMsg::MouseMove)}
-                onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
-                oncontextmenu={prevent_default()}
                 ref={self.workspace_ref.clone()}
+                onmousemove={self.link.callback(WorkspaceMsg::MouseMove)}
+                oncontextmenu={prevent_default()}
             >
+                <div class="workspace-event-target"
+                    onmouseup={self.link.callback(WorkspaceMsg::MouseUp)}
+                    onmousedown={self.link.callback(WorkspaceMsg::MouseDown)}
+                />
+
                 { for self.window_refs.iter().map(|(id, refs)| {
                     let state = self.props.state.borrow();
                     let module = state.modules.get(id);
@@ -635,6 +636,7 @@ impl Component for Window {
             >
                 <div class="module-window-title"
                     onmousedown={self.link.callback(WindowMsg::DragStart)}
+                    onmouseup={self.props.workspace.callback(WorkspaceMsg::MouseUp)}
                 >
                     <div class="module-window-title-label">
                         {&self.props.name}
