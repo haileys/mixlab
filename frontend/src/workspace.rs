@@ -4,7 +4,7 @@ use std::mem;
 use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
-use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent};
+use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent, Element};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
 use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams, VideoMixerParams};
@@ -23,7 +23,7 @@ use crate::module::stream_input::StreamInput;
 use crate::module::stream_output::StreamOutput;
 use crate::module::trigger::Trigger;
 use crate::module::video_mixer::VideoMixer;
-use crate::util::{stop_propagation, prevent_default, Sequence};
+use crate::util::{self, stop_propagation, prevent_default, Sequence};
 use crate::{App, AppMsg, State};
 
 pub struct Workspace {
@@ -152,7 +152,8 @@ impl Component for Workspace {
                             self.mouse = MouseMode::Normal;
                         }
                         MouseMode::Normal | MouseMode::ContextMenu(_) => {
-                            self.mouse = MouseMode::ContextMenu(Coords { x: ev.page_x(), y: ev.page_y() });
+                            let mouse_loc = Coords { x: ev.offset_x(), y: ev.offset_y() };
+                            self.mouse = MouseMode::ContextMenu(mouse_loc);
                         }
                         MouseMode::Drag(_) => {}
                     }
@@ -199,7 +200,13 @@ impl Component for Workspace {
                         drag_event(&mut self.props.state.borrow_mut(), &self.window_refs, drag, ev)
                     }
                     MouseMode::Connect(_, _, ref mut coords) => {
-                        *coords = Some(Coords { x: ev.page_x(), y: ev.page_y() });
+                        let workspace = self.workspace_ref.cast::<HtmlElement>().unwrap();
+                        let target = ev.target().and_then(|target| target.dyn_into::<Element>().ok()).unwrap();
+                        let target_offset_coords = util::offset_coords_in(workspace, target).expect("offset_coords_in");
+                        *coords = Some(target_offset_coords.add(Coords {
+                            x: ev.offset_x(),
+                            y: ev.offset_y(),
+                        }));
                         true
                     }
                 }

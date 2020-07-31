@@ -1,7 +1,10 @@
 use std::num::NonZeroUsize;
 
+use wasm_bindgen::JsCast;
+use web_sys::{Event, Element, HtmlElement};
 use yew::Callback;
-use web_sys::Event;
+
+use mixlab_protocol::Coords;
 
 pub fn stop_propagation<In>() -> Callback<In>
 where
@@ -61,4 +64,35 @@ pub fn websocket_origin() -> String {
     };
 
     format!("{}://{}", proto, host)
+}
+
+fn html_element_parent(mut element: Element) -> Option<HtmlElement> {
+    loop {
+        match element.dyn_ref::<HtmlElement>() {
+            Some(html_element) => { return Some(html_element.clone()); }
+            None => {
+                match element.parent_element() {
+                    Some(parent) => { element = parent; }
+                    None => { return None; }
+                }
+            }
+        }
+    }
+}
+
+pub fn offset_coords_in(container: HtmlElement, element: Element) -> Option<Coords> {
+    let mut element = html_element_parent(element)?;
+    let mut coords = Coords { x: 0, y: 0 };
+
+    while element != container {
+        coords.x += element.offset_left();
+        coords.y += element.offset_top();
+
+        match element.offset_parent() {
+            Some(parent) => { element = parent.dyn_into::<HtmlElement>().unwrap(); }
+            None => { return None; }
+        }
+    }
+
+    Some(coords)
 }
