@@ -52,37 +52,37 @@ impl Component for ScrollTarget {
 
     // yew doesn't know about `onwheel` and tries to call `to_string()`, so
     // attaching event handler manually.
-    fn mounted(&mut self) -> ShouldRender {
-        if let Some(el) = self.container.cast::<Element>() {
-            let options = EventListenerOptions::enable_prevent_default();
-            let wheel = EventListener::new_with_options(
-                &el, "wheel", options,
-                {
-                    let on_scroll = self.props.on_scroll.clone();
-                    move |ev| {
-                        if let Some(on_scroll) = &on_scroll {
-                            if let Some(ev) = ev.dyn_ref::<WheelEvent>().cloned() {
-                                let delta = ev.delta_y();
+    fn rendered(&mut self, first_render: bool) {
+        if first_render {
+            if let Some(el) = self.container.cast::<Element>() {
+                let options = EventListenerOptions::enable_prevent_default();
+                let wheel = EventListener::new_with_options(
+                    &el, "wheel", options,
+                    {
+                        let on_scroll = self.props.on_scroll.clone();
+                        move |ev| {
+                            if let Some(on_scroll) = &on_scroll {
+                                if let Some(ev) = ev.dyn_ref::<WheelEvent>().cloned() {
+                                    let delta = ev.delta_y();
 
-                                let scroll = if delta < 0.0 {
-                                    Scroll::Up(delta.abs())
-                                } else {
-                                    Scroll::Down(delta.abs())
-                                };
+                                    let scroll = if delta < 0.0 {
+                                        Scroll::Up(delta.abs())
+                                    } else {
+                                        Scroll::Down(delta.abs())
+                                    };
 
-                                ev.prevent_default();
-                                ev.stop_propagation();
-                                on_scroll.emit(scroll);
+                                    ev.prevent_default();
+                                    ev.stop_propagation();
+                                    on_scroll.emit(scroll);
+                                }
                             }
                         }
                     }
-                }
-            );
+                );
 
-            self.state.wheel_listener = Some(wheel);
+                self.state.wheel_listener = Some(wheel);
+            }
         }
-
-        false
     }
 
     fn view(&self) -> Html {

@@ -411,13 +411,12 @@ impl Component for Workspace {
         }
     }
 
-    fn mounted(&mut self) -> ShouldRender {
-        let workspace = self.workspace_ref.cast::<Element>().unwrap();
-        crate::log!("{} x {}", workspace.client_width(), workspace.client_height());
-
+    fn rendered(&mut self, first_render: bool) {
         // always re-render after first mount because rendering correctly
         // requires noderefs
-        true
+        if first_render {
+            self.link.send_message(WorkspaceMsg::ReRender);
+        }
     }
 }
 
@@ -852,7 +851,6 @@ impl Component for Terminal {
 
 pub struct Connections {
     canvas: NodeRef,
-    ctx: Option<CanvasRenderingContext2d>,
     props: ConnectionsProps,
 }
 
@@ -868,7 +866,6 @@ impl Component for Connections {
     fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
         Connections {
             canvas: NodeRef::default(),
-            ctx: None,
             props,
         }
     }
@@ -889,16 +886,16 @@ impl Component for Connections {
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
         if self.props.connections != props.connections {
             self.props.connections = props.connections;
-            self.draw_connections();
+            true
+        } else {
+            false
         }
-
-        false
     }
 
-    fn mounted(&mut self) -> ShouldRender {
-        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
-            crate::log!("canvas");
+    fn rendered(&mut self, _: bool) {
+        use std::cmp::max;
 
+        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
             let ctx = canvas.get_context("2d")
                 .expect("canvas.get_context")
                 .expect("canvas.get_context");
@@ -907,41 +904,25 @@ impl Component for Connections {
                 .dyn_into::<CanvasRenderingContext2d>()
                 .expect("dyn_ref::<CanvasRenderingContext2d>");
 
-            self.ctx = Some(ctx);
+            // plan multi-segment lines for all connections
+            let lines = self.props.connections.iter()
+                .map(|(a, b)| plan_line_points(*a, *b))
+                .collect::<Vec<_>>();
 
-            self.draw_connections();
-        }
+            // calculate required canvas size for all points
+            let Coords { x: width, y: height } = lines.iter()
+                .flat_map(|segments| segments)
+                .fold(Coords { x: 0, y: 0 }, |area, point| {
+                    Coords {
+                        x: max(area.x, point.x),
+                        y: max(area.y, point.y),
+                    }
+                });
 
-        true
-    }
-}
-
-impl Connections {
-    fn draw_connections(&self) {
-        use std::cmp::max;
-
-        // plan multi-segment lines for all connections
-        let lines = self.props.connections.iter()
-            .map(|(a, b)| plan_line_points(*a, *b))
-            .collect::<Vec<_>>();
-
-        // calculate required canvas size for all points
-        let Coords { x: width, y: height } = lines.iter()
-            .flat_map(|segments| segments)
-            .fold(Coords { x: 0, y: 0 }, |area, point| {
-                Coords {
-                    x: max(area.x, point.x),
-                    y: max(area.y, point.y),
-                }
-            });
-
-        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
             canvas.set_width(width as u32 + 1);
             canvas.set_height(height as u32 + 1);
-        }
 
-        // draw lines
-        if let Some(ref ctx) = self.ctx {
+            // draw lines
             ctx.clear_rect(0f64, 0f64, width as f64, height as f64);
 
             for points in lines {

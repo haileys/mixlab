@@ -20,7 +20,6 @@ pub struct Fader {
     link: ComponentLink<Self>,
     props: FaderProps,
     canvas: NodeRef,
-    ctx: Option<CanvasRenderingContext2d>,
     mouse_mode: MouseMode,
 }
 
@@ -106,7 +105,6 @@ impl Component for Fader {
             link,
             props,
             canvas: NodeRef::default(),
-            ctx: None,
             mouse_mode: MouseMode::Normal,
         }
     }
@@ -162,7 +160,47 @@ impl Component for Fader {
     }
 
     fn view(&self) -> Html {
-        if let Some(ctx) = &self.ctx {
+        let canvas_style = match self.mouse_mode {
+            MouseMode::Normal => "",
+            MouseMode::Hover => "cursor:grab;",
+            MouseMode::Drag { .. } => "cursor:grabbing;"
+        };
+
+        html! {
+            <div class="control-fader">
+                <ScrollTarget
+                    on_scroll={self.link.callback(FaderMsg::Scroll)}
+                >
+                    <DragTarget
+                        on_drag_start={self.link.callback(FaderMsg::DragStart)}
+                        on_drag={self.link.callback(FaderMsg::Drag)}
+                        on_drag_end={self.link.callback(FaderMsg::DragEnd)}
+                    >
+                        <canvas
+                            width={FADER_WIDTH}
+                            height={FADER_HEIGHT}
+                            ref={self.canvas.clone()}
+                            style={canvas_style}
+                            onmousemove={self.link.callback(FaderMsg::MouseMove)}
+                        />
+                    </DragTarget>
+                </ScrollTarget>
+            </div>
+        }
+    }
+
+    fn rendered(&mut self, _: bool) {
+        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
+            let ctx = canvas.get_context("2d")
+                .expect("canvas.get_context")
+                .expect("canvas.get_context");
+
+            let ctx = ctx
+                .dyn_into::<CanvasRenderingContext2d>()
+                .expect("dyn_ref::<CanvasRenderingContext2d>");
+
+            // draw fader:
+
             ctx.clear_rect(0f64, 0f64, FADER_WIDTH as f64, FADER_HEIGHT as f64);
 
             // set fill and stroke for shaft and notches
@@ -209,49 +247,5 @@ impl Component for Fader {
             ctx.line_to(FADER_WIDTH as f64, line_y as f64);
             ctx.stroke();
         }
-
-        let canvas_style = match self.mouse_mode {
-            MouseMode::Normal => "",
-            MouseMode::Hover => "cursor:grab;",
-            MouseMode::Drag { .. } => "cursor:grabbing;"
-        };
-
-        html! {
-            <div class="control-fader">
-                <ScrollTarget
-                    on_scroll={self.link.callback(FaderMsg::Scroll)}
-                >
-                    <DragTarget
-                        on_drag_start={self.link.callback(FaderMsg::DragStart)}
-                        on_drag={self.link.callback(FaderMsg::Drag)}
-                        on_drag_end={self.link.callback(FaderMsg::DragEnd)}
-                    >
-                        <canvas
-                            width={FADER_WIDTH}
-                            height={FADER_HEIGHT}
-                            ref={self.canvas.clone()}
-                            style={canvas_style}
-                            onmousemove={self.link.callback(FaderMsg::MouseMove)}
-                        />
-                    </DragTarget>
-                </ScrollTarget>
-            </div>
-        }
-    }
-
-    fn mounted(&mut self) -> ShouldRender {
-        if let Some(canvas) = self.canvas.cast::<HtmlCanvasElement>() {
-            let ctx = canvas.get_context("2d")
-                .expect("canvas.get_context")
-                .expect("canvas.get_context");
-
-            let ctx = ctx
-                .dyn_into::<CanvasRenderingContext2d>()
-                .expect("dyn_ref::<CanvasRenderingContext2d>");
-
-            self.ctx = Some(ctx);
-        }
-
-        true
     }
 }
