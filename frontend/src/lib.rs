@@ -128,6 +128,10 @@ impl Component for App {
         }
     }
 
+    fn change(&mut self, props: ()) -> ShouldRender {
+        false
+    }
+
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             AppMsg::NoOp => false,
