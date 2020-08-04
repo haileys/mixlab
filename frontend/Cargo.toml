@@ -14,7 +14,6 @@ default = ["console_error_panic_hook"]
 bincode = "1.2"
 derive_more = "0.99"
 gloo-events = "0.1"
-http = "0.2"
 js-sys = "0.3"
 lazy_static = "1.4"
 mixlab-mux = { path = "../mux" }

@@ -1,9 +1,7 @@
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 use std::num::NonZeroUsize;
 
 use gloo_events::EventListener;
-use http::request::Request;
 use uuid::Uuid;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{File, XmlHttpRequest, ProgressEvent};
@@ -77,7 +75,7 @@ impl Component for MediaLibrary {
                     self.uploads.insert(id, InProgressUpload {
                         filename,
                         progress: None,
-                        task,
+                        _task: task,
                     });
                 }
 
@@ -262,7 +260,7 @@ impl Component for UploadButton {
 struct InProgressUpload {
     filename: String,
     progress: Option<UploadProgress>,
-    task: UploadTask,
+    _task: UploadTask,
 }
 
 pub struct UploadProgress {
