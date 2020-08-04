@@ -5,7 +5,7 @@ use std::sync::Arc;
 use derive_more::From;
 use futures::stream::Stream;
 use tokio::fs::{self, File};
-use tokio::io::{self, AsyncWrite, AsyncWriteExt};
+use tokio::io::{self, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::{task, runtime};
 use uuid::Uuid;
@@ -24,7 +24,6 @@ pub struct ProjectHandle {
 struct ProjectBase {
     path: PathBuf,
     library: HashMap<Uuid, MediaInfo>,
-    uploads: HashMap<Uuid, InProgressUpload>,
 }
 
 type ProjectBaseRef = Arc<Mutex<ProjectBase>>;
@@ -41,7 +40,6 @@ impl ProjectBase {
         ProjectBase {
             path,
             library: HashMap::new(),
-            uploads: HashMap::new(),
         }
     }
 
@@ -77,7 +75,7 @@ impl ProjectBase {
         Ok(())
     }
 
-    async fn begin_media_upload(&mut self, info: UploadInfo) -> Result<(Uuid, File), io::Error> {
+    async fn begin_media_upload(&mut self) -> Result<(Uuid, File), io::Error> {
         let media_path = self.path.join("media");
 
         match fs::create_dir(&media_path).await {
@@ -89,12 +87,18 @@ impl ProjectBase {
         let id = Uuid::new_v4();
         let file = File::create(media_path.join(id.to_hyphenated_ref().to_string())).await?;
 
-        self.uploads.insert(id, InProgressUpload {
-            info,
-            uploaded_bytes: 0,
+        Ok((id, file))
+    }
+
+    async fn finalize_media_upload(&mut self, id: Uuid, info: UploadInfo) -> Result<(), io::Error> {
+        self.library.insert(id, MediaInfo {
+            name: info.name,
+            kind: info.kind,
         });
 
-        Ok((id, file))
+        // TODO persist
+
+        Ok(())
     }
 }
 
@@ -158,69 +162,46 @@ impl ProjectHandle {
         self.engine.performance_info()
     }
 
-    pub async fn begin_media_upload(&self, info: UploadInfo) -> Result<MediaUpload, io::Error> {
-        let (id, file) = self.base.lock().await.begin_media_upload(info).await?;
+    pub async fn begin_media_upload(&self, info: UploadInfo) -> Result<MediaUpload, UploadError> {
+        let (id, file) = self.base.lock().await.begin_media_upload().await?;
 
         Ok(MediaUpload {
             base: self.base.clone(),
             id,
+            info,
             file,
         })
     }
 }
 
-struct InProgressUpload {
-    info: UploadInfo,
-    uploaded_bytes: usize,
-}
-
 pub struct UploadInfo {
     pub name: String,
     pub kind: String,
-    pub size: usize,
 }
-
-pub struct MediaUploadId(pub Uuid);
 
 pub struct MediaUpload {
     base: ProjectBaseRef,
     id: Uuid,
+    info: UploadInfo,
     file: File,
 }
 
-#[derive(From)]
+#[derive(From, Debug)]
 pub enum UploadError {
     Io(io::Error),
-    Cancelled,
 }
 
 impl MediaUpload {
     pub async fn receive_bytes(&mut self, bytes: &[u8]) -> Result<(), UploadError> {
         self.file.write_all(bytes).await?;
-
-        let mut base = self.base.lock().await;
-
-        let mut uploaded_bytes = &mut base
-            .uploads.get_mut(&self.id).ok_or(UploadError::Cancelled)?
-            .uploaded_bytes;
-
-        *uploaded_bytes += bytes.len();
-
-        // TODO - should we error if uploaded bytes exceeds what we think the size will be?
-
         Ok(())
     }
 
     pub async fn finalize(self) -> Result<(), UploadError> {
         let mut base = self.base.lock().await;
 
-        let upload = base.uploads.remove(&self.id)
-            .ok_or(UploadError::Cancelled)?;
-
-        base.library.insert(self.id, MediaInfo {
-            name: upload.info.name,
-            kind: upload.info.kind,
-        });
+        let result = base.finalize_media_upload(self.id, self.info).await;
+        println!("finalize_media_upload: {:?}", result);
 
         Ok(())
     }

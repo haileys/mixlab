@@ -1,15 +1,17 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use bytes::Buf;
+use derive_more::From;
 use futures::{StreamExt, SinkExt, stream};
 use structopt::StructOpt;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use warp::Filter;
+use warp::filters::multipart;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
@@ -29,7 +31,6 @@ pub struct RunOpts {
 
 struct Server {
     project: ProjectHandle,
-    pending_uploads: Mutex<HashMap<Uuid, project::MediaUpload>>,
 }
 
 type ServerRef = Arc<Server>;
@@ -38,7 +39,6 @@ impl Server {
     pub fn new(project: ProjectHandle) -> Self {
         Server {
             project,
-            pending_uploads: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -70,11 +70,14 @@ pub async fn run(opts: RunOpts) {
     let websocket = warp::get()
         .and(warp::path("session"))
         .and(warp::ws())
-        .map(move |ws: Ws| {
+        .map({
             let server = server.clone();
-            ws.on_upgrade(move |websocket| {
-                session(websocket, server.clone())
-            })
+            move |ws: Ws| {
+                let server = server.clone();
+                ws.on_upgrade(move |websocket| {
+                    session(websocket, server.clone())
+                })
+            }
         });
 
     let monitor_socket = warp::get()
@@ -86,9 +89,40 @@ pub async fn run(opts: RunOpts) {
             })
         });
 
+    let media_upload = warp::post()
+        .and(warp::path!("_upload"))
+        // TODO - warp's multipart currently buffers the entire upload into
+        // memory. there are forks of warp that support async multipart -
+        // investigate those
+        .and(multipart::form().max_length(1 * 1024 * 1024 * 1024 /* 1 GiB */))
+        .and_then({
+            let server = server.clone();
+            move |form| {
+                let server = server.clone();
+                async move {
+                    handle_upload(form, server).await
+                        .map(|()| warp::reply::reply())
+                        .map_err(|e| {
+                            eprintln!("upload failed: {:?}", e);
+                            // TODO - internal server error?
+                            warp::reject::not_found()
+                        })
+
+                    // let server = server.clone();
+                    // move |upload_id: Uuid, ws: Ws| {
+                    //     let server = server.clone();
+                    //     ws.on_upgrade(move |websocket| async move {
+                    //         let _ = handle_upload(websocket, server.clone(), upload_id);
+                    //     })
+                    // }
+                }
+            }
+        });
+
     let routes = static_content
         .or(websocket)
         .or(monitor_socket)
+        .or(media_upload)
         .with(warp::log("mixlab-http"));
 
     let warp = warp::serve(routes);
@@ -262,4 +296,38 @@ async fn session(websocket: WebSocket, server: ServerRef) {
             }
         }
     }
+}
+
+#[derive(From, Debug)]
+enum UploadError {
+    Warp(warp::Error),
+    Upload(project::UploadError),
+}
+
+async fn handle_upload(mut form: multipart::FormData, server: ServerRef) -> Result<(), UploadError> {
+    while let Some(part) = form.next().await {
+        let part = part?;
+
+        let name = match part.filename() {
+            Some(name) => name,
+            None => continue,
+        };
+
+        let kind = part.content_type().unwrap_or("");
+
+        let mut upload = server.project.begin_media_upload(project::UploadInfo {
+            name: name.to_string(),
+            kind: kind.to_string(),
+        }).await?;
+
+        let mut stream = part.stream();
+
+        while let Some(buf) = stream.next().await {
+            upload.receive_bytes(buf?.bytes()).await?;
+        }
+
+        upload.finalize().await?;
+    }
+
+    Ok(())
 }
