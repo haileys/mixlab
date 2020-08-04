@@ -1,15 +1,10 @@
-use std::collections::HashMap;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use derive_more::From;
 use futures::stream::Stream;
 use sqlx::SqlitePool;
-use tokio::fs::{self, File};
-use tokio::io::{self, AsyncWriteExt};
-use tokio::sync::Mutex;
-use tokio::{task, runtime};
-use uuid::Uuid;
+use tokio::{fs, io, task, runtime};
 
 use mixlab_protocol::{WorkspaceState, PerformanceInfo};
 
@@ -17,18 +12,21 @@ use crate::db;
 use crate::engine::{self, EngineHandle, EngineEvents, EngineError, EngineSession, WorkspaceEmbryo};
 use crate::persist;
 
+pub mod stream;
+pub mod media;
+
 #[derive(Clone)]
 pub struct ProjectHandle {
     base: ProjectBaseRef,
     engine: EngineHandle,
 }
 
-struct ProjectBase {
+pub struct ProjectBase {
     path: PathBuf,
     database: SqlitePool,
 }
 
-type ProjectBaseRef = Arc<Mutex<ProjectBase>>;
+type ProjectBaseRef = Arc<ProjectBase>;
 
 #[derive(From, Debug)]
 pub enum OpenError {
@@ -69,7 +67,7 @@ impl ProjectBase {
         Ok(workspace)
     }
 
-    async fn write_workspace(&mut self, workspace: &persist::Workspace) -> Result<(), io::Error> {
+    async fn write_workspace(&self, workspace: &persist::Workspace) -> Result<(), io::Error> {
         let workspace_tmp_path = self.path.join(".workspace.json.tmp");
         let workspace_path = self.path.join("workspace.json");
 
@@ -79,32 +77,6 @@ impl ProjectBase {
         // maybe it is on windows too?
         fs::write(&workspace_tmp_path, &serialized).await?;
         fs::rename(&workspace_tmp_path, &workspace_path).await?;
-
-        Ok(())
-    }
-
-    async fn begin_media_upload(&mut self) -> Result<(Uuid, File), io::Error> {
-        let media_path = self.path.join("media");
-
-        match fs::create_dir(&media_path).await {
-            Ok(()) => {}
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(e) => { return Err(e); }
-        }
-
-        let id = Uuid::new_v4();
-        let file = File::create(media_path.join(id.to_hyphenated_ref().to_string())).await?;
-
-        Ok((id, file))
-    }
-
-    async fn finalize_media_upload(&mut self, id: Uuid, info: UploadInfo) -> Result<(), io::Error> {
-        // self.library.insert(id, MediaInfo {
-        //     name: info.name,
-        //     kind: info.kind,
-        // });
-
-        // TODO persist
 
         Ok(())
     }
@@ -139,13 +111,13 @@ pub async fn open_or_create(path: PathBuf) -> Result<ProjectHandle, OpenError> {
     let (embryo, mut persist_rx) = WorkspaceEmbryo::new(workspace);
     let engine = engine::start(runtime::Handle::current(), embryo);
 
-    let base = Arc::new(Mutex::new(base));
+    let base = Arc::new(base);
 
     task::spawn({
         let base = base.clone();
         async move {
             while let Some(workspace) = persist_rx.recv().await {
-                match base.lock().await.write_workspace(&workspace).await {
+                match base.write_workspace(&workspace).await {
                     Ok(()) => {}
                     Err(e) => {
                         eprintln!("project: could not persist workspace: {:?}", e);
@@ -170,52 +142,7 @@ impl ProjectHandle {
         self.engine.performance_info()
     }
 
-    pub async fn begin_media_upload(&self, info: UploadInfo) -> Result<MediaUpload, UploadError> {
-        let (id, file) = self.base.lock().await.begin_media_upload().await?;
-
-        Ok(MediaUpload {
-            base: self.base.clone(),
-            id,
-            info,
-            file,
-        })
+    pub async fn begin_media_upload(&self, info: media::UploadInfo) -> Result<media::MediaUpload, media::UploadError> {
+        media::MediaUpload::new(self.base.clone(), info).await
     }
-}
-
-pub struct UploadInfo {
-    pub name: String,
-    pub kind: String,
-}
-
-pub struct MediaUpload {
-    base: ProjectBaseRef,
-    id: Uuid,
-    info: UploadInfo,
-    file: File,
-}
-
-#[derive(From, Debug)]
-pub enum UploadError {
-    Io(io::Error),
-}
-
-impl MediaUpload {
-    pub async fn receive_bytes(&mut self, bytes: &[u8]) -> Result<(), UploadError> {
-        self.file.write_all(bytes).await?;
-        Ok(())
-    }
-
-    pub async fn finalize(self) -> Result<(), UploadError> {
-        let mut base = self.base.lock().await;
-
-        let result = base.finalize_media_upload(self.id, self.info).await;
-        println!("finalize_media_upload: {:?}", result);
-
-        Ok(())
-    }
-}
-
-pub struct MediaInfo {
-    pub name: String,
-    pub kind: String,
 }

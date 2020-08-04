@@ -295,7 +295,7 @@ async fn session(websocket: WebSocket, server: ServerRef) {
 #[derive(From, Debug)]
 enum UploadError {
     Warp(warp::Error),
-    Upload(project::UploadError),
+    Upload(project::media::UploadError),
 }
 
 struct UploadParams {
@@ -310,7 +310,7 @@ async fn handle_upload(
 ) -> Result<(), UploadError> {
     futures::pin_mut!(stream);
 
-    let mut upload = server.project.begin_media_upload(project::UploadInfo {
+    let mut upload = server.project.begin_media_upload(project::media::UploadInfo {
         name: params.filename,
         kind: params.kind,
     }).await?;
