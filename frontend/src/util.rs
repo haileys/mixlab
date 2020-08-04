@@ -60,11 +60,11 @@ pub fn websocket_origin() -> String {
     let host = location.host().unwrap();
 
     let proto = match proto.as_str() {
-        "https" => "wss",
-        _ => "ws",
+        "https:" => "wss:",
+        _ => "ws:",
     };
 
-    format!("{}://{}", proto, host)
+    format!("{}//{}", proto, host)
 }
 
 fn html_element_parent(mut element: Element) -> Option<HtmlElement> {
