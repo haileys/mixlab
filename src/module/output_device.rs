@@ -109,7 +109,10 @@ impl ModuleT for OutputDevice {
                         {
                             let lag_flag = self.lag_flag.clone();
                             let mut backoff_ticks = 0;
-                            move |data: &mut [f32]| {
+                            move |data: &mut [f32], _info| {
+                                // TOOD info param contains timestamp for sample block
+                                // consider how we might be able to use this
+
                                 if backoff_ticks > 0 {
                                     backoff_ticks -= 1;
                                     util::zero(data);
