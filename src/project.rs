@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use derive_more::From;
 use futures::stream::Stream;
+use sqlx::SqlitePool;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncWriteExt};
 use tokio::sync::Mutex;
@@ -12,6 +13,7 @@ use uuid::Uuid;
 
 use mixlab_protocol::{WorkspaceState, PerformanceInfo};
 
+use crate::db;
 use crate::engine::{self, EngineHandle, EngineEvents, EngineError, EngineSession, WorkspaceEmbryo};
 use crate::persist;
 
@@ -23,7 +25,7 @@ pub struct ProjectHandle {
 
 struct ProjectBase {
     path: PathBuf,
-    library: HashMap<Uuid, MediaInfo>,
+    database: SqlitePool,
 }
 
 type ProjectBaseRef = Arc<Mutex<ProjectBase>>;
@@ -32,15 +34,21 @@ type ProjectBaseRef = Arc<Mutex<ProjectBase>>;
 pub enum OpenError {
     Io(io::Error),
     Json(serde_json::Error),
+    Database(sqlx::Error),
     NotDirectory,
 }
 
 impl ProjectBase {
-    fn open_at(path: PathBuf) -> Self {
-        ProjectBase {
+    async fn attach(path: PathBuf) -> Result<Self, sqlx::Error> {
+        let mut sqlite_path = path.clone();
+        sqlite_path.set_extension("mixlab");
+
+        let database = db::attach(&sqlite_path).await?;
+
+        Ok(ProjectBase {
             path,
-            library: HashMap::new(),
-        }
+            database,
+        })
     }
 
     async fn read_workspace(&self) -> Result<persist::Workspace, io::Error> {
@@ -91,10 +99,10 @@ impl ProjectBase {
     }
 
     async fn finalize_media_upload(&mut self, id: Uuid, info: UploadInfo) -> Result<(), io::Error> {
-        self.library.insert(id, MediaInfo {
-            name: info.name,
-            kind: info.kind,
-        });
+        // self.library.insert(id, MediaInfo {
+        //     name: info.name,
+        //     kind: info.kind,
+        // });
 
         // TODO persist
 
@@ -124,7 +132,7 @@ pub async fn open_or_create(path: PathBuf) -> Result<ProjectHandle, OpenError> {
         }
     }
 
-    let base = ProjectBase::open_at(path);
+    let base = ProjectBase::attach(path).await?;
     let workspace = base.read_workspace().await?;
 
     // start engine update thread
