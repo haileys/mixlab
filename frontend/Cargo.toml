@@ -11,9 +11,10 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-derive_more = "0.99"
 bincode = "1.2"
+derive_more = "0.99"
 gloo-events = "0.1"
+http = "0.2"
 js-sys = "0.3"
 lazy_static = "1.4"
 mixlab-mux = { path = "../mux" }
@@ -50,6 +51,8 @@ web-sys = { version = "0.3", features = [
     "WebSocket",
     "WheelEvent",
     "Window",
+    "XmlHttpRequest",
+    "XmlHttpRequestUpload",
     ] }
 
 # The `console_error_panic_hook` crate provides better debugging of panics by

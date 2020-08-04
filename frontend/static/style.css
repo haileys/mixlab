@@ -630,23 +630,36 @@ body {
     background-color:#9795b7;
 }
 
-.media-library-list {
+.media-library-table {
     border-collapse:collapse;
 }
 
-.media-library-list td {
+.media-library-table td {
     padding:12px;
     background-color:#ffffff;
     border-top:1px solid #e0e0e0;
 }
 
-.media-library-list tr:last-child td {
+.media-library-table tr:last-child td {
     border-bottom:1px solid #e0e0e0;
 }
 
-.media-library-list th {
+.media-library-table th {
     padding:12px;
     padding-bottom:4px;
     text-align:left;
+    font-weight:bold;
+}
+
+.media-library-upload-progress-row td {
+    border-top:none;
+    padding-top:0px;
+}
+
+.media-library-upload-progress-row progress {
+    width:100%;
+}
+
+.media-library-upload-progress-percent {
     font-weight:bold;
 }

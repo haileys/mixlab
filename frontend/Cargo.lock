@@ -102,6 +102,7 @@ dependencies = [
  "console_error_panic_hook",
  "derive_more",
  "gloo-events",
+ "http",
  "js-sys",
  "lazy_static",
  "mixlab-mux",

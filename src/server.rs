@@ -5,13 +5,12 @@ use std::sync::Arc;
 
 use bytes::Buf;
 use derive_more::From;
-use futures::{StreamExt, SinkExt, stream};
+use futures::{Stream, StreamExt, SinkExt, stream};
 use structopt::StructOpt;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use warp::Filter;
-use warp::filters::multipart;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
@@ -90,31 +89,26 @@ pub async fn run(opts: RunOpts) {
         });
 
     let media_upload = warp::post()
-        .and(warp::path!("_upload"))
-        // TODO - warp's multipart currently buffers the entire upload into
-        // memory. there are forks of warp that support async multipart -
-        // investigate those
-        .and(multipart::form().max_length(1 * 1024 * 1024 * 1024 /* 1 GiB */))
+        .and(warp::path!("_upload" / String))
+        .and(warp::header::<String>("content-type"))
+        .and(warp::filters::body::stream())
         .and_then({
             let server = server.clone();
-            move |form| {
+            move |filename, kind, stream| {
                 let server = server.clone();
                 async move {
-                    handle_upload(form, server).await
+                    let params = UploadParams {
+                        filename,
+                        kind,
+                    };
+
+                    handle_upload(params, stream, server).await
                         .map(|()| warp::reply::reply())
                         .map_err(|e| {
                             eprintln!("upload failed: {:?}", e);
                             // TODO - internal server error?
                             warp::reject::not_found()
                         })
-
-                    // let server = server.clone();
-                    // move |upload_id: Uuid, ws: Ws| {
-                    //     let server = server.clone();
-                    //     ws.on_upgrade(move |websocket| async move {
-                    //         let _ = handle_upload(websocket, server.clone(), upload_id);
-                    //     })
-                    // }
                 }
             }
         });
@@ -304,30 +298,28 @@ enum UploadError {
     Upload(project::UploadError),
 }
 
-async fn handle_upload(mut form: multipart::FormData, server: ServerRef) -> Result<(), UploadError> {
-    while let Some(part) = form.next().await {
-        let part = part?;
+struct UploadParams {
+    filename: String,
+    kind: String,
+}
 
-        let name = match part.filename() {
-            Some(name) => name,
-            None => continue,
-        };
+async fn handle_upload(
+    params: UploadParams,
+    stream: impl Stream<Item = Result<impl Buf, warp::Error>>,
+    server: ServerRef,
+) -> Result<(), UploadError> {
+    futures::pin_mut!(stream);
 
-        let kind = part.content_type().unwrap_or("");
+    let mut upload = server.project.begin_media_upload(project::UploadInfo {
+        name: params.filename,
+        kind: params.kind,
+    }).await?;
 
-        let mut upload = server.project.begin_media_upload(project::UploadInfo {
-            name: name.to_string(),
-            kind: kind.to_string(),
-        }).await?;
-
-        let mut stream = part.stream();
-
-        while let Some(buf) = stream.next().await {
-            upload.receive_bytes(buf?.bytes()).await?;
-        }
-
-        upload.finalize().await?;
+    while let Some(buf) = stream.next().await {
+        upload.receive_bytes(buf?.bytes()).await?;
     }
+
+    upload.finalize().await?;
 
     Ok(())
 }
