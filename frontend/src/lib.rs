@@ -96,7 +96,7 @@ impl Component for App {
                             />
                         },
                         Tab::MediaLibrary => html! {
-                            <MediaLibrary />
+                            <MediaLibrary session={self.session.clone()} />
                         },
                     } }
                 </div>

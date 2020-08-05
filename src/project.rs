@@ -2,10 +2,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use derive_more::From;
-use futures::stream::Stream;
+use futures::stream::{Stream, StreamExt};
 use sqlx::SqlitePool;
+use tokio::sync::watch;
 use tokio::{fs, io, task, runtime};
 
+use mixlab_protocol as protocol;
 use mixlab_protocol::{WorkspaceState, PerformanceInfo};
 
 use crate::db;
@@ -19,11 +21,13 @@ pub mod media;
 pub struct ProjectHandle {
     base: ProjectBaseRef,
     engine: EngineHandle,
+    notify: NotifyRx,
 }
 
 pub struct ProjectBase {
     path: PathBuf,
     database: SqlitePool,
+    notify: NotifyTx,
 }
 
 type ProjectBaseRef = Arc<ProjectBase>;
@@ -37,7 +41,7 @@ pub enum OpenError {
 }
 
 impl ProjectBase {
-    async fn attach(path: PathBuf) -> Result<Self, sqlx::Error> {
+    async fn attach(path: PathBuf, notify: NotifyTx) -> Result<Self, sqlx::Error> {
         let mut sqlite_path = path.clone();
         sqlite_path.set_extension("mixlab");
 
@@ -46,6 +50,7 @@ impl ProjectBase {
         Ok(ProjectBase {
             path,
             database,
+            notify,
         })
     }
 
@@ -104,7 +109,8 @@ pub async fn open_or_create(path: PathBuf) -> Result<ProjectHandle, OpenError> {
         }
     }
 
-    let base = ProjectBase::attach(path).await?;
+    let (notify_tx, notify_rx) = notify();
+    let base = ProjectBase::attach(path, notify_tx).await?;
     let workspace = base.read_workspace().await?;
 
     // start engine update thread
@@ -130,6 +136,7 @@ pub async fn open_or_create(path: PathBuf) -> Result<ProjectHandle, OpenError> {
     Ok(ProjectHandle {
         base,
         engine,
+        notify: notify_rx,
     })
 }
 
@@ -138,11 +145,45 @@ impl ProjectHandle {
         self.engine.connect().await
     }
 
-    pub fn performance_info(&self) -> impl Stream<Item = Arc<PerformanceInfo>> {
-        self.engine.performance_info()
+    pub fn notifications(&self) -> impl Stream<Item = Notification> {
+        let perf_info = self.engine.performance_info().map(Notification::PerformanceInfo);
+        let media = self.notify.media.clone().map(|()| Notification::MediaLibrary);
+        futures::stream::select(perf_info, media)
     }
 
     pub async fn begin_media_upload(&self, info: media::UploadInfo) -> Result<media::MediaUpload, media::UploadError> {
         media::MediaUpload::new(self.base.clone(), info).await
     }
+
+    pub async fn fetch_media_library(&self) -> Result<protocol::MediaLibrary, sqlx::Error> {
+        media::library(self.base.clone()).await
+    }
+}
+
+pub enum Notification {
+    PerformanceInfo(Arc<PerformanceInfo>),
+    MediaLibrary,
+}
+
+pub struct NotifyTx {
+    media: watch::Sender<()>,
+}
+
+#[derive(Clone)]
+pub struct NotifyRx {
+    media: watch::Receiver<()>,
+}
+
+pub fn notify() -> (NotifyTx, NotifyRx) {
+    let (media_tx, media_rx) = watch::channel(());
+
+    let tx = NotifyTx {
+        media: media_tx,
+    };
+
+    let rx = NotifyRx {
+        media: media_rx,
+    };
+
+    (tx, rx)
 }

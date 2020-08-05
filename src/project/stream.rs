@@ -49,7 +49,7 @@ pub async fn open(base: ProjectBaseRef, stream_id: StreamId) -> Result<ReadStrea
 pub struct WriteStream {
     base: ProjectBaseRef,
     id: StreamId,
-    offset: u64,
+    offset: i64,
     buff: Vec<u8>,
 }
 
@@ -81,13 +81,19 @@ impl WriteStream {
         if self.buff.len() > 0 {
             sqlx::query("INSERT INTO blobs (stream_id, offset, data) VALUES (?, ?, ?)")
                 .bind(self.id.0)
-                .bind(i64::try_from(self.offset).expect("offset as i64"))
+                .bind(self.offset)
                 .bind(&self.buff)
                 .execute(&self.base.database)
                 .await?;
 
-            self.offset += u64::try_from(self.buff.len()).expect("buff.len as u64");
+            self.offset += i64::try_from(self.buff.len()).expect("buff.len as i64");
             self.buff.truncate(0);
+
+            sqlx::query("UPDATE streams SET size = ? WHERE id = ?")
+                .bind(self.offset)
+                .bind(self.id.0)
+                .execute(&self.base.database)
+                .await?;
         }
 
         Ok(())

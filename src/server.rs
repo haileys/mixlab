@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use bytes::Buf;
 use derive_more::From;
-use futures::{Stream, StreamExt, SinkExt, stream};
+use futures::future;
+use futures::sink::{Sink, SinkExt};
+use futures::stream::{self, Stream, StreamExt};
 use structopt::StructOpt;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -18,7 +20,7 @@ use mixlab_protocol::{ClientMessage, ServerMessage, PerformanceInfo};
 
 use crate::engine::EngineEvent;
 use crate::listen::{self, Disambiguation};
-use crate::project::{self, ProjectHandle};
+use crate::project::{self, ProjectHandle, Notification};
 use crate::{icecast, module, rtmp};
 
 #[derive(StructOpt)]
@@ -192,31 +194,36 @@ fn wasm() -> impl Reply {
 }
 
 async fn session(websocket: WebSocket, server: ServerRef) {
-    let (mut tx, rx) = websocket.split();
+    let (tx, rx) = websocket.split();
+    let mut tx = ClientTx(tx);
 
-    let perf_info = server.project.performance_info();
+    let notifications = server.project.notifications();
 
     let (state, engine_ops, engine) = server.project.connect_engine().await
         .expect("connect engine");
 
-    let state_msg = bincode::serialize(&ServerMessage::WorkspaceState(state))
-        .expect("bincode::serialize");
+    let library = server.project.fetch_media_library().await
+        .expect("fetch_media_library");
 
-    tx.send(ws::Message::binary(state_msg))
+    tx.send(ServerMessage::WorkspaceState(state))
         .await
         .expect("tx.send WorkspaceState");
+
+    tx.send(ServerMessage::MediaLibrary(library))
+        .await
+        .expect("tx.send MediaLibrary");
 
     enum Event {
         ClientMessage(Result<ws::Message, warp::Error>),
         Engine(Result<EngineEvent, broadcast::RecvError>),
-        Performance(Arc<PerformanceInfo>),
+        Notification(Notification),
     }
 
     let mut events = stream::select(
         rx.map(Event::ClientMessage),
         stream::select(
             engine_ops.map(Event::Engine),
-            perf_info.map(Event::Performance)));
+            notifications.map(Event::Notification)));
 
     while let Some(event) = events.next().await {
         match event {
@@ -262,10 +269,7 @@ async fn session(websocket: WebSocket, server: ServerRef) {
                 };
 
                 if let Some(msg) = msg {
-                    let msg = bincode::serialize(&msg)
-                        .expect("bincode::serialize");
-
-                    match tx.send(ws::Message::binary(msg)).await {
+                    match tx.send(msg).await {
                         Ok(()) => {}
                         Err(_) => {
                             // client disconnected
@@ -274,17 +278,29 @@ async fn session(websocket: WebSocket, server: ServerRef) {
                     }
                 }
             }
-            Event::Performance(perf_info) => {
-                let msg = ServerMessage::Performance(Cow::Borrowed(&perf_info));
+            Event::Notification(notif) => {
+                let msg = match &notif {
+                    Notification::PerformanceInfo(perf_info) => {
+                        Some(ServerMessage::Performance(Cow::Borrowed(perf_info)))
+                    }
+                    Notification::MediaLibrary => {
+                        match server.project.fetch_media_library().await {
+                            Ok(library) => Some(ServerMessage::MediaLibrary(library)),
+                            Err(e) => {
+                                eprintln!("failed to query media library: {:?}", e);
+                                None
+                            }
+                        }
+                    }
+                };
 
-                let msg = bincode::serialize(&msg)
-                    .expect("bincode::serialize");
-
-                match tx.send(ws::Message::binary(msg)).await {
-                    Ok(()) => {}
-                    Err(_) => {
-                        // client disconnected
-                        return;
+                if let Some(msg) = msg {
+                    match tx.send(msg).await {
+                        Ok(()) => {}
+                        Err(_) => {
+                            // client disconnected
+                            return;
+                        }
                     }
                 }
             }
@@ -322,4 +338,20 @@ async fn handle_upload(
     upload.finalize().await?;
 
     Ok(())
+}
+
+#[derive(Debug, From)]
+pub enum TxError {
+    Warp(warp::Error),
+    Bincode(bincode::Error),
+}
+
+pub struct ClientTx<S>(S);
+
+impl<S: Sink<ws::Message, Error = warp::Error> + Unpin> ClientTx<S> {
+    pub async fn send<'a>(&mut self, msg: ServerMessage<'a>) -> Result<(), TxError> {
+        let msg = bincode::serialize(&msg)?;
+        self.0.send(ws::Message::binary(msg)).await?;
+        Ok(())
+    }
 }

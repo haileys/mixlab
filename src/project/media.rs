@@ -1,4 +1,7 @@
+use std::convert::TryInto;
+
 use derive_more::From;
+use mixlab_protocol as protocol;
 
 use crate::project::ProjectBaseRef;
 use crate::project::stream::{self, WriteStream};
@@ -45,13 +48,37 @@ impl MediaUpload {
             .execute(&self.base.database)
             .await?;
 
-        // TODO announce new media over watch channel on base
+        let _ = self.base.notify.media.broadcast(());
 
         Ok(())
     }
 }
 
-pub struct MediaInfo {
-    pub name: String,
-    pub kind: String,
+pub async fn library(base: ProjectBaseRef) -> Result<protocol::MediaLibrary, sqlx::Error> {
+    #[derive(sqlx::FromRow, Debug)]
+    struct Item {
+        id: i64,
+        name: String,
+        kind: String,
+        size: i64,
+    }
+
+    let items = sqlx::query_as::<_, Item>(r"
+            SELECT media.id, media.name, media.kind, streams.size FROM media
+            INNER JOIN streams ON streams.id = media.stream_id
+            ORDER BY media.id DESC
+        ")
+        .fetch_all(&base.database)
+        .await?;
+
+    let items = items.into_iter().map(|item| {
+        protocol::MediaItem {
+            id: protocol::MediaId(item.id),
+            name: item.name,
+            kind: item.kind,
+            size: item.size.try_into().expect("size is u64"),
+        }
+    }).collect();
+
+    Ok(protocol::MediaLibrary { items })
 }

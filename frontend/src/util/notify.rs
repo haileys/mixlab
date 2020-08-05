@@ -14,6 +14,7 @@ struct HandleId(NonZeroUsize);
 #[derive(Debug)]
 pub struct Notify<T> {
     id_seq: RefCell<Sequence>,
+    value: RefCell<Option<T>>,
     map: NotifyMap<T>,
 }
 
@@ -21,11 +22,17 @@ impl<T: Clone + 'static> Notify<T> {
     pub fn new() -> Self {
         Notify {
             id_seq: RefCell::new(Sequence::new()),
+            value: RefCell::new(None),
             map: NotifyMap(Rc::new(RefCell::new(BTreeMap::new()))),
         }
     }
 
     pub fn subscribe(&self, f: Callback<T>) -> Handle {
+        // send existing value if exists straight away
+        if let Some(val) = self.value.borrow().as_ref().cloned() {
+            f.emit(val);
+        }
+
         let id = HandleId(self.id_seq.borrow_mut().next());
 
         self.map.0.borrow_mut().insert(id, f);
@@ -37,6 +44,8 @@ impl<T: Clone + 'static> Notify<T> {
     }
 
     pub fn broadcast(&self, value: T) {
+        *self.value.borrow_mut() = Some(value.clone());
+
         for callback in self.map.0.borrow().values() {
             callback.emit(value.clone());
         }

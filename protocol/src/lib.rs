@@ -64,7 +64,11 @@ pub struct MediaLibrary {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MediaId(pub i64);
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MediaItem {
+    pub id: MediaId,
     pub name: String,
     pub kind: String,
     pub size: usize,

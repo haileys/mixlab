@@ -6,7 +6,7 @@ use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask}
 use yew::format::Binary;
 use yew::Callback;
 
-use mixlab_protocol::{ServerMessage, ServerUpdate, ClientMessage, ClientSequence, ModuleId, ModuleParams, WindowGeometry, InputId, OutputId, Indication, Terminal, WorkspaceOp, WorkspaceMessage, PerformanceInfo};
+use mixlab_protocol::{ServerMessage, ServerUpdate, ClientMessage, ClientSequence, ModuleId, ModuleParams, WindowGeometry, InputId, OutputId, Indication, Terminal, WorkspaceOp, WorkspaceMessage};
 
 use crate::util;
 use crate::util::notify::{self, Notify};
@@ -29,7 +29,8 @@ struct Seq {
 #[derive(Debug)]
 struct Notifiers {
     workspace: Notify<()>,
-    performance: Notify<Rc<PerformanceInfo>>,
+    performance: Notify<Rc<mixlab_protocol::PerformanceInfo>>,
+    media: Notify<Rc<mixlab_protocol::MediaLibrary>>,
 }
 
 pub type SessionRef = Rc<Session>;
@@ -46,6 +47,7 @@ impl Session {
             notify: Notifiers {
                 workspace: Notify::new(),
                 performance: Notify::new(),
+                media: Notify::new(),
             },
         });
 
@@ -175,8 +177,9 @@ impl Session {
                 self.notify.performance.broadcast(
                     Rc::new(perf_info.into_owned()));
             }
-            ServerMessage::MediaLibrary(_library) => {
-
+            ServerMessage::MediaLibrary(library) => {
+                crate::log!("Receiving media library!");
+                self.notify.media.broadcast(Rc::new(library));
             }
         }
     }
@@ -198,8 +201,12 @@ impl Session {
         self.send_message(msg);
     }
 
-    pub fn listen_performance(&self, callback: Callback<Rc<PerformanceInfo>>) -> notify::Handle {
+    pub fn listen_performance(&self, callback: Callback<Rc<mixlab_protocol::PerformanceInfo>>) -> notify::Handle {
         self.notify.performance.subscribe(callback)
+    }
+
+    pub fn listen_media(&self, callback: Callback<Rc<mixlab_protocol::MediaLibrary>>) -> notify::Handle {
+        self.notify.media.subscribe(callback)
     }
 
     fn send_message(&self, msg: ClientMessage) {

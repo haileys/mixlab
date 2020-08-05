@@ -1,57 +1,50 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
+use std::rc::Rc;
 
 use gloo_events::EventListener;
-use uuid::Uuid;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{File, XmlHttpRequest, ProgressEvent};
 use yew::events::ChangeData;
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use crate::util::{self, Sequence};
+use mixlab_protocol as protocol;
+
+use crate::session::SessionRef;
+use crate::util::{self, notify, Sequence};
 
 pub struct MediaLibrary {
     link: ComponentLink<Self>,
     upload_seq: Sequence,
     uploads: BTreeMap<NonZeroUsize, InProgressUpload>,
-    items: Vec<MediaItem>
+    library: Option<Rc<protocol::MediaLibrary>>,
+    _notify: notify::Handle,
 }
 
-pub struct MediaItem {
-    pub id: Uuid,
-    pub name: String,
-    pub kind: String,
-    pub size: usize,
+#[derive(Properties, Clone)]
+pub struct MediaLibraryProps {
+    pub session: SessionRef,
 }
 
 pub enum LibraryMsg {
+    Update(Rc<protocol::MediaLibrary>),
     SelectFiles(Vec<File>),
     Upload(NonZeroUsize, UploadEvent),
 }
 
 impl Component for MediaLibrary {
     type Message = LibraryMsg;
-    type Properties = ();
+    type Properties = MediaLibraryProps;
 
-    fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
+    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
+        let notify = props.session.listen_media(link.callback(LibraryMsg::Update));
+
         MediaLibrary {
             link,
             upload_seq: Sequence::new(),
             uploads: BTreeMap::new(),
-            items: vec![
-                MediaItem {
-                    id: Uuid::new_v4(),
-                    name: "Real Scenes - Melbourne _ Resident Advisor-cs1Iw-r0YI8.mp4".to_string(),
-                    kind: "video/mp4".to_string(),
-                    size: 635_952_409,
-                },
-                MediaItem {
-                    id: Uuid::new_v4(),
-                    name: "Tron.Legacy.BluRay.1080p.x264.5.1.Judas.mp4".to_string(),
-                    kind: "video/mp4".to_string(),
-                    size: 2_955_571_205,
-                },
-            ]
+            library: None,
+            _notify: notify,
         }
     }
 
@@ -61,6 +54,10 @@ impl Component for MediaLibrary {
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
+            LibraryMsg::Update(library) => {
+                self.library = Some(library);
+                true
+            }
             LibraryMsg::SelectFiles(files) => {
                 for file in files {
                     let id = self.upload_seq.next();
@@ -144,22 +141,28 @@ impl Component for MediaLibrary {
                         </table>
                     }
                 } }
-                <table class="media-library-table">
-                    <tr class="table-heading">
-                        <th>{"Name"}</th>
-                        <th>{"Kind"}</th>
-                        <th>{"Size"}</th>
-                    </tr>
-                    { for self.items.iter().map(|item| {
-                        html! {
-                            <tr>
-                                <td>{&item.name}</td>
-                                <td>{&item.kind}</td>
-                                <td>{format_size(item.size)}</td>
+                { if let Some(library) = &self.library {
+                    html! {
+                        <table class="media-library-table">
+                            <tr class="table-heading">
+                                <th>{"Name"}</th>
+                                <th>{"Kind"}</th>
+                                <th>{"Size"}</th>
                             </tr>
-                        }
-                    }) }
-                </table>
+                            { for library.items.iter().map(|item| {
+                                html! {
+                                    <tr>
+                                        <td>{&item.name}</td>
+                                        <td>{&item.kind}</td>
+                                        <td>{format_size(item.size)}</td>
+                                    </tr>
+                                }
+                            }) }
+                        </table>
+                    }
+                } else {
+                    html! {}
+                } }
             </div>
         }
     }
