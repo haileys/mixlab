@@ -25,7 +25,6 @@ pub struct ProjectHandle {
 }
 
 pub struct ProjectBase {
-    path: PathBuf,
     database: SqlitePool,
     notify: NotifyTx,
 }
@@ -48,40 +47,36 @@ impl ProjectBase {
         let database = db::attach(&sqlite_path).await?;
 
         Ok(ProjectBase {
-            path,
             database,
             notify,
         })
     }
 
-    async fn read_workspace(&self) -> Result<persist::Workspace, io::Error> {
-        let workspace_path = self.path.join("workspace.json");
+    async fn read_workspace(&self) -> Result<persist::Workspace, OpenError> {
+        let serialized = sqlx::query_scalar::<_, Vec<u8>>(r"
+                SELECT serialized FROM workspace WHERE rowid = 1
+            ")
+            .fetch_optional(&self.database)
+            .await?;
 
-        let workspace = match fs::read(&workspace_path).await {
-            Ok(serialized) => {
-                serde_json::from_slice(&serialized)?
-            }
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                persist::Workspace::default()
-            }
-            Err(e) => {
-                return Err(e)
-            }
+        let workspace = match serialized {
+            Some(serialized) => serde_json::from_slice(&serialized)?,
+            None => persist::Workspace::default(),
         };
 
         Ok(workspace)
     }
 
-    async fn write_workspace(&self, workspace: &persist::Workspace) -> Result<(), io::Error> {
-        let workspace_tmp_path = self.path.join(".workspace.json.tmp");
-        let workspace_path = self.path.join("workspace.json");
-
+    async fn write_workspace(&self, workspace: &persist::Workspace) -> Result<(), sqlx::Error> {
         let serialized = serde_json::to_vec(workspace).expect("serde_json::to_vec");
 
-        // write to temporary file and rename into place. this is atomic on unix,
-        // maybe it is on windows too?
-        fs::write(&workspace_tmp_path, &serialized).await?;
-        fs::rename(&workspace_tmp_path, &workspace_path).await?;
+        sqlx::query(r"
+                INSERT INTO workspace (rowid, serialized) VALUES (1, ?)
+                ON CONFLICT (rowid) DO UPDATE SET serialized = excluded.serialized
+            ")
+            .bind(serialized)
+            .execute(&self.database)
+            .await?;
 
         Ok(())
     }
