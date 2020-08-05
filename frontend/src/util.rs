@@ -6,6 +6,8 @@ use yew::Callback;
 
 use mixlab_protocol::Coords;
 
+pub mod notify;
+
 pub fn stop_propagation<In>() -> Callback<In>
 where
     In: AsRef<Event>

@@ -4,25 +4,37 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 
 use mixlab_protocol::{PerformanceInfo, PerformanceAccount, TemporalWarningStatus};
 
-use crate::SessionRef;
+use crate::session::{SessionRef, WorkspaceStateRef};
+use crate::util::notify;
 
 pub struct Sidebar {
     props: SidebarProps,
+    perf_info: Option<Rc<PerformanceInfo>>,
+    _perf_notify: notify::Handle,
 }
 
 #[derive(Properties, Clone, Debug)]
 pub struct SidebarProps {
     pub session: SessionRef,
-    pub performance_info: Option<Rc<PerformanceInfo>>,
+    pub workspace: WorkspaceStateRef,
+}
+
+pub enum SidebarMsg {
+    PerfInfo(Rc<PerformanceInfo>),
 }
 
 impl Component for Sidebar {
     type Properties = SidebarProps;
-    type Message = ();
+    type Message = SidebarMsg;
 
-    fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
+    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
+        crate::log!("session.borrow_mut {}:{}", file!(), line!());
+        let perf_notify = props.session.listen_performance(link.callback(SidebarMsg::PerfInfo));
+
         Sidebar {
             props,
+            perf_info: None,
+            _perf_notify: perf_notify,
         }
     }
 
@@ -31,8 +43,13 @@ impl Component for Sidebar {
         true
     }
 
-    fn update(&mut self, _: Self::Message) -> ShouldRender {
-        false
+    fn update(&mut self, msg: Self::Message) -> ShouldRender {
+        match msg {
+            SidebarMsg::PerfInfo(info) => {
+                self.perf_info = Some(info);
+                true
+            }
+        }
     }
 
     fn view(&self) -> Html {
@@ -47,8 +64,8 @@ impl Component for Sidebar {
 
 impl Sidebar {
     fn view_perf_info(&self) -> Html {
-        if let Some(perf_info) = &self.props.performance_info {
-            let state = self.props.session.state.borrow();
+        if let Some(perf_info) = &self.perf_info {
+            let workspace = self.props.workspace.borrow();
 
             let realtime_status_class = if perf_info.realtime {
                 "status-light status-light-green-active"
@@ -93,7 +110,7 @@ impl Sidebar {
                                             html! { <td class="perf-info-account perf-info-account-engine">{"Engine"}</td> }
                                         }
                                         PerformanceAccount::Module(id) => {
-                                            let name = state.modules.get(id).map(|module| {
+                                            let name = workspace.modules.get(id).map(|module| {
                                                 format!("{:?}", module).chars().take_while(|c| c.is_alphanumeric()).collect::<String>()
                                             }).unwrap_or("-".to_owned());
 

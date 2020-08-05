@@ -16,6 +16,7 @@ pub enum ServerMessage<'a> {
     Update(ServerUpdate),
     Sync(ClientSequence),
     Performance(Cow<'a, PerformanceInfo>),
+    MediaLibrary(MediaLibrary),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -56,6 +57,18 @@ pub struct PerformanceMetric {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Microseconds(pub u64);
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MediaLibrary {
+    pub items: Vec<MediaItem>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MediaItem {
+    pub name: String,
+    pub kind: String,
+    pub size: usize,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMessage {

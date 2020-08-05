@@ -22,7 +22,8 @@ use crate::module::stream_output::StreamOutput;
 use crate::module::trigger::Trigger;
 use crate::module::video_mixer::VideoMixer;
 use crate::util::{self, stop_propagation, prevent_default, Sequence};
-use crate::{App, AppMsg, SessionRef, State};
+use crate::session::{WorkspaceStateRef, WorkspaceState};
+use crate::{App, AppMsg};
 
 pub struct Workspace {
     link: ComponentLink<Self>,
@@ -36,7 +37,7 @@ pub struct Workspace {
 #[derive(Properties, Clone)]
 pub struct WorkspaceProps {
     pub app: ComponentLink<App>,
-    pub session: SessionRef,
+    pub state: WorkspaceStateRef,
 }
 
 pub enum MouseMode {
@@ -53,6 +54,7 @@ pub struct Drag {
 
 #[derive(Debug)]
 pub enum WorkspaceMsg {
+    Rerender,
     DragStart(ModuleId, MouseEvent),
     MouseDown(MouseEvent),
     MouseUp(MouseEvent),
@@ -69,8 +71,6 @@ impl Component for Workspace {
     type Properties = WorkspaceProps;
 
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let session = props.session.clone();
-
         let mut workspace = Workspace {
             link,
             props,
@@ -80,53 +80,24 @@ impl Component for Workspace {
             window_refs: BTreeMap::new(),
         };
 
-        let state = session.state.borrow();
-        for id in state.modules.keys() {
-            let inputs = state.inputs.get(id);
-            let outputs = state.outputs.get(id);
-
-            if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
-                workspace.register_terminals(*id, inputs, outputs);
-            }
-        }
+        workspace.update_state();
 
         workspace
     }
 
     fn change(&mut self, new_props: Self::Properties) -> ShouldRender {
-        let mut deleted_windows = self.window_refs.keys().copied().collect::<HashSet<_>>();
-
-        {
-            let state = new_props.session.state.borrow();
-
-            for id in state.modules.keys() {
-                if deleted_windows.remove(id) {
-                    // cool, nothing changes with this module
-                } else {
-                    // this module was not present before, create a window ref for it
-                    let inputs = state.inputs.get(id);
-                    let outputs = state.outputs.get(id);
-
-                    if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
-                        self.register_terminals(*id, inputs, outputs);
-                    }
-                }
-            }
-        }
-
-        for deleted_window in deleted_windows {
-            self.window_refs.remove(&deleted_window);
-        }
-
         self.props = new_props;
-
+        self.update_state();
         true
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         return match msg {
+            WorkspaceMsg::Rerender => {
+                true
+            }
             WorkspaceMsg::DragStart(module, ev) => {
-                let mut state = self.props.session.state.borrow_mut();
+                let mut state = self.props.state.borrow_mut();
 
                 if let Some(geom) = state.geometry.get_mut(&module) {
                     self.mouse = MouseMode::Drag(Drag {
@@ -173,7 +144,7 @@ impl Component for Workspace {
                 match self.mouse {
                     MouseMode::Normal => false,
                     MouseMode::Drag(ref mut drag) => {
-                        let mut state = self.props.session.state.borrow_mut();
+                        let mut state = self.props.state.borrow_mut();
 
                         let should_render = drag_event(&mut state, &self.window_refs, drag, ev);
 
@@ -195,7 +166,7 @@ impl Component for Workspace {
                 match &mut self.mouse {
                     MouseMode::Normal | MouseMode::ContextMenu(_) => false,
                     MouseMode::Drag(ref mut drag) => {
-                        drag_event(&mut self.props.session.state.borrow_mut(), &self.window_refs, drag, ev)
+                        drag_event(&mut self.props.state.borrow_mut(), &self.window_refs, drag, ev)
                     }
                     MouseMode::Connect(_, _, ref mut coords) => {
                         let workspace = self.workspace_ref.cast::<HtmlElement>().unwrap();
@@ -219,7 +190,7 @@ impl Component for Workspace {
                         match (terminal_id, *other_terminal_id) {
                             (TerminalId::Input(input), TerminalId::Output(output)) |
                             (TerminalId::Output(output), TerminalId::Input(input)) => {
-                                let mut state = self.props.session.state.borrow_mut();
+                                let mut state = self.props.state.borrow_mut();
 
                                 if terminal_ref.line_type == other_terminal_ref.line_type {
                                     state.connections.insert(input, output);
@@ -249,7 +220,7 @@ impl Component for Workspace {
             WorkspaceMsg::ClearTerminal(terminal) => {
                 match terminal {
                     TerminalId::Input(input) => {
-                        self.props.session.state.borrow_mut()
+                        self.props.state.borrow_mut()
                             .connections
                             .remove(&input);
 
@@ -260,7 +231,7 @@ impl Component for Workspace {
                     TerminalId::Output(output) => {
                         let mut msgs = Vec::new();
 
-                        let mut state = self.props.session.state.borrow_mut();
+                        let mut state = self.props.state.borrow_mut();
 
                         for (in_, out_) in &state.connections {
                             if *out_ == output {
@@ -279,7 +250,7 @@ impl Component for Workspace {
                 true
             }
             WorkspaceMsg::DeleteWindow(module) => {
-                let mut state = self.props.session.state.borrow_mut();
+                let mut state = self.props.state.borrow_mut();
                 state.modules.remove(&module);
                 state.geometry.remove(&module);
                 state.connections.retain(|input, output| {
@@ -293,7 +264,7 @@ impl Component for Workspace {
                 true
             }
             WorkspaceMsg::UpdateModuleParams(module, params) => {
-                let mut state = self.props.session.state.borrow_mut();
+                let mut state = self.props.state.borrow_mut();
 
                 if let Some(module_params) = state.modules.get_mut(&module) {
                     // verify that we're updating the module params with the
@@ -329,7 +300,7 @@ impl Component for Workspace {
             }
         };
 
-        fn drag_event(state: &mut State, window_refs: &BTreeMap<ModuleId, WindowRef>, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
+        fn drag_event(state: &mut WorkspaceState, window_refs: &BTreeMap<ModuleId, WindowRef>, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
             let mouse_pos = Coords { x: ev.page_x(), y: ev.page_y() };
 
             let delta = mouse_pos.sub(drag.origin);
@@ -357,7 +328,7 @@ impl Component for Workspace {
     fn view(&self) -> Html {
         let mut connections: Vec<(Coords, Coords)> = vec![];
 
-        for (input, output) in &self.props.session.state.borrow().connections {
+        for (input, output) in &self.props.state.borrow().connections {
             if let Some(input_coords) = self.screen_coords_for_terminal(TerminalId::Input(*input)) {
                 if let Some(output_coords) = self.screen_coords_for_terminal(TerminalId::Output(*output)) {
                     connections.push((output_coords, input_coords));
@@ -388,7 +359,7 @@ impl Component for Workspace {
                 />
 
                 { for self.window_refs.iter().map(|(id, refs)| {
-                    let state = self.props.session.state.borrow();
+                    let state = self.props.state.borrow();
                     let module = state.modules.get(id);
                     let geometry = state.geometry.get(id);
                     let workspace = self.link.clone();
@@ -416,33 +387,61 @@ impl Component for Workspace {
             </div>
         }
     }
+
+    fn rendered(&mut self, first_render: bool) {
+        // need to re-render immediately after first render so that we have
+        // screen coordinates from noderefs to pass to Connections
+        if first_render {
+            self.link.send_message(WorkspaceMsg::Rerender);
+        }
+    }
 }
 
 impl Workspace {
-    pub fn register_terminals(&mut self, id: ModuleId, inputs: &[mixlab_protocol::Terminal], outputs: &[mixlab_protocol::Terminal]) {
-        let refs = WindowRef {
-            module: NodeRef::default(),
-            inputs: make_terminal_refs(inputs, TerminalType::Input),
-            outputs: make_terminal_refs(outputs, TerminalType::Output),
-        };
+    fn update_state(&mut self) {
+        let mut deleted_windows = self.window_refs.keys().copied().collect::<HashSet<_>>();
 
-        self.window_refs.insert(id, refs);
+        let state = self.props.state.borrow();
 
-        fn make_terminal_refs(terminals: &[mixlab_protocol::Terminal], terminal_type: TerminalType) -> Vec<TerminalRef> {
-            terminals.iter()
-                .cloned()
-                .map(|terminal| TerminalRef {
-                    node: NodeRef::default(),
-                    label: terminal.label().map(String::from),
-                    line_type: terminal.line_type(),
-                    terminal_type,
-                })
-                .collect()
+        for id in state.modules.keys() {
+            if deleted_windows.remove(id) {
+                // cool, nothing changes with this module
+            } else {
+                // this module was not present before, create a window ref for it
+                let inputs = state.inputs.get(id);
+                let outputs = state.outputs.get(id);
+
+                if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
+                    let refs = WindowRef {
+                        module: NodeRef::default(),
+                        inputs: make_terminal_refs(inputs, TerminalType::Input),
+                        outputs: make_terminal_refs(outputs, TerminalType::Output),
+                    };
+
+                    self.window_refs.insert(*id, refs);
+
+                    fn make_terminal_refs(terminals: &[mixlab_protocol::Terminal], terminal_type: TerminalType) -> Vec<TerminalRef> {
+                        terminals.iter()
+                            .cloned()
+                            .map(|terminal| TerminalRef {
+                                node: NodeRef::default(),
+                                label: terminal.label().map(String::from),
+                                line_type: terminal.line_type(),
+                                terminal_type,
+                            })
+                            .collect()
+                    }
+                }
+            }
+        }
+
+        for deleted_window in deleted_windows {
+            self.window_refs.remove(&deleted_window);
         }
     }
 
     fn screen_coords_for_terminal(&self, terminal_id: TerminalId) -> Option<Coords> {
-        let state = self.props.session.state.borrow();
+        let state = self.props.state.borrow();
         let geometry = state.geometry.get(&terminal_id.module_id())?;
         let refs = self.window_refs.get(&terminal_id.module_id())?;
 
