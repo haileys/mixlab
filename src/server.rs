@@ -3,7 +3,10 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use futures::{StreamExt, SinkExt, stream};
+use bytes::Buf;
+use derive_more::From;
+use futures::sink::{Sink, SinkExt};
+use futures::stream::{self, Stream, StreamExt};
 use structopt::StructOpt;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -12,11 +15,11 @@ use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
-use mixlab_protocol::{ClientMessage, ServerMessage, PerformanceInfo};
+use mixlab_protocol::{ClientMessage, ServerMessage};
 
 use crate::engine::EngineEvent;
 use crate::listen::{self, Disambiguation};
-use crate::project::{self, ProjectHandle};
+use crate::project::{self, ProjectHandle, Notification};
 use crate::{icecast, module, rtmp};
 
 #[derive(StructOpt)]
@@ -26,9 +29,25 @@ pub struct RunOpts {
     workspace_path: PathBuf,
 }
 
+struct Server {
+    project: ProjectHandle,
+}
+
+type ServerRef = Arc<Server>;
+
+impl Server {
+    pub fn new(project: ProjectHandle) -> Self {
+        Server {
+            project,
+        }
+    }
+}
+
 pub async fn run(opts: RunOpts) {
     let project = project::open_or_create(opts.workspace_path).await
         .expect("create_or_open_project");
+
+    let server = Arc::new(Server::new(project));
 
     let index = warp::path::end()
         .map(index);
@@ -51,11 +70,14 @@ pub async fn run(opts: RunOpts) {
     let websocket = warp::get()
         .and(warp::path("session"))
         .and(warp::ws())
-        .map(move |ws: Ws| {
-            let project = project.clone();
-            ws.on_upgrade(move |websocket| {
-                session(websocket, project.clone())
-            })
+        .map({
+            let server = server.clone();
+            move |ws: Ws| {
+                let server = server.clone();
+                ws.on_upgrade(move |websocket| {
+                    session(websocket, server.clone())
+                })
+            }
         });
 
     let monitor_socket = warp::get()
@@ -67,9 +89,35 @@ pub async fn run(opts: RunOpts) {
             })
         });
 
+    let media_upload = warp::post()
+        .and(warp::path!("_upload" / String))
+        .and(warp::header::<String>("content-type"))
+        .and(warp::filters::body::stream())
+        .and_then({
+            let server = server.clone();
+            move |filename, kind, stream| {
+                let server = server.clone();
+                async move {
+                    let params = UploadParams {
+                        filename,
+                        kind,
+                    };
+
+                    handle_upload(params, stream, server).await
+                        .map(|()| warp::reply::reply())
+                        .map_err(|e| {
+                            eprintln!("upload failed: {:?}", e);
+                            // TODO - internal server error?
+                            warp::reject::not_found()
+                        })
+                }
+            }
+        });
+
     let routes = static_content
         .or(websocket)
         .or(monitor_socket)
+        .or(media_upload)
         .with(warp::log("mixlab-http"));
 
     let warp = warp::serve(routes);
@@ -144,32 +192,37 @@ fn wasm() -> impl Reply {
     content("application/wasm", app_wasm)
 }
 
-async fn session(websocket: WebSocket, project: ProjectHandle) {
-    let (mut tx, rx) = websocket.split();
+async fn session(websocket: WebSocket, server: ServerRef) {
+    let (tx, rx) = websocket.split();
+    let mut tx = ClientTx(tx);
 
-    let perf_info = project.performance_info();
+    let notifications = server.project.notifications();
 
-    let (state, engine_ops, engine) = project.connect_engine().await
-        .expect("engine.connect");
+    let (state, engine_ops, engine) = server.project.connect_engine().await
+        .expect("connect engine");
 
-    let state_msg = bincode::serialize(&ServerMessage::WorkspaceState(state))
-        .expect("bincode::serialize");
+    let library = server.project.fetch_media_library().await
+        .expect("fetch_media_library");
 
-    tx.send(ws::Message::binary(state_msg))
+    tx.send(ServerMessage::WorkspaceState(state))
         .await
         .expect("tx.send WorkspaceState");
+
+    tx.send(ServerMessage::MediaLibrary(library))
+        .await
+        .expect("tx.send MediaLibrary");
 
     enum Event {
         ClientMessage(Result<ws::Message, warp::Error>),
         Engine(Result<EngineEvent, broadcast::RecvError>),
-        Performance(Arc<PerformanceInfo>),
+        Notification(Notification),
     }
 
     let mut events = stream::select(
         rx.map(Event::ClientMessage),
         stream::select(
             engine_ops.map(Event::Engine),
-            perf_info.map(Event::Performance)));
+            notifications.map(Event::Notification)));
 
     while let Some(event) = events.next().await {
         match event {
@@ -185,8 +238,12 @@ async fn session(websocket: WebSocket, project: ProjectHandle) {
                 let msg = bincode::deserialize::<ClientMessage>(msg.as_bytes())
                     .expect("bincode::deserialize");
 
-                if let Err(e) = engine.update(msg) {
-                    println!("Engine update failed: {:?}", e);
+                match msg {
+                    ClientMessage::Workspace(msg) => {
+                        if let Err(e) = engine.update(msg) {
+                            println!("Engine update failed: {:?}", e);
+                        }
+                    }
                 }
             }
             Event::Engine(Err(broadcast::RecvError::Lagged(skipped))) => {
@@ -211,10 +268,7 @@ async fn session(websocket: WebSocket, project: ProjectHandle) {
                 };
 
                 if let Some(msg) = msg {
-                    let msg = bincode::serialize(&msg)
-                        .expect("bincode::serialize");
-
-                    match tx.send(ws::Message::binary(msg)).await {
+                    match tx.send(msg).await {
                         Ok(()) => {}
                         Err(_) => {
                             // client disconnected
@@ -223,20 +277,80 @@ async fn session(websocket: WebSocket, project: ProjectHandle) {
                     }
                 }
             }
-            Event::Performance(perf_info) => {
-                let msg = ServerMessage::Performance(Cow::Borrowed(&perf_info));
+            Event::Notification(notif) => {
+                let msg = match &notif {
+                    Notification::PerformanceInfo(perf_info) => {
+                        Some(ServerMessage::Performance(Cow::Borrowed(perf_info)))
+                    }
+                    Notification::MediaLibrary => {
+                        match server.project.fetch_media_library().await {
+                            Ok(library) => Some(ServerMessage::MediaLibrary(library)),
+                            Err(e) => {
+                                eprintln!("failed to query media library: {:?}", e);
+                                None
+                            }
+                        }
+                    }
+                };
 
-                let msg = bincode::serialize(&msg)
-                    .expect("bincode::serialize");
-
-                match tx.send(ws::Message::binary(msg)).await {
-                    Ok(()) => {}
-                    Err(_) => {
-                        // client disconnected
-                        return;
+                if let Some(msg) = msg {
+                    match tx.send(msg).await {
+                        Ok(()) => {}
+                        Err(_) => {
+                            // client disconnected
+                            return;
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+#[derive(From, Debug)]
+enum UploadError {
+    Warp(warp::Error),
+    Upload(project::media::UploadError),
+}
+
+struct UploadParams {
+    filename: String,
+    kind: String,
+}
+
+async fn handle_upload(
+    params: UploadParams,
+    stream: impl Stream<Item = Result<impl Buf, warp::Error>>,
+    server: ServerRef,
+) -> Result<(), UploadError> {
+    futures::pin_mut!(stream);
+
+    let mut upload = server.project.begin_media_upload(project::media::UploadInfo {
+        name: params.filename,
+        kind: params.kind,
+    }).await?;
+
+    while let Some(buf) = stream.next().await {
+        upload.receive_bytes(buf?.bytes()).await?;
+    }
+
+    upload.finalize().await?;
+
+    Ok(())
+}
+
+#[derive(Debug, From)]
+pub enum TxError {
+    Warp(warp::Error),
+    Bincode(bincode::Error),
+}
+
+pub struct ClientTx<S>(S);
+
+impl<S: Sink<ws::Message, Error = warp::Error> + Unpin> ClientTx<S> {
+    pub async fn send<'a>(&mut self, msg: ServerMessage<'a>) -> Result<(), TxError> {
+        let msg = bincode::serialize(&msg)?;
+        self.0.send(ws::Message::binary(msg)).await?;
+        Ok(())
     }
 }

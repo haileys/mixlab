@@ -1,3 +1,4 @@
+mod db;
 mod engine;
 mod icecast;
 mod listen;

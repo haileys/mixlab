@@ -16,6 +16,7 @@ pub enum ServerMessage<'a> {
     Update(ServerUpdate),
     Sync(ClientSequence),
     Performance(Cow<'a, PerformanceInfo>),
+    MediaLibrary(MediaLibrary),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -57,17 +58,38 @@ pub struct PerformanceMetric {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Microseconds(pub u64);
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MediaLibrary {
+    pub items: Vec<MediaItem>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MediaId(pub i64);
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MediaItem {
+    pub id: MediaId,
+    pub name: String,
+    pub kind: String,
+    pub size: usize,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
-pub struct ClientMessage {
-    pub sequence: ClientSequence,
-    pub op: ClientOp,
+pub enum ClientMessage {
+    Workspace(WorkspaceMessage),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ClientSequence(pub NonZeroUsize);
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum ClientOp {
+pub struct WorkspaceMessage {
+    pub sequence: ClientSequence,
+    pub op: WorkspaceOp,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum WorkspaceOp {
     CreateModule(ModuleParams, WindowGeometry),
     UpdateModuleParams(ModuleId, ModuleParams),
     UpdateWindowGeometry(ModuleId, WindowGeometry),

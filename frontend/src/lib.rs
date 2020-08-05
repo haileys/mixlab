@@ -1,74 +1,47 @@
-#![recursion_limit="512"]
+#![recursion_limit="1024"]
 
 mod component;
 mod control;
+mod library;
 mod module;
 mod service;
+mod session;
 mod sidebar;
 mod util;
 mod workspace;
 
-use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
+use std::fmt::Display;
 
-use gloo_events::EventListener;
+use derive_more::Display;
 use wasm_bindgen::prelude::*;
-use web_sys::Element;
-use yew::format::Binary;
-use yew::services::websocket::{WebSocketService, WebSocketStatus, WebSocketTask};
-use yew::{html, Component, ComponentLink, Html, ShouldRender};
+use yew::{html, Component, ComponentLink, Html, ShouldRender, Callback, Properties};
 
-use mixlab_protocol::{ClientMessage, WorkspaceState, ServerMessage, ModuleId, InputId, OutputId, ModuleParams, WindowGeometry, ServerUpdate, Indication, Terminal, ClientOp, ClientSequence, PerformanceInfo};
+use mixlab_protocol::WorkspaceOp;
 
+use library::MediaLibrary;
+use session::{Session, SessionRef};
 use sidebar::Sidebar;
-use util::Sequence;
+use util::{notify, Sequence};
 use workspace::Workspace;
 
 pub struct App {
     link: ComponentLink<Self>,
-    websocket: WebSocketTask,
-    state: Option<Rc<RefCell<State>>>,
-    client_seq: Sequence,
-    server_seq: Option<ClientSequence>,
-    root_element: Element,
-    viewport_width: usize,
-    viewport_height: usize,
-    performance_info: Option<Rc<PerformanceInfo>>,
-    // must be kept alive while app is running:
-    _resize_listener: EventListener,
+    session: SessionRef,
+    selected_tab: Tab,
 }
 
-#[derive(Debug, Clone)]
-pub struct State {
-    // modules uses BTreeMap for consistent iteration order:
-    modules: BTreeMap<ModuleId, ModuleParams>,
-    geometry: HashMap<ModuleId, WindowGeometry>,
-    connections: HashMap<InputId, OutputId>,
-    indications: HashMap<ModuleId, Indication>,
-    inputs: HashMap<ModuleId, Vec<Terminal>>,
-    outputs: HashMap<ModuleId, Vec<Terminal>>,
-}
-
-impl From<WorkspaceState> for State {
-    fn from(wstate: WorkspaceState) -> State {
-        State {
-            modules: wstate.modules.into_iter().collect(),
-            geometry: wstate.geometry.into_iter().collect(),
-            indications: wstate.indications.into_iter().collect(),
-            connections: wstate.connections.into_iter().collect(),
-            inputs: wstate.inputs.into_iter().collect(),
-            outputs: wstate.outputs.into_iter().collect(),
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Display)]
+pub enum Tab {
+    #[display(fmt = "Workspace")]
+    Workspace,
+    #[display(fmt = "Media Library")]
+    MediaLibrary,
 }
 
 #[derive(Debug)]
 pub enum AppMsg {
-    NoOp,
-    WindowResize,
-    ServerMessage(ServerMessage<'static>),
-    ClientUpdate(ClientOp),
+    ClientUpdate(WorkspaceOp),
+    ChangeTab(Tab),
 }
 
 impl Component for App {
@@ -76,55 +49,10 @@ impl Component for App {
     type Properties = ();
 
     fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let websocket_url = util::websocket_origin() + "/session";
-
-        let websocket = WebSocketService::connect_binary(&websocket_url,
-            link.callback(|msg: Binary| {
-                match msg {
-                    Ok(buff) => {
-                        let msg = bincode::deserialize::<ServerMessage>(&buff)
-                            .expect("bincode::deserialize");
-
-                        AppMsg::ServerMessage(msg)
-                    }
-                    Err(e) => {
-                        crate::log!("websocket recv error: {:?}", e);
-                        AppMsg::NoOp
-                    }
-                }
-            }),
-            link.callback(|status: WebSocketStatus| {
-                crate::log!("websocket status: {:?}", status);
-                AppMsg::NoOp
-            }))
-        .expect("websocket.connect_binary");
-
-        let window = web_sys::window()
-            .expect("window");
-
-        let root_element = window.document()
-            .and_then(|doc| doc.document_element())
-            .expect("root element");
-
-        let viewport_width = root_element.client_width() as usize;
-        let viewport_height = root_element.client_height() as usize;
-
-        let resize_listener = EventListener::new(&window, "resize", {
-            let link = link.clone();
-            move |_| { link.send_message(AppMsg::WindowResize) }
-        });
-
         App {
             link,
-            websocket,
-            state: None,
-            client_seq: Sequence::new(),
-            server_seq: None,
-            root_element,
-            viewport_width,
-            viewport_height,
-            performance_info: None,
-            _resize_listener: resize_listener,
+            session: Session::new(),
+            selected_tab: Tab::Workspace,
         }
     }
 
@@ -134,138 +62,195 @@ impl Component for App {
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
-            AppMsg::NoOp => false,
-            AppMsg::WindowResize => {
-                self.viewport_width = self.root_element.client_width() as usize;
-                self.viewport_height = self.root_element.client_height() as usize;
-                true
-            }
-            AppMsg::ServerMessage(msg) => {
-                match msg {
-                    ServerMessage::WorkspaceState(state) => {
-                        self.state = Some(Rc::new(RefCell::new(state.into())));
-                        true
-                    }
-                    ServerMessage::Sync(seq) => {
-                        if Some(seq) <= self.server_seq {
-                            panic!("sequence number repeat, desync");
-                        }
-
-                        self.server_seq = Some(seq);
-
-                        // re-render if this Sync message caused us to consider
-                        // ourselves synced - there may be prior updates
-                        // waiting for render
-                        self.synced()
-                    }
-                    ServerMessage::Update(op) => {
-                        let mut state = self.state.as_ref()
-                            .expect("server should always send a WorkspaceState before a ModelOp")
-                            .borrow_mut();
-
-                        match op {
-                            ServerUpdate::CreateModule { id, params, geometry, indication, inputs, outputs } => {
-                                state.modules.insert(id, params);
-                                state.geometry.insert(id, geometry);
-                                state.indications.insert(id, indication);
-                                state.inputs.insert(id, inputs);
-                                state.outputs.insert(id, outputs);
-                            }
-                            ServerUpdate::UpdateModuleParams(id, new_params) => {
-                                if let Some(params) = state.modules.get_mut(&id) {
-                                    *params = new_params;
-                                }
-                            }
-                            ServerUpdate::UpdateWindowGeometry(id, new_geometry) => {
-                                if let Some(geometry) = state.geometry.get_mut(&id) {
-                                    *geometry = new_geometry;
-                                }
-                            }
-                            ServerUpdate::UpdateModuleIndication(id, new_indication) => {
-                                if let Some(indication) = state.indications.get_mut(&id) {
-                                    *indication = new_indication;
-                                }
-                            }
-                            ServerUpdate::DeleteModule(id) => {
-                                state.modules.remove(&id);
-                                state.geometry.remove(&id);
-                                state.indications.remove(&id);
-                                state.inputs.remove(&id);
-                                state.outputs.remove(&id);
-                            }
-                            ServerUpdate::CreateConnection(input, output) => {
-                                state.connections.insert(input, output);
-                            }
-                            ServerUpdate::DeleteConnection(input) => {
-                                state.connections.remove(&input);
-                            }
-                        }
-
-                        // only re-render according to server state if all of
-                        // our changes have successfully round-tripped
-                        self.synced()
-                    }
-                    ServerMessage::Performance(perf_info) => {
-                        self.performance_info = Some(Rc::new(perf_info.into_owned()));
-
-                        // TODO we should rerender perf pane but not workspace even if not synced
-                        self.synced()
-                    }
-                }
-            }
             AppMsg::ClientUpdate(op) => {
-                let msg = ClientMessage {
-                    sequence: ClientSequence(self.client_seq.next()),
-                    op: op,
-                };
-
-                let packet = bincode::serialize(&msg)
-                    .expect("bincode::serialize");
-
-                let _ = self.websocket.send_binary(Ok(packet));
-
+                self.session.update_workspace(op);
                 false
+            }
+            AppMsg::ChangeTab(tab) => {
+                self.selected_tab = tab;
+                true
             }
         }
     }
 
     fn view(&self) -> Html {
-        match &self.state {
-            Some(state) => {
-                html! {
-                    <div class="app">
-                        <Workspace
-                            app={self.link.clone()}
-                            state={state}
-                        />
+        html! {
+            <div class="app">
+                <SidebarContainer session={self.session.clone()} />
 
-                        <Sidebar
-                            state={state}
-                            performance_info={self.performance_info.clone()}
-                        />
-                    </div>
-                }
-            }
-            None => html! {}
+                <div class="main">
+                    <TabBar<Tab>
+                        current={self.selected_tab.clone()}
+                        tabs={vec![
+                            Tab::Workspace,
+                            Tab::MediaLibrary,
+                        ]}
+                        onchange={self.link.callback(AppMsg::ChangeTab)}
+                    />
+
+                    { match self.selected_tab {
+                        Tab::Workspace => html! {
+                            <WorkspaceContainer
+                                app={self.link.clone()}
+                                session={self.session.clone()}
+                            />
+                        },
+                        Tab::MediaLibrary => html! {
+                            <MediaLibrary session={self.session.clone()} />
+                        },
+                    } }
+                </div>
+            </div>
         }
     }
 }
 
-impl App {
-    fn synced(&self) -> bool {
-        // only re-render according to server state if all of
-        // our changes have successfully round-tripped
+pub struct WorkspaceContainer {
+    _notify: notify::Handle,
+    props: WorkspaceContainerProps,
+}
 
-        let client_seq = self.client_seq.last().map(ClientSequence);
+#[derive(Properties, Clone)]
+pub struct WorkspaceContainerProps {
+    app: ComponentLink<App>,
+    session: SessionRef,
+}
 
-        if self.server_seq == client_seq {
-            // server is up to date, re-render
-            true
-        } else if self.server_seq < client_seq {
-            // server is behind, skip render
-            false
+impl Component for WorkspaceContainer {
+    type Message = ();
+    type Properties = WorkspaceContainerProps;
+
+    fn create(props: WorkspaceContainerProps, link: ComponentLink<Self>) -> Self {
+        let notify = props.session.listen_workspace(link.callback(|()| ()));
+
+        WorkspaceContainer {
+            _notify: notify,
+            props,
+        }
+    }
+
+    fn change(&mut self, new_props: WorkspaceContainerProps) -> ShouldRender {
+        // TODO do we need to resubscribe?
+        self.props = new_props;
+        true
+    }
+
+    fn update(&mut self, _: ()) -> ShouldRender {
+        true
+    }
+
+    fn view(&self) -> Html {
+        if let Some(state) = self.props.session.workspace() {
+            html! {
+                <Workspace
+                    app={self.props.app.clone()}
+                    state={state.clone()}
+                />
+            }
         } else {
-            panic!("server_seq > client_seq, desync")
+            html! {}
+        }
+    }
+}
+
+pub struct SidebarContainer {
+    _notify: notify::Handle,
+    props: SidebarContainerProps,
+}
+
+#[derive(Properties, Clone)]
+pub struct SidebarContainerProps {
+    session: SessionRef,
+}
+
+impl Component for SidebarContainer {
+    type Message = ();
+    type Properties = SidebarContainerProps;
+
+    fn create(props: SidebarContainerProps, link: ComponentLink<Self>) -> Self {
+        let notify = props.session.listen_workspace(link.callback(|()| ()));
+
+        SidebarContainer {
+            _notify: notify,
+            props,
+        }
+    }
+
+    fn change(&mut self, new_props: SidebarContainerProps) -> ShouldRender {
+        // TODO do we need to resubscribe?
+        self.props = new_props;
+        true
+    }
+
+    fn update(&mut self, _: ()) -> ShouldRender {
+        true
+    }
+
+    fn view(&self) -> Html {
+        if let Some(state) = self.props.session.workspace() {
+            html! {
+                <Sidebar
+                    session={self.props.session.clone()}
+                    workspace={state.clone()}
+                />
+            }
+        } else {
+            html! {}
+        }
+    }
+}
+
+#[derive(Properties, Clone, Debug)]
+pub struct TabBarProps<T: Clone> {
+    current: T,
+    tabs: Vec<T>,
+    onchange: Callback<T>,
+}
+
+struct TabBar<T: Clone> {
+    props: TabBarProps<T>
+}
+
+impl<T: Display + Clone + PartialEq + 'static> Component for TabBar<T> {
+    type Properties = TabBarProps<T>;
+    type Message = ();
+
+    fn create(props: TabBarProps<T>, _: ComponentLink<Self>) -> Self {
+        TabBar { props }
+    }
+
+    fn change(&mut self, props: TabBarProps<T>) -> ShouldRender {
+        self.props = props;
+        true
+    }
+
+    fn update(&mut self, _: ()) -> ShouldRender {
+        false
+    }
+
+    fn view(&self) -> Html {
+        html! {
+            <div class="tab-bar">
+                { for self.props.tabs.iter().map(|tab| {
+                    let class = if tab == &self.props.current {
+                        "tab-bar-tab tab-bar-active"
+                    } else {
+                        "tab-bar-tab"
+                    };
+
+                    html! {
+                        <div
+                            class={class}
+                            onclick={self.props.onchange.reform({
+                                let tab = tab.clone();
+                                move |_| tab.clone()
+                            })}
+                        >
+                            {tab.to_string()}
+                        </div>
+                    }
+                }) }
+            </div>
         }
     }
 }

@@ -6,6 +6,8 @@ use yew::Callback;
 
 use mixlab_protocol::Coords;
 
+pub mod notify;
+
 pub fn stop_propagation<In>() -> Callback<In>
 where
     In: AsRef<Event>
@@ -34,6 +36,7 @@ pub fn clamp<T: PartialOrd>(min: T, max: T, val: T) -> T {
     }
 }
 
+#[derive(Debug)]
 pub struct Sequence(usize);
 
 impl Sequence {
@@ -53,17 +56,24 @@ impl Sequence {
     }
 }
 
+pub fn origin() -> String {
+    let location = web_sys::window().unwrap().location();
+    let proto = location.protocol().unwrap();
+    let host = location.host().unwrap();
+    format!("{}//{}", proto, host)
+}
+
 pub fn websocket_origin() -> String {
     let location = web_sys::window().unwrap().location();
     let proto = location.protocol().unwrap();
     let host = location.host().unwrap();
 
     let proto = match proto.as_str() {
-        "https" => "wss",
-        _ => "ws",
+        "https:" => "wss:",
+        _ => "ws:",
     };
 
-    format!("{}://{}", proto, host)
+    format!("{}//{}", proto, host)
 }
 
 fn html_element_parent(mut element: Element) -> Option<HtmlElement> {

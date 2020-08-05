@@ -1,13 +1,11 @@
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::mem;
-use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent, Element};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, ClientOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams, VideoMixerParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, WorkspaceOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams, VideoMixerParams};
 
 use crate::component::midi_target::MidiUiMode;
 use crate::module::amplifier::Amplifier;
@@ -24,7 +22,8 @@ use crate::module::stream_output::StreamOutput;
 use crate::module::trigger::Trigger;
 use crate::module::video_mixer::VideoMixer;
 use crate::util::{self, stop_propagation, prevent_default, Sequence};
-use crate::{App, AppMsg, State};
+use crate::session::{WorkspaceStateRef, WorkspaceState};
+use crate::{App, AppMsg};
 
 pub struct Workspace {
     link: ComponentLink<Self>,
@@ -38,7 +37,7 @@ pub struct Workspace {
 #[derive(Properties, Clone)]
 pub struct WorkspaceProps {
     pub app: ComponentLink<App>,
-    pub state: Rc<RefCell<State>>,
+    pub state: WorkspaceStateRef,
 }
 
 pub enum MouseMode {
@@ -55,6 +54,7 @@ pub struct Drag {
 
 #[derive(Debug)]
 pub enum WorkspaceMsg {
+    Rerender,
     DragStart(ModuleId, MouseEvent),
     MouseDown(MouseEvent),
     MouseUp(MouseEvent),
@@ -71,8 +71,6 @@ impl Component for Workspace {
     type Properties = WorkspaceProps;
 
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        let state = props.state.clone();
-
         let mut workspace = Workspace {
             link,
             props,
@@ -82,51 +80,22 @@ impl Component for Workspace {
             window_refs: BTreeMap::new(),
         };
 
-        let state = state.borrow();
-        for id in state.modules.keys() {
-            let inputs = state.inputs.get(id);
-            let outputs = state.outputs.get(id);
-
-            if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
-                workspace.register_terminals(*id, inputs, outputs);
-            }
-        }
+        workspace.update_state();
 
         workspace
     }
 
     fn change(&mut self, new_props: Self::Properties) -> ShouldRender {
-        let mut deleted_windows = self.window_refs.keys().copied().collect::<HashSet<_>>();
-
-        {
-            let state = new_props.state.borrow();
-
-            for id in state.modules.keys() {
-                if deleted_windows.remove(id) {
-                    // cool, nothing changes with this module
-                } else {
-                    // this module was not present before, create a window ref for it
-                    let inputs = state.inputs.get(id);
-                    let outputs = state.outputs.get(id);
-
-                    if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
-                        self.register_terminals(*id, inputs, outputs);
-                    }
-                }
-            }
-        }
-
-        for deleted_window in deleted_windows {
-            self.window_refs.remove(&deleted_window);
-        }
-
         self.props = new_props;
-
+        self.update_state();
         true
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         return match msg {
+            WorkspaceMsg::Rerender => {
+                true
+            }
             WorkspaceMsg::DragStart(module, ev) => {
                 let mut state = self.props.state.borrow_mut();
 
@@ -182,7 +151,7 @@ impl Component for Workspace {
                         if let Some(geometry) = state.geometry.get(&drag.module) {
                             self.props.app.send_message(
                                 AppMsg::ClientUpdate(
-                                    ClientOp::UpdateWindowGeometry(drag.module, geometry.clone())));
+                                    WorkspaceOp::UpdateWindowGeometry(drag.module, geometry.clone())));
                         }
 
                         self.mouse = MouseMode::Normal;
@@ -230,7 +199,7 @@ impl Component for Workspace {
 
                                     self.props.app.send_message(
                                         AppMsg::ClientUpdate(
-                                            ClientOp::CreateConnection(input, output)));
+                                            WorkspaceOp::CreateConnection(input, output)));
 
                                     true
                                 } else {
@@ -257,7 +226,7 @@ impl Component for Workspace {
 
                         self.props.app.send_message(
                             AppMsg::ClientUpdate(
-                                ClientOp::DeleteConnection(input)));
+                                WorkspaceOp::DeleteConnection(input)));
                     }
                     TerminalId::Output(output) => {
                         let mut msgs = Vec::new();
@@ -267,7 +236,7 @@ impl Component for Workspace {
                         for (in_, out_) in &state.connections {
                             if *out_ == output {
                                 msgs.push(AppMsg::ClientUpdate(
-                                    ClientOp::DeleteConnection(*in_)));
+                                    WorkspaceOp::DeleteConnection(*in_)));
                             }
                         }
 
@@ -290,7 +259,7 @@ impl Component for Workspace {
 
                 self.props.app.send_message(
                     AppMsg::ClientUpdate(
-                        ClientOp::DeleteModule(module)));
+                        WorkspaceOp::DeleteModule(module)));
 
                 true
             }
@@ -305,7 +274,7 @@ impl Component for Workspace {
 
                         self.props.app.send_message(
                             AppMsg::ClientUpdate(
-                                ClientOp::UpdateModuleParams(module, params)));
+                                WorkspaceOp::UpdateModuleParams(module, params)));
 
                         true
                     } else {
@@ -325,13 +294,13 @@ impl Component for Workspace {
 
                 self.props.app.send_message(
                     AppMsg::ClientUpdate(
-                        ClientOp::CreateModule(module, geometry)));
+                        WorkspaceOp::CreateModule(module, geometry)));
 
                 true
             }
         };
 
-        fn drag_event(state: &mut State, window_refs: &BTreeMap<ModuleId, WindowRef>, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
+        fn drag_event(state: &mut WorkspaceState, window_refs: &BTreeMap<ModuleId, WindowRef>, drag: &mut Drag, ev: MouseEvent) -> ShouldRender {
             let mouse_pos = Coords { x: ev.page_x(), y: ev.page_y() };
 
             let delta = mouse_pos.sub(drag.origin);
@@ -418,28 +387,56 @@ impl Component for Workspace {
             </div>
         }
     }
+
+    fn rendered(&mut self, first_render: bool) {
+        // need to re-render immediately after first render so that we have
+        // screen coordinates from noderefs to pass to Connections
+        if first_render {
+            self.link.send_message(WorkspaceMsg::Rerender);
+        }
+    }
 }
 
 impl Workspace {
-    pub fn register_terminals(&mut self, id: ModuleId, inputs: &[mixlab_protocol::Terminal], outputs: &[mixlab_protocol::Terminal]) {
-        let refs = WindowRef {
-            module: NodeRef::default(),
-            inputs: make_terminal_refs(inputs, TerminalType::Input),
-            outputs: make_terminal_refs(outputs, TerminalType::Output),
-        };
+    fn update_state(&mut self) {
+        let mut deleted_windows = self.window_refs.keys().copied().collect::<HashSet<_>>();
 
-        self.window_refs.insert(id, refs);
+        let state = self.props.state.borrow();
 
-        fn make_terminal_refs(terminals: &[mixlab_protocol::Terminal], terminal_type: TerminalType) -> Vec<TerminalRef> {
-            terminals.iter()
-                .cloned()
-                .map(|terminal| TerminalRef {
-                    node: NodeRef::default(),
-                    label: terminal.label().map(String::from),
-                    line_type: terminal.line_type(),
-                    terminal_type,
-                })
-                .collect()
+        for id in state.modules.keys() {
+            if deleted_windows.remove(id) {
+                // cool, nothing changes with this module
+            } else {
+                // this module was not present before, create a window ref for it
+                let inputs = state.inputs.get(id);
+                let outputs = state.outputs.get(id);
+
+                if let (Some(inputs), Some(outputs)) = (inputs, outputs) {
+                    let refs = WindowRef {
+                        module: NodeRef::default(),
+                        inputs: make_terminal_refs(inputs, TerminalType::Input),
+                        outputs: make_terminal_refs(outputs, TerminalType::Output),
+                    };
+
+                    self.window_refs.insert(*id, refs);
+
+                    fn make_terminal_refs(terminals: &[mixlab_protocol::Terminal], terminal_type: TerminalType) -> Vec<TerminalRef> {
+                        terminals.iter()
+                            .cloned()
+                            .map(|terminal| TerminalRef {
+                                node: NodeRef::default(),
+                                label: terminal.label().map(String::from),
+                                line_type: terminal.line_type(),
+                                terminal_type,
+                            })
+                            .collect()
+                    }
+                }
+            }
+        }
+
+        for deleted_window in deleted_windows {
+            self.window_refs.remove(&deleted_window);
         }
     }
 
