@@ -30,6 +30,7 @@ pub enum OpenError {
     Database(sqlx::Error),
 }
 
+#[allow(unused)]
 pub async fn open(base: ProjectBaseRef, stream_id: StreamId) -> Result<ReadStream, OpenError> {
     let (size,) = sqlx::query_as::<_, (i64,)>("SELECT size FROM streams WHERE rowid = ?")
         .bind(stream_id.0)
@@ -100,6 +101,7 @@ impl WriteStream {
     }
 }
 
+#[allow(unused)]
 pub struct ReadStream {
     base: ProjectBaseRef,
     stream_id: StreamId,
@@ -108,6 +110,7 @@ pub struct ReadStream {
 }
 
 impl ReadStream {
+    #[allow(unused)]
     pub async fn read_chunk(&mut self) -> Result<Option<Vec<u8>>, sqlx::Error> {
         let result = sqlx::query_as::<_, (Vec<u8>,)>("SELECT data FROM blobs WHERE stream_id = ? AND offset = ?")
             .bind(self.stream_id.0)

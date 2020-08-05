@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use bytes::Buf;
 use derive_more::From;
-use futures::future;
 use futures::sink::{Sink, SinkExt};
 use futures::stream::{self, Stream, StreamExt};
 use structopt::StructOpt;
@@ -16,7 +15,7 @@ use warp::Filter;
 use warp::reply::{self, Reply};
 use warp::ws::{self, Ws, WebSocket};
 
-use mixlab_protocol::{ClientMessage, ServerMessage, PerformanceInfo};
+use mixlab_protocol::{ClientMessage, ServerMessage};
 
 use crate::engine::EngineEvent;
 use crate::listen::{self, Disambiguation};
