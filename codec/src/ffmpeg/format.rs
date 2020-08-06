@@ -6,7 +6,7 @@ use std::slice;
 use ffmpeg_dev::sys as ff;
 use num_rational::Rational64;
 
-use mixlab_util::time::{MediaTime, MediaDuration};
+use mixlab_util::time::MediaDuration;
 
 use crate::ffmpeg::AvError;
 use crate::ffmpeg::ioctx::{IoReader, AvIoReader};
@@ -19,6 +19,7 @@ pub struct InputContainer<R: IoReader> {
 }
 
 impl<R: IoReader> InputContainer<R> {
+    #[allow(unused)]
     pub fn open(mut io: AvIoReader<R>) -> Result<Self, AvError> {
         let mut ctx = RawContext::alloc();
 
@@ -43,10 +44,12 @@ impl<R: IoReader> InputContainer<R> {
         })
     }
 
+    #[allow(unused)]
     fn as_underlying(&self) -> &ff::AVFormatContext {
         unsafe { &*(self.ctx.ptr as *const _) }
     }
 
+    #[allow(unused)]
     pub fn streams(&self) -> &[InputStream] {
         let underlying = self.as_underlying();
 
@@ -70,15 +73,18 @@ impl<R: IoReader> Drop for InputContainer<R> {
 }
 
 #[repr(transparent)]
+#[allow(unused)]
 pub struct InputStream {
     ptr: *mut ff::AVStream,
 }
 
 impl InputStream {
+    #[allow(unused)]
     pub fn id(&self) -> i32 {
         self.as_underlying().id as i32
     }
 
+    #[allow(unused)]
     pub fn codec_name(&self) -> Option<&'static str> {
         let codec_id = self.codec_parameters().codec_id;
         let codec = unsafe { ff::avcodec_find_decoder(codec_id) };
@@ -91,19 +97,23 @@ impl InputStream {
         Some(long_name.to_str().expect("utf8 codec name"))
     }
 
+    #[allow(unused)]
     pub fn duration(&self) -> MediaDuration {
         MediaDuration::from(self.time_base() * self.as_underlying().duration)
     }
 
+    #[allow(unused)]
     fn time_base(&self) -> Rational64 {
         let underlying = self.as_underlying();
         Rational64::new(underlying.time_base.num.into(), underlying.time_base.den.into())
     }
 
+    #[allow(unused)]
     fn codec_parameters(&self) -> &ff::AVCodecParameters {
         unsafe { &*self.as_underlying().codecpar }
     }
 
+    #[allow(unused)]
     fn as_underlying(&self) -> &ff::AVStream {
         unsafe { &*(self.ptr as *const _) }
     }

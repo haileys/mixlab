@@ -1,10 +1,8 @@
 use std::fmt::{self, Display};
 use std::rc::Rc;
 
-use derive_more::{From, Into};
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties, Callback};
+use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 use yew_components::Select;
-use yew::events::ChangeData;
 
 use mixlab_protocol::{ModuleId, ModuleParams, MediaSourceParams, MediaLibrary, MediaItem};
 
@@ -80,7 +78,6 @@ impl Component for MediaSource {
         html! {
             <Select<MediaSourceItem>
                 options={options}
-                selected={Some(self.props.params)}
                 on_change={self.link.callback(MediaSourceMsg::ChangeSource)}
             />
         }
@@ -88,7 +85,7 @@ impl Component for MediaSource {
 }
 
 #[derive(Clone)]
-pub enum MediaSourceItem(MediaItem);
+pub struct MediaSourceItem(MediaItem);
 
 impl PartialEq for MediaSourceItem {
     fn eq(&self, other: &MediaSourceItem) -> bool {

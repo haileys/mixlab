@@ -10,7 +10,7 @@ use std::slice;
 
 use ffmpeg_dev::sys as ff;
 
-use crate::ffmpeg::{AvError, MIXLAB_IOCTX_ERROR, MIXLAB_IOCTX_PANIC};
+use crate::ffmpeg::{MIXLAB_IOCTX_ERROR, MIXLAB_IOCTX_PANIC};
 
 pub trait IoReader {
     type Error;
@@ -28,6 +28,7 @@ pub struct AvIoReader<R: IoReader> {
 }
 
 impl<R: IoReader> AvIoReader<R> {
+    #[allow(unused)]
     pub fn new(reader: R) -> Self {
         let reader = Box::into_raw(Box::new(ReaderState {
             error: None,
@@ -51,7 +52,7 @@ impl<R: IoReader> AvIoReader<R> {
             let state = &mut *(opaque as *mut ReaderState<R>);
 
             state.run_callback(|reader| {
-                let buf = unsafe { slice::from_raw_parts_mut(buf, usize::try_from(buf_size).expect("read callback: buf_size as usize")) };
+                let buf = slice::from_raw_parts_mut(buf, usize::try_from(buf_size).expect("read callback: buf_size as usize"));
 
                 reader.read(buf).map(|bytes| {
                     // this should never overflow, because buf_size is a c_int

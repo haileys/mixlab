@@ -1,4 +1,4 @@
-use crate::engine::{Sample, InputRef, OutputRef};
+use crate::engine::{InputRef, OutputRef};
 use crate::module::{ModuleT, LineType, Terminal};
 
 use mixlab_protocol::MediaSourceParams;
@@ -34,7 +34,7 @@ impl ModuleT for MediaSource {
         None
     }
 
-    fn run_tick(&mut self, _t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
+    fn run_tick(&mut self, _t: u64, _inputs: &[InputRef], _outputs: &mut [OutputRef]) -> Option<Self::Indication> {
         None
     }
 
