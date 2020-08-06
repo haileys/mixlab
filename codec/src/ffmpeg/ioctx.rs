@@ -1,5 +1,6 @@
 use std::any::Any;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
+use std::io::SeekFrom;
 use std::marker::PhantomData;
 use std::mem;
 use std::os::raw::{c_void, c_int};
@@ -16,7 +17,8 @@ pub trait IoReader {
     const BUFFER_SIZE: usize;
 
     fn read(&mut self, out: &mut [u8]) -> Result<usize, Self::Error>;
-    fn seek(&mut self, pos: u64) -> Result<(), Self::Error>;
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64, Self::Error>;
+    fn size(&mut self) -> Result<u64, Self::Error>;
 }
 
 pub struct AvIoReader<R: IoReader> {
@@ -63,14 +65,18 @@ impl<R: IoReader> AvIoReader<R> {
             let state = &mut *(opaque as *mut ReaderState<R>);
 
             state.run_callback(|reader| {
-                if whence != ff::SEEK_SET as i32 {
-                    panic!("seek callback: expected whence to be SEEK_SET");
+                if (whence & ff::AVSEEK_SIZE as i32) != 0 {
+                    return Ok(i64::try_from(reader.size()?).expect("size too large"));
                 }
 
-                let unsigned_pos = u64::try_from(pos)
-                    .expect("pos is negative");
+                let pos = match whence as u32 {
+                    ff::SEEK_SET => SeekFrom::Start(pos.try_into().expect("pos to be >= 0")),
+                    ff::SEEK_CUR => SeekFrom::Current(pos),
+                    ff::SEEK_END => SeekFrom::End(pos),
+                    _ => { return Ok(-i64::from(ff::EINVAL)); }
+                };
 
-                reader.seek(unsigned_pos).map(|()| pos)
+                reader.seek(pos).map(|pos| i64::try_from(pos).expect("u64 too large"))
             })
         }
     }

@@ -124,10 +124,16 @@ mod tests {
             Ok(bytes)
         }
 
-        fn seek(&mut self, pos: u64) -> Result<(), Self::Error> {
-            eprintln!("AvIoReader seeked to {}", pos);
-            Seek::seek(self, SeekFrom::Start(pos))?;
-            Ok(())
+        fn seek(&mut self, pos: SeekFrom) -> Result<u64, Self::Error> {
+            eprintln!("AvIoReader seeked to {:?}", pos);
+            Seek::seek(self, pos)
+        }
+
+        fn size(&mut self) -> Result<u64, Self::Error> {
+            let cur_pos = Seek::seek(self, SeekFrom::Current(0))?;
+            let len = Seek::seek(self, SeekFrom::End(0))?;
+            Seek::seek(self, SeekFrom::Start(cur_pos))?;
+            Ok(len)
         }
     }
 
