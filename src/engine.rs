@@ -26,7 +26,7 @@ use timing::{EngineStat, TickStat};
 use workspace::SyncWorkspace;
 
 pub use io::{InputRef, OutputRef, Output, VideoFrame};
-pub use module::ModuleLink;
+pub use module::ModuleCtx;
 pub use workspace::WorkspaceEmbryo;
 
 pub type Sample = f32;

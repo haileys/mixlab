@@ -11,7 +11,7 @@ impl ModuleT for StereoSplitter {
     type Params = ();
     type Indication = ();
 
-    fn create(_: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
+    fn create(_: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {
             inputs: vec![LineType::Stereo.unlabeled()],
             outputs: vec![

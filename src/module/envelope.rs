@@ -69,7 +69,7 @@ impl ModuleT for Envelope {
     type Params = EnvelopeParams;
     type Indication = ();
 
-    fn create(params: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {
             params,
             state: EnvelopeState::Initial,

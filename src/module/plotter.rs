@@ -14,7 +14,7 @@ impl ModuleT for Plotter {
     type Params = ();
     type Indication = PlotterIndication;
 
-    fn create(_: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
+    fn create(_: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (
             Self {
                 inputs: vec![LineType::Stereo.unlabeled()],

@@ -44,7 +44,7 @@ impl ModuleT for OutputDevice {
     type Params = OutputDeviceParams;
     type Indication = OutputDeviceIndication;
 
-    fn create(params: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let host = cpal::default_host();
 
         // TODO - see if we can update devices as they are added/removed from host

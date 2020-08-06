@@ -29,7 +29,7 @@ impl ModuleT for EqThree {
     type Params = EqThreeParams;
     type Indication = ();
 
-    fn create(params: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let lo = LowPass::new(FREQ_LO);
         let hi = LowPass::new(FREQ_HI);
 

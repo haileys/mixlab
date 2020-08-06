@@ -1,12 +1,12 @@
 use crate::module::ModuleT;
 
 #[derive(Debug)]
-pub struct ModuleLink<T: ModuleT> {
+pub struct ModuleCtx<T: ModuleT> {
     phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: ModuleT> ModuleLink<T> {
+impl<T: ModuleT> ModuleCtx<T> {
     pub fn new() -> Self {
-        ModuleLink { phantom: std::marker::PhantomData }
+        ModuleCtx { phantom: std::marker::PhantomData }
     }
 }

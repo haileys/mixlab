@@ -34,7 +34,7 @@ impl ModuleT for VideoMixer {
     type Params = VideoMixerParams;
     type Indication = ();
 
-    fn create(params: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let mixer = VideoMixer {
             params,
             inputs: (0..VIDEO_MIXER_CHANNELS).map(|i|

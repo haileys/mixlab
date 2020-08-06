@@ -85,7 +85,7 @@ impl ModuleT for Monitor {
     type Params = ();
     type Indication = MonitorIndication;
 
-    fn create(_: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
+    fn create(_: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let socket_id = Uuid::new_v4();
         let codec = AsyncCodec::start(socket_id);
 

@@ -1,4 +1,4 @@
-use crate::engine::{InputRef, OutputRef};
+use crate::engine::{InputRef, OutputRef, ModuleCtx};
 use crate::module::{ModuleT, LineType, Terminal};
 
 use mixlab_protocol::MediaSourceParams;
@@ -14,7 +14,7 @@ impl ModuleT for MediaSource {
     type Params = MediaSourceParams;
     type Indication = ();
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {
             params,
             inputs: vec![],
