@@ -18,6 +18,7 @@ use crate::module::ModuleE;
 use crate::util::Sequence;
 
 mod io;
+mod module;
 mod timing;
 mod workspace;
 
@@ -25,6 +26,7 @@ use timing::{EngineStat, TickStat};
 use workspace::SyncWorkspace;
 
 pub use io::{InputRef, OutputRef, Output, VideoFrame};
+pub use module::ModuleLink;
 pub use workspace::WorkspaceEmbryo;
 
 pub type Sample = f32;

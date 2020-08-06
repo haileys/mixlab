@@ -35,7 +35,7 @@ impl ModuleT for StreamOutput {
     type Params = StreamOutputParams;
     type Indication = StreamOutputIndication;
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
         let indic = StreamOutputIndication {
             live: StreamOutputLiveStatus::Offline,
             error: false,

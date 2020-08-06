@@ -2,7 +2,7 @@ use std::f64;
 
 use mixlab_protocol::EqThreeParams;
 
-use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
+use crate::engine::{self, InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::{ModuleT, LineType, Terminal};
 
 const FREQ_LO: f64 = 420.0;
@@ -29,7 +29,7 @@ impl ModuleT for EqThree {
     type Params = EqThreeParams;
     type Indication = ();
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
         let lo = LowPass::new(FREQ_LO);
         let hi = LowPass::new(FREQ_HI);
 

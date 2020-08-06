@@ -1,12 +1,12 @@
 use mixlab_protocol::{ModuleParams, Indication, Terminal, LineType};
 
-use crate::engine::{InputRef, OutputRef};
+use crate::engine::{self, InputRef, OutputRef, ModuleLink};
 
 pub trait ModuleT: Sized {
     type Params;
     type Indication;
 
-    fn create(params: Self::Params) -> (Self, Self::Indication);
+    fn create(params: Self::Params, link: engine::ModuleLink<Self>) -> (Self, Self::Indication);
     fn params(&self) -> Self::Params;
     fn update(&mut self, new_params: Self::Params) -> Option<Self::Indication>;
     fn run_tick(&mut self, t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication>;
@@ -29,7 +29,7 @@ macro_rules! gen_modules {
                 match params {
                     $(
                         ModuleParams::$module(params) => {
-                            let (module, indication) = $module::create(params);
+                            let (module, indication) = $module::create(params, ModuleLink::new());
                             (ModuleE::$module(module), Indication::$module(indication))
                         }
                     )*

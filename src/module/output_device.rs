@@ -9,7 +9,7 @@ use ringbuf::{RingBuffer, Producer};
 
 use mixlab_protocol::{OutputDeviceParams, OutputDeviceIndication, LineType, Terminal};
 
-use crate::engine::{Sample, InputRef, OutputRef, CHANNELS};
+use crate::engine::{self, Sample, InputRef, OutputRef, CHANNELS};
 use crate::module::ModuleT;
 use crate::util;
 
@@ -44,7 +44,7 @@ impl ModuleT for OutputDevice {
     type Params = OutputDeviceParams;
     type Indication = OutputDeviceIndication;
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
         let host = cpal::default_host();
 
         // TODO - see if we can update devices as they are added/removed from host

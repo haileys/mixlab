@@ -3,7 +3,7 @@ use std::cmp;
 use mixlab_protocol::{StreamInputParams, LineType, Terminal, StreamProtocol};
 use mixlab_util::time::{MediaTime, MediaDuration};
 
-use crate::engine::{InputRef, OutputRef, Sample, VideoFrame, SAMPLE_RATE};
+use crate::engine::{self, InputRef, OutputRef, Sample, VideoFrame, SAMPLE_RATE};
 use crate::icecast;
 use crate::module::ModuleT;
 use crate::rtmp;
@@ -31,7 +31,7 @@ impl ModuleT for StreamInput {
     type Params = StreamInputParams;
     type Indication = ();
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleLink<Self>) -> (Self, Self::Indication) {
         let recv = params.mountpoint.as_ref().and_then(|mountpoint|
             // TODO - listen returning an error means the mountpoint is already
             // in use. tell the user this via an indication
