@@ -9,9 +9,12 @@ bytes = { version = "0.5", features = ["serde"] }
 derive_more = "0.99"
 futures = "0.3"
 lewton = "0.10"
+num-rational = "*"
 ogg = "0.7"
 serde = "1.0"
 serde_derive = "1.0"
+
+mixlab-util = { path = "../util" }
 
 # see main Cargo.toml
 ffmpeg-dev = { git = "https://github.com/charliesome/ffmpeg-dev-rs", rev = "a9bdafb368ec8a049232f91efaf7560c9dd035fb", features = ["gpl", "x264"] }

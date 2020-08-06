@@ -2,6 +2,7 @@ pub mod amplifier;
 pub mod envelope;
 pub mod eq_three;
 pub mod fm_sine;
+pub mod media_source;
 pub mod mixer;
 pub mod monitor;
 pub mod oscillator;

@@ -95,4 +95,5 @@ gen_modules!{
     stream_output::StreamOutput,
     trigger::Trigger,
     video_mixer::VideoMixer,
+    media_source::MediaSource,
 }

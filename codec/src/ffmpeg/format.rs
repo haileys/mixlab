@@ -1,8 +1,12 @@
 use std::convert::TryInto;
+use std::ffi::CStr;
 use std::ptr;
 use std::slice;
 
 use ffmpeg_dev::sys as ff;
+use num_rational::Rational64;
+
+use mixlab_util::time::{MediaTime, MediaDuration};
 
 use crate::ffmpeg::AvError;
 use crate::ffmpeg::ioctx::{IoReader, AvIoReader};
@@ -73,6 +77,31 @@ pub struct InputStream {
 impl InputStream {
     pub fn id(&self) -> i32 {
         self.as_underlying().id as i32
+    }
+
+    pub fn codec_name(&self) -> Option<&'static str> {
+        let codec_id = self.codec_parameters().codec_id;
+        let codec = unsafe { ff::avcodec_find_decoder(codec_id) };
+
+        if codec == ptr::null_mut() {
+            return None;
+        }
+
+        let long_name = unsafe { CStr::from_ptr((*codec).long_name) };
+        Some(long_name.to_str().expect("utf8 codec name"))
+    }
+
+    pub fn duration(&self) -> MediaDuration {
+        MediaDuration::from(self.time_base() * self.as_underlying().duration)
+    }
+
+    fn time_base(&self) -> Rational64 {
+        let underlying = self.as_underlying();
+        Rational64::new(underlying.time_base.num.into(), underlying.time_base.den.into())
+    }
+
+    fn codec_parameters(&self) -> &ff::AVCodecParameters {
+        unsafe { &*self.as_underlying().codecpar }
     }
 
     fn as_underlying(&self) -> &ff::AVStream {
@@ -146,10 +175,13 @@ mod tests {
         let avio = AvIoReader::new(file);
         let fmt = InputContainer::open(avio).unwrap();
 
-        println!("streams:");
+        eprintln!("streams:");
 
         for stream in fmt.streams() {
-            println!("  - {:?}", stream.id());
+            let secs = (stream.duration().as_rational() * 1_000).to_integer() as f64 / 1_000.0;
+            eprintln!("  - {:?}: {:?}, {:.3} secs", stream.id(), stream.codec_name(), secs);
         }
+
+        panic!("OK")
     }
 }
