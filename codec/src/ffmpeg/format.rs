@@ -45,12 +45,15 @@ impl<R: IoReader> InputContainer<R> {
 
     pub fn streams(&self) -> &[InputStream] {
         let underlying = self.as_underlying();
-        let nb_streams = underlying.nb_streams.try_into()
+
+        let ptr = underlying.streams
+            as *const *mut ff::AVStream
+            as *const InputStream;
+
+        let len = underlying.nb_streams.try_into()
             .expect("nb_streams as usize");
 
-        unsafe {
-            slice::from_raw_parts(underlying.streams as *const *mut _, nb_streams)
-        }
+        unsafe { slice::from_raw_parts(ptr, len) }
     }
 }
 
