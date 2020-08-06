@@ -125,7 +125,7 @@ impl LowPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::module::ModuleT;
+    use crate::module::{ModuleT, InputRef, OutputRef};
     use mixlab_protocol::{Decibel, EqThreeParams};
     use super::EqThree;
 
@@ -158,7 +158,7 @@ mod tests {
 
         let mut output = vec![0.0; input.len()];
 
-        eq.run_tick(0, &[Some(&input)], &mut [&mut output]);
+        eq.run_tick(0, &[InputRef::Mono(&input)], &mut [OutputRef::Mono(&mut output)]);
 
         let expected_output = bytes_to_f32s(include_bytes!("../../fixtures/module/eq_three/chronos-eq.f32.raw"));
 
