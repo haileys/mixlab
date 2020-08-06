@@ -5,13 +5,13 @@ use tokio::sync::watch;
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, TerminalId, WindowGeometry, Indication, LineType};
 
-use crate::module::Module;
+use crate::module::ModuleE;
 use crate::persist;
 use crate::util::Sequence;
 
 pub struct Workspace {
     pub(in crate::engine) module_seq: Sequence,
-    pub(in crate::engine) modules: HashMap<ModuleId, Module>,
+    pub(in crate::engine) modules: HashMap<ModuleId, ModuleE>,
     pub(in crate::engine) geometry: HashMap<ModuleId, WindowGeometry>,
     pub(in crate::engine) connections: HashMap<InputId, OutputId>,
     pub(in crate::engine) indications: HashMap<ModuleId, Indication>,
@@ -25,7 +25,7 @@ impl Workspace {
 
         // load modules and geometry
         for (module_id, saved_module) in &save.modules {
-            let (module, indication) = Module::create(saved_module.params.clone());
+            let (module, indication) = ModuleE::create(saved_module.params.clone());
             modules.insert(*module_id, module);
             geometry.insert(*module_id, saved_module.geometry.clone());
             indications.insert(*module_id, indication);

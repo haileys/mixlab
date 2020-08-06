@@ -20,17 +20,17 @@ macro_rules! gen_modules {
         $( use $mod_name::$module; )*
 
         #[derive(Debug)]
-        pub enum Module {
+        pub enum ModuleE {
             $( $module($module), )*
         }
 
-        impl Module {
+        impl ModuleE {
             pub fn create(params: ModuleParams) -> (Self, Indication) {
                 match params {
                     $(
                         ModuleParams::$module(params) => {
                             let (module, indication) = $module::create(params);
-                            (Module::$module(module), Indication::$module(indication))
+                            (ModuleE::$module(module), Indication::$module(indication))
                         }
                     )*
                 }
@@ -38,14 +38,14 @@ macro_rules! gen_modules {
 
             pub fn params(&self) -> ModuleParams {
                 match self {
-                    $(Module::$module(m) => ModuleParams::$module(m.params()),)*
+                    $(ModuleE::$module(m) => ModuleParams::$module(m.params()),)*
                 }
             }
 
             pub fn update(&mut self, new_params: ModuleParams) -> Option<Indication> {
                 match (self, new_params) {
                     $(
-                        (Module::$module(m), ModuleParams::$module(ref new_params)) =>
+                        (ModuleE::$module(m), ModuleParams::$module(ref new_params)) =>
                             m.update(new_params.clone()).map(Indication::$module),
                     )*
                     (module, new_params) => {
@@ -59,20 +59,20 @@ macro_rules! gen_modules {
             pub fn run_tick(&mut self, t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Indication> {
                 match self {
                     $(
-                        Module::$module(m) => m.run_tick(t, inputs, outputs).map(Indication::$module),
+                        ModuleE::$module(m) => m.run_tick(t, inputs, outputs).map(Indication::$module),
                     )*
                 }
             }
 
             pub fn inputs(&self) -> &[Terminal] {
                 match self {
-                    $(Module::$module(m) => m.inputs(),)*
+                    $(ModuleE::$module(m) => m.inputs(),)*
                 }
             }
 
             pub fn outputs(&self) -> &[Terminal] {
                 match self {
-                    $(Module::$module(m) => m.outputs(),)*
+                    $(ModuleE::$module(m) => m.outputs(),)*
                 }
             }
         }

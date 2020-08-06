@@ -14,7 +14,7 @@ use tokio::sync::{oneshot, broadcast, watch};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, WorkspaceState, ServerUpdate, Indication, ClientSequence, WorkspaceMessage, WorkspaceOp, PerformanceInfo};
 
-use crate::module::Module;
+use crate::module::ModuleE;
 use crate::util::Sequence;
 
 mod io;
@@ -281,7 +281,7 @@ impl Engine {
                 let op = {
                     let mut workspace = self.workspace.borrow_mut();
                     let id = ModuleId(workspace.module_seq.next());
-                    let (module, indication) = Module::create(params.clone());
+                    let (module, indication) = ModuleE::create(params.clone());
                     let inputs = module.inputs().to_vec();
                     let outputs = module.outputs().to_vec();
                     workspace.modules.insert(id, module);
@@ -426,7 +426,7 @@ impl Engine {
         }
 
         struct Topsort<'a> {
-            modules: &'a HashMap<ModuleId, Module>,
+            modules: &'a HashMap<ModuleId, ModuleE>,
             connections: &'a HashMap<InputId, OutputId>,
             run_order: Vec<ModuleId>,
             seen: HashSet<ModuleId>,
