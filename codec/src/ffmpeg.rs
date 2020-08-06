@@ -53,8 +53,8 @@ impl Drop for AvCodecContext {
     }
 }
 
-pub const MIXLAB_IOCTX_ERROR: c_int = 0x6d786c00; // 'M' 'X' 'L' 0x00
-pub const MIXLAB_IOCTX_PANIC: c_int = 0x6d786c01; // 'M' 'X' 'L' 0x01
+pub const MIXLAB_IOCTX_ERROR: c_int = -0x6d786c00; // 'M' 'X' 'L' 0x00
+pub const MIXLAB_IOCTX_PANIC: c_int = -0x6d786c01; // 'M' 'X' 'L' 0x01
 
 pub struct AvError(pub(crate) c_int);
 
