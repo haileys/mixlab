@@ -6,7 +6,9 @@ use std::ptr;
 pub use ffmpeg_dev::sys as sys;
 use sys as ff;
 
+mod format;
 mod frame;
+mod ioctx;
 mod packet;
 mod pixfmt;
 mod scale;
@@ -50,6 +52,9 @@ impl Drop for AvCodecContext {
         }
     }
 }
+
+pub const MIXLAB_IOCTX_ERROR: c_int = 0x6d786c00; // 'M' 'X' 'L' 0x00
+pub const MIXLAB_IOCTX_PANIC: c_int = 0x6d786c01; // 'M' 'X' 'L' 0x01
 
 pub struct AvError(pub(crate) c_int);
 
