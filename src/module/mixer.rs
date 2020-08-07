@@ -10,7 +10,6 @@ pub struct Mixer {
     ctx: Option<engine::ModuleCtx<Self>>,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
-    channel_gain: Vec<f64>,
 }
 
 impl ModuleT for Mixer {
@@ -26,7 +25,6 @@ impl ModuleT for Mixer {
                 LineType::Stereo.labeled("Master"),
                 LineType::Stereo.labeled("Cue"),
             ],
-            channel_gain: vec![0.0; params.channels.len()],
             params,
             ctx: Some(ctx),
         };
