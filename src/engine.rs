@@ -15,6 +15,7 @@ use tokio::sync::{oneshot, broadcast, watch};
 use mixlab_protocol::{ModuleId, InputId, OutputId, WorkspaceState, ServerUpdate, Indication, ClientSequence, WorkspaceMessage, WorkspaceOp, PerformanceInfo};
 
 use crate::module::ModuleE;
+use crate::project::ProjectBaseRef;
 use crate::util::Sequence;
 
 mod io;
@@ -70,7 +71,7 @@ pub struct EngineSession {
     cmd_tx: SyncSender<EngineMessage>,
 }
 
-pub fn start(tokio_runtime: runtime::Handle, workspace: WorkspaceEmbryo) -> EngineHandle {
+pub fn start(tokio_runtime: runtime::Handle, workspace: WorkspaceEmbryo, base: ProjectBaseRef) -> EngineHandle {
     let (cmd_tx, cmd_rx) = mpsc::sync_channel(8);
     let (log_tx, _) = broadcast::channel(64);
     let (perf_tx, perf_rx) = watch::channel(None);
@@ -81,7 +82,8 @@ pub fn start(tokio_runtime: runtime::Handle, workspace: WorkspaceEmbryo) -> Engi
             log_tx,
             perf_tx,
             session_seq: Sequence::new(),
-            workspace: workspace.spawn(),
+            workspace: workspace.spawn(base.clone()),
+            base,
         };
 
         // enter the tokio runtime context for the engine thread
@@ -157,6 +159,7 @@ pub struct Engine {
     perf_tx: watch::Sender<Option<Arc<PerformanceInfo>>>,
     session_seq: Sequence,
     workspace: SyncWorkspace,
+    base: ProjectBaseRef,
 }
 
 impl Engine {
@@ -283,7 +286,7 @@ impl Engine {
                 let op = {
                     let mut workspace = self.workspace.borrow_mut();
                     let id = ModuleId(workspace.module_seq.next());
-                    let (module, indication) = ModuleE::create(params.clone());
+                    let (module, indication) = ModuleE::create(params.clone(), self.base.clone());
                     let inputs = module.inputs().to_vec();
                     let outputs = module.outputs().to_vec();
                     workspace.modules.insert(id, module);

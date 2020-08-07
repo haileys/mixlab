@@ -1,3 +1,4 @@
+use std::fmt::{self, Debug};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -25,11 +26,18 @@ pub struct ProjectHandle {
 }
 
 pub struct ProjectBase {
+    path: PathBuf,
     database: SqlitePool,
     notify: NotifyTx,
 }
 
-type ProjectBaseRef = Arc<ProjectBase>;
+impl Debug for ProjectBase {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ProjectBase({:?})", self.path)
+    }
+}
+
+pub type ProjectBaseRef = Arc<ProjectBase>;
 
 #[derive(From, Debug)]
 pub enum OpenError {
@@ -47,6 +55,7 @@ impl ProjectBase {
         let database = db::attach(&sqlite_path).await?;
 
         Ok(ProjectBase {
+            path,
             database,
             notify,
         })
@@ -108,11 +117,11 @@ pub async fn open_or_create(path: PathBuf) -> Result<ProjectHandle, OpenError> {
     let base = ProjectBase::attach(path, notify_tx).await?;
     let workspace = base.read_workspace().await?;
 
+    let base = Arc::new(base);
+
     // start engine update thread
     let (embryo, mut persist_rx) = WorkspaceEmbryo::new(workspace);
-    let engine = engine::start(runtime::Handle::current(), embryo);
-
-    let base = Arc::new(base);
+    let engine = engine::start(runtime::Handle::current(), embryo, base.clone());
 
     task::spawn({
         let base = base.clone();

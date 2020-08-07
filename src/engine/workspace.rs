@@ -7,6 +7,7 @@ use mixlab_protocol::{ModuleId, InputId, OutputId, TerminalId, WindowGeometry, I
 
 use crate::module::ModuleE;
 use crate::persist;
+use crate::project::ProjectBaseRef;
 use crate::util::Sequence;
 
 pub struct Workspace {
@@ -18,14 +19,14 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    pub fn from_persist(save: &persist::Workspace) -> Self {
+    pub fn from_persist(save: &persist::Workspace, base: ProjectBaseRef) -> Self {
         let mut modules = HashMap::new();
         let mut geometry = HashMap::new();
         let mut indications = HashMap::new();
 
         // load modules and geometry
         for (module_id, saved_module) in &save.modules {
-            let (module, indication) = ModuleE::create(saved_module.params.clone());
+            let (module, indication) = ModuleE::create(saved_module.params.clone(), base.clone());
             modules.insert(*module_id, module);
             geometry.insert(*module_id, saved_module.geometry.clone());
             indications.insert(*module_id, indication);
@@ -134,8 +135,8 @@ impl WorkspaceEmbryo {
         (WorkspaceEmbryo { workspace, persist_tx }, persist_rx)
     }
 
-    pub fn spawn(self) -> SyncWorkspace {
-        let workspace = Workspace::from_persist(&self.workspace);
+    pub fn spawn(self, base: ProjectBaseRef) -> SyncWorkspace {
+        let workspace = Workspace::from_persist(&self.workspace, base);
 
         SyncWorkspace {
             workspace,

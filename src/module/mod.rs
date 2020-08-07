@@ -1,6 +1,7 @@
 use mixlab_protocol::{ModuleParams, Indication, Terminal, LineType};
 
 use crate::engine::{self, InputRef, OutputRef, ModuleCtx};
+use crate::project::ProjectBaseRef;
 
 pub trait ModuleT: Sized {
     type Params;
@@ -25,11 +26,11 @@ macro_rules! gen_modules {
         }
 
         impl ModuleE {
-            pub fn create(params: ModuleParams) -> (Self, Indication) {
+            pub fn create(params: ModuleParams, base: ProjectBaseRef) -> (Self, Indication) {
                 match params {
                     $(
                         ModuleParams::$module(params) => {
-                            let (module, indication) = $module::create(params, ModuleCtx::new());
+                            let (module, indication) = $module::create(params, ModuleCtx::new(base));
                             (ModuleE::$module(module), Indication::$module(indication))
                         }
                     )*
@@ -45,14 +46,13 @@ macro_rules! gen_modules {
             pub fn update(&mut self, new_params: ModuleParams) -> Option<Indication> {
                 match (self, new_params) {
                     $(
-                        (ModuleE::$module(m), ModuleParams::$module(ref new_params)) =>
-                            m.update(new_params.clone()).map(Indication::$module),
+                        (ModuleE::$module(m), ModuleParams::$module(ref new_params)) => {
+                            m.update(new_params.clone()).map(Indication::$module)
+                        }
+                        (ModuleE::$module(m), ref params) => {
+                            panic!("module params mismatch! module = {:?}, params = {:?}", m, params);
+                        }
                     )*
-                    (module, new_params) => {
-                        let (m, indic) = Self::create(new_params.clone());
-                        *module = m;
-                        Some(indic)
-                    }
                 }
             }
 
