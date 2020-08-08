@@ -33,10 +33,7 @@ impl ModuleT for StreamInput {
     type Event = ();
 
     fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
-        let recv = params.mountpoint.as_ref().and_then(|mountpoint|
-            // TODO - listen returning an error means the mountpoint is already
-            // in use. tell the user this via an indication
-            icecast::listen(mountpoint).ok());
+        let recv = listen_mountpoint(&params);
 
         let module = StreamInput {
             params,
