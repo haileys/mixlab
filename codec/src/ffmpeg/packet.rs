@@ -1,5 +1,6 @@
 use std::convert::{TryInto, TryFrom};
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::os::raw::c_int;
 use std::ptr;
@@ -7,6 +8,8 @@ use std::slice;
 use std::mem::ManuallyDrop;
 
 use ffmpeg_dev::sys as ff;
+
+use crate::ffmpeg::AvError;
 
 #[derive(Debug)]
 pub struct AvPacket {
@@ -71,6 +74,19 @@ impl AvPacket {
 
     pub fn is_key_frame(&self) -> bool {
         (self.flags() & ff::AV_PKT_FLAG_KEY as i32) != 0
+    }
+}
+
+impl Clone for AvPacket {
+    fn clone(&self) -> Self {
+        unsafe {
+            let mut new_packet = MaybeUninit::uninit();
+            let rc = ff::av_packet_ref(new_packet.as_mut_ptr(), self.as_ptr());
+            if rc != 0 {
+                panic!("av_packet_ref: {:?}", AvError(rc));
+            }
+            AvPacket { packet: new_packet.assume_init() }
+        }
     }
 }
 
