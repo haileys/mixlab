@@ -28,7 +28,6 @@ impl Component for Sidebar {
     type Message = SidebarMsg;
 
     fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
-        crate::log!("session.borrow_mut {}:{}", file!(), line!());
         let perf_notify = props.session.listen_performance(link.callback(SidebarMsg::PerfInfo));
 
         Sidebar {
