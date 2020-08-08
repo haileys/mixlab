@@ -14,7 +14,7 @@ mod pixfmt;
 mod scale;
 
 pub use frame::{AvFrame, PictureSettings, PictureData, PictureDataMut};
-pub use packet::AvPacket;
+pub use packet::{AvPacket, AvPacketRef, PacketInfo, PacketSideData};
 pub use scale::SwsContext;
 pub use pixfmt::{PixelFormat, PixFmtDescriptor, PlaneInfo, ColorFormat};
 

@@ -5,7 +5,7 @@ use std::slice;
 
 use ffmpeg_dev::sys as ff;
 
-use crate::ffmpeg::{AvCodecContext, AvFrame, AvError, AvDict};
+use crate::ffmpeg::{AvCodecContext, AvFrame, AvError, AvDict, AvPacket};
 
 #[derive(Debug)]
 pub struct AvcDecoder {
@@ -43,35 +43,8 @@ impl AvcDecoder {
         Ok(AvcDecoder { ctx })
     }
 
-    pub fn send_packet(&mut self, pkt: Packet) -> Result<(), AvError> {
-        let side_data = pkt.dcr.map(|dcr| {
-            ff::AVPacketSideData {
-                data: dcr.as_ptr() as *mut _, // never mutated
-                size: dcr.len() as c_int,
-                type_: ff::AVPacketSideDataType_AV_PKT_DATA_NEW_EXTRADATA,
-            }
-        });
-
-        let side_data_list = side_data.as_ref().map(slice::from_ref).unwrap_or(&[]);
-
-        let av_pkt = ff::AVPacket {
-            buf: ptr::null_mut(),
-            pts: pkt.pts,
-            dts: pkt.dts,
-            data: pkt.data.as_ptr() as *mut _, // send_packet never mutates data
-            size: pkt.data.len() as c_int,
-            stream_index: 0,
-            flags: 0,
-            side_data: side_data_list.as_ptr() as *mut _, // never mutated
-            side_data_elems: side_data_list.len() as c_int,
-            duration: 0,
-            pos: -1,
-            convergence_duration: 0,
-        };
-
-        let rc = unsafe { ff::avcodec_send_packet(self.ctx.as_mut_ptr(), &av_pkt) };
-
-        mem::drop(av_pkt);
+    pub fn send_packet(&mut self, pkt: &AvPacket) -> Result<(), AvError> {
+        let rc = unsafe { ff::avcodec_send_packet(self.ctx.as_mut_ptr(), pkt.as_ptr()) };
 
         if rc == 0 {
             Ok(())
@@ -96,13 +69,6 @@ impl AvcDecoder {
             err => Err(RecvFrameError::Codec(AvError(err))),
         }
     }
-}
-
-pub struct Packet<'a> {
-    pub pts: i64,
-    pub dts: i64,
-    pub data: &'a [u8],
-    pub dcr: Option<&'a [u8]>,
 }
 
 pub enum RecvFrameError {

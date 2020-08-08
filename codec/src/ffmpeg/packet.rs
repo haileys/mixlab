@@ -120,7 +120,6 @@ pub struct PacketInfo<'a> {
     pub pts: i64,
     pub dts: i64,
     pub data: &'a [u8],
-    pub dcr: Option<&'a [u8]>,
     pub side_data: &'a [PacketSideData<'a>],
 }
 
@@ -131,12 +130,12 @@ pub struct PacketSideData<'a> {
 }
 
 impl<'a> PacketSideData<'a> {
-    pub fn borrowed(data: &'a [u8], type_: ff::AVPacketSideDataType) -> Self {
+    pub fn new_extradata(data: &'a [u8]) -> Self {
         PacketSideData {
             side_data: ff::AVPacketSideData {
                 data: data.as_ptr() as *mut u8, // never mutated
                 size: data.len().try_into().expect("c_int from side data size"),
-                type_,
+                type_: ff::AVPacketSideDataType_AV_PKT_DATA_NEW_EXTRADATA,
             },
             phantom: PhantomData,
         }

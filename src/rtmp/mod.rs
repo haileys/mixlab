@@ -1,5 +1,6 @@
 use std::io;
 use std::mem;
+use std::slice;
 use std::thread;
 
 use bytes::Bytes;
@@ -13,7 +14,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use mixlab_codec::aac;
 use mixlab_codec::avc::decode::{self, AvcDecoder, RecvFrameError};
-use mixlab_codec::ffmpeg::AvError;
+use mixlab_codec::ffmpeg::{AvError, AvPacketRef, PacketInfo, PacketSideData};
 use mixlab_util::time::{MediaDuration, MediaTime};
 
 use crate::listen::PeekTcpStream;
@@ -286,12 +287,17 @@ fn receive_video_packet(
             let dts = timestamp.value as i64;
             let pts = dts + packet.composition_time as i64;
 
-            ctx.video_codec.send_packet(decode::Packet {
-                dts: dts,
-                pts: pts,
+            let side_data = dcr.as_deref().map(PacketSideData::new_extradata);
+            let side_data = side_data.as_ref().map(slice::from_ref).unwrap_or(&[]);
+
+            let av_packet = AvPacketRef::borrowed(PacketInfo {
+                dts,
+                pts,
                 data: &packet.data,
-                dcr: dcr.as_deref(),
-            }).unwrap();
+                side_data: &side_data,
+            });
+
+            ctx.video_codec.send_packet(&av_packet);
 
             loop {
                 match ctx.video_codec.recv_frame() {
