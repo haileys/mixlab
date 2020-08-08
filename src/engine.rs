@@ -76,18 +76,18 @@ pub fn start(tokio_runtime: runtime::Handle, workspace: WorkspaceEmbryo, base: P
     let (perf_tx, perf_rx) = watch::channel(None);
 
     thread::spawn(move || {
-        let mut engine = Engine {
-            cmd_rx,
-            log_tx,
-            perf_tx,
-            session_seq: Sequence::new(),
-            workspace: workspace.spawn(base.clone()),
-            base,
-        };
-
         // enter the tokio runtime context for the engine thread
         // this allows modules to spawn async tasks
         tokio_runtime.enter(|| {
+            let mut engine = Engine {
+                cmd_rx,
+                log_tx,
+                perf_tx,
+                session_seq: Sequence::new(),
+                workspace: workspace.spawn(base.clone()),
+                base,
+            };
+
             engine.run();
         });
     });
