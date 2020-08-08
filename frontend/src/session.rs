@@ -124,46 +124,48 @@ impl Session {
                 }
             }
             ServerMessage::Update(op) => {
-                let state = self.state.borrow().as_ref().cloned()
-                    .expect("PROTOCOL VIOLATION: received Update before WorkspaceState");
+                {
+                    let state = self.state.borrow().as_ref().cloned()
+                        .expect("PROTOCOL VIOLATION: received Update before WorkspaceState");
 
-                let mut state = state.borrow_mut();
+                    let mut state = state.borrow_mut();
 
-                match op {
-                    ServerUpdate::CreateModule { id, params, geometry, indication, inputs, outputs } => {
-                        state.modules.insert(id, params);
-                        state.geometry.insert(id, geometry);
-                        state.indications.insert(id, indication);
-                        state.inputs.insert(id, inputs);
-                        state.outputs.insert(id, outputs);
-                    }
-                    ServerUpdate::UpdateModuleParams(id, new_params) => {
-                        if let Some(params) = state.modules.get_mut(&id) {
-                            *params = new_params;
+                    match op {
+                        ServerUpdate::CreateModule { id, params, geometry, indication, inputs, outputs } => {
+                            state.modules.insert(id, params);
+                            state.geometry.insert(id, geometry);
+                            state.indications.insert(id, indication);
+                            state.inputs.insert(id, inputs);
+                            state.outputs.insert(id, outputs);
                         }
-                    }
-                    ServerUpdate::UpdateWindowGeometry(id, new_geometry) => {
-                        if let Some(geometry) = state.geometry.get_mut(&id) {
-                            *geometry = new_geometry;
+                        ServerUpdate::UpdateModuleParams(id, new_params) => {
+                            if let Some(params) = state.modules.get_mut(&id) {
+                                *params = new_params;
+                            }
                         }
-                    }
-                    ServerUpdate::UpdateModuleIndication(id, new_indication) => {
-                        if let Some(indication) = state.indications.get_mut(&id) {
-                            *indication = new_indication;
+                        ServerUpdate::UpdateWindowGeometry(id, new_geometry) => {
+                            if let Some(geometry) = state.geometry.get_mut(&id) {
+                                *geometry = new_geometry;
+                            }
                         }
-                    }
-                    ServerUpdate::DeleteModule(id) => {
-                        state.modules.remove(&id);
-                        state.geometry.remove(&id);
-                        state.indications.remove(&id);
-                        state.inputs.remove(&id);
-                        state.outputs.remove(&id);
-                    }
-                    ServerUpdate::CreateConnection(input, output) => {
-                        state.connections.insert(input, output);
-                    }
-                    ServerUpdate::DeleteConnection(input) => {
-                        state.connections.remove(&input);
+                        ServerUpdate::UpdateModuleIndication(id, new_indication) => {
+                            if let Some(indication) = state.indications.get_mut(&id) {
+                                *indication = new_indication;
+                            }
+                        }
+                        ServerUpdate::DeleteModule(id) => {
+                            state.modules.remove(&id);
+                            state.geometry.remove(&id);
+                            state.indications.remove(&id);
+                            state.inputs.remove(&id);
+                            state.outputs.remove(&id);
+                        }
+                        ServerUpdate::CreateConnection(input, output) => {
+                            state.connections.insert(input, output);
+                        }
+                        ServerUpdate::DeleteConnection(input) => {
+                            state.connections.remove(&input);
+                        }
                     }
                 }
 
