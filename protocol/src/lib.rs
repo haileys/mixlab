@@ -63,7 +63,7 @@ pub struct MediaLibrary {
     pub items: Vec<MediaItem>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MediaId(pub i64);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

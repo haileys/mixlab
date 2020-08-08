@@ -13,6 +13,7 @@ pub struct Trigger {
 impl ModuleT for Trigger {
     type Params = GateState;
     type Indication = ();
+    type Event = ();
 
     fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {

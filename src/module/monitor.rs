@@ -84,6 +84,7 @@ pub struct Monitor {
 impl ModuleT for Monitor {
     type Params = ();
     type Indication = MonitorIndication;
+    type Event = ();
 
     fn create(_: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let socket_id = Uuid::new_v4();

@@ -15,6 +15,7 @@ pub struct Mixer {
 impl ModuleT for Mixer {
     type Params = MixerParams;
     type Indication = ();
+    type Event = ();
 
     fn create(params: Self::Params, ctx: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let mixer = Mixer {

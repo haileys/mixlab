@@ -7,9 +7,11 @@ use crate::engine::{self, InputRef, OutputRef, ModuleCtx};
 pub trait ModuleT: Any + Sized {
     type Params;
     type Indication;
+    type Event: Send;
 
     fn create(params: Self::Params, ctx: ModuleCtx<Self>) -> (Self, Self::Indication);
     fn params(&self) -> Self::Params;
+    fn receive_event(&mut self, ev: Self::Event) {}
     fn update(&mut self, new_params: Self::Params) -> Option<Self::Indication>;
     fn run_tick(&mut self, t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication>;
     fn inputs(&self) -> &[Terminal];

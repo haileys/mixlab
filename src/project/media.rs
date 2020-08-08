@@ -1,10 +1,11 @@
 use std::convert::TryInto;
 
 use derive_more::From;
+use mixlab_protocol::MediaId;
 use mixlab_protocol as protocol;
 
 use crate::project::ProjectBaseRef;
-use crate::project::stream::{self, WriteStream};
+use crate::project::stream::{self, ReadStream, WriteStream, StreamId};
 
 pub struct UploadInfo {
     pub name: String,
@@ -54,7 +55,7 @@ impl MediaUpload {
     }
 }
 
-pub async fn library(base: ProjectBaseRef) -> Result<protocol::MediaLibrary, sqlx::Error> {
+pub async fn library(base: &ProjectBaseRef) -> Result<protocol::MediaLibrary, sqlx::Error> {
     #[derive(sqlx::FromRow, Debug)]
     struct Item {
         id: i64,
@@ -81,4 +82,19 @@ pub async fn library(base: ProjectBaseRef) -> Result<protocol::MediaLibrary, sql
     }).collect();
 
     Ok(protocol::MediaLibrary { items })
+}
+
+pub async fn open(base: ProjectBaseRef, media_id: MediaId) -> Result<Option<ReadStream>, sqlx::Error> {
+    let stream_id = sqlx::query_scalar::<_, i64>(
+            r"SELECT media.stream_id FROM media WHERE id = ?"
+        )
+        .bind(media_id.0)
+        .fetch_optional(&base.database)
+        .await?
+        .map(StreamId);
+
+    match stream_id {
+        Some(stream_id) => ReadStream::open(base, stream_id).await,
+        None => Ok(None),
+    }
 }

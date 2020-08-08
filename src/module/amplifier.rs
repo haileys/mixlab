@@ -13,6 +13,7 @@ pub struct Amplifier {
 impl ModuleT for Amplifier {
     type Params = AmplifierParams;
     type Indication = ();
+    type Event = ();
 
     fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {

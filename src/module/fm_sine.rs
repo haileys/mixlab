@@ -15,6 +15,7 @@ pub struct FmSine {
 impl ModuleT for FmSine {
     type Params = FmSineParams;
     type Indication = ();
+    type Event = ();
 
     fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {

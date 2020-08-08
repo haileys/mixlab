@@ -160,7 +160,7 @@ impl ProjectHandle {
     }
 
     pub async fn fetch_media_library(&self) -> Result<protocol::MediaLibrary, sqlx::Error> {
-        media::library(self.base.clone()).await
+        media::library(&self.base).await
     }
 }
 

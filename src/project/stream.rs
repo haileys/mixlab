@@ -1,5 +1,5 @@
 use std::cmp;
-use std::convert::{TryInto, TryFrom};
+use std::convert::TryFrom;
 
 use derive_more::From;
 
@@ -7,6 +7,7 @@ use crate::project::ProjectBaseRef;
 
 const STREAM_BLOB_SIZE: usize = 1024 * 1024;
 
+#[derive(Debug)]
 pub struct StreamId(pub i64);
 
 pub async fn create(base: ProjectBaseRef) -> Result<WriteStream, sqlx::Error> {
@@ -28,22 +29,6 @@ pub async fn create(base: ProjectBaseRef) -> Result<WriteStream, sqlx::Error> {
 pub enum OpenError {
     NoSuchStream,
     Database(sqlx::Error),
-}
-
-#[allow(unused)]
-pub async fn open(base: ProjectBaseRef, stream_id: StreamId) -> Result<ReadStream, OpenError> {
-    let (size,) = sqlx::query_as::<_, (i64,)>("SELECT size FROM streams WHERE rowid = ?")
-        .bind(stream_id.0)
-        .fetch_optional(&base.database)
-        .await?
-        .ok_or(OpenError::NoSuchStream)?;
-
-    Ok(ReadStream {
-        base,
-        stream_id,
-        offset: 0,
-        size: size.try_into().expect("streams.size must not be negative"),
-    })
 }
 
 // TODO - automatically clean up write stream on drop if not explicitly finalized
@@ -101,7 +86,7 @@ impl WriteStream {
     }
 }
 
-#[allow(unused)]
+#[derive(Debug)]
 pub struct ReadStream {
     base: ProjectBaseRef,
     stream_id: StreamId,
@@ -110,7 +95,22 @@ pub struct ReadStream {
 }
 
 impl ReadStream {
-    #[allow(unused)]
+    pub async fn open(base: ProjectBaseRef, stream_id: StreamId) -> Result<Option<Self>, sqlx::Error> {
+        let size = sqlx::query_scalar::<_, i64>("SELECT size FROM streams WHERE id = ?")
+            .bind(stream_id.0)
+            .fetch_optional(&base.database)
+            .await?;
+
+        Ok(size.map(|size| {
+            ReadStream {
+                base,
+                stream_id,
+                offset: 0,
+                size,
+            }
+        }))
+    }
+
     pub async fn read_chunk(&mut self) -> Result<Option<Vec<u8>>, sqlx::Error> {
         let result = sqlx::query_as::<_, (Vec<u8>,)>("SELECT data FROM blobs WHERE stream_id = ? AND offset = ?")
             .bind(self.stream_id.0)

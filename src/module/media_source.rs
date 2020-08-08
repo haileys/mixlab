@@ -1,22 +1,38 @@
 use crate::engine::{InputRef, OutputRef, ModuleCtx};
 use crate::module::{ModuleT, LineType, Terminal};
+use crate::project::media;
+use crate::project::stream::ReadStream;
 
-use mixlab_protocol::MediaSourceParams;
+use mixlab_protocol::{MediaId, MediaSourceParams};
 
 #[derive(Debug)]
 pub struct MediaSource {
-    params: MediaSourceParams,
+    ctx: ModuleCtx<Self>,
+    media: Option<OpenMedia>,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
+}
+
+#[derive(Debug)]
+pub enum MediaSourceEvent {
+    SetMedia(Option<OpenMedia>),
+}
+
+#[derive(Debug)]
+pub struct OpenMedia {
+    media_id: MediaId,
+    stream: ReadStream,
 }
 
 impl ModuleT for MediaSource {
     type Params = MediaSourceParams;
     type Indication = ();
+    type Event = MediaSourceEvent;
 
-    fn create(params: Self::Params, _: ModuleCtx<Self>) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, ctx: ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {
-            params,
+            ctx,
+            media: None,
             inputs: vec![],
             outputs: vec![
                 LineType::Video.unlabeled(),
@@ -26,11 +42,33 @@ impl ModuleT for MediaSource {
     }
 
     fn params(&self) -> Self::Params {
-        self.params.clone()
+        MediaSourceParams {
+            media_id: self.current_media_id(),
+        }
     }
 
     fn update(&mut self, params: Self::Params) -> Option<Self::Indication> {
-        self.params = params;
+        if params.media_id != self.current_media_id() {
+            let project = self.ctx.project();
+
+            self.ctx.spawn_async(async move {
+                let media = match params.media_id {
+                    Some(media_id) => {
+                        match media::open(project, media_id).await {
+                            Ok(Some(stream)) => Some(OpenMedia { media_id, stream }),
+                            Ok(None) => None,
+                            Err(e) => {
+                                eprintln!("media_source: could not open {:?}: {:?}", media_id, e);
+                                None
+                            }
+                        }
+                    }
+                    None => None,
+                };
+
+                MediaSourceEvent::SetMedia(media)
+            });
+        }
         None
     }
 
@@ -44,5 +82,11 @@ impl ModuleT for MediaSource {
 
     fn outputs(&self)-> &[Terminal] {
         &self.outputs
+    }
+}
+
+impl MediaSource {
+    fn current_media_id(&self) -> Option<MediaId> {
+        self.media.as_ref().map(|m| m.media_id)
     }
 }

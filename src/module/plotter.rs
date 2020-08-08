@@ -13,6 +13,7 @@ pub struct Plotter {
 impl ModuleT for Plotter {
     type Params = ();
     type Indication = PlotterIndication;
+    type Event = ();
 
     fn create(_: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (

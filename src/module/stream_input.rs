@@ -30,6 +30,7 @@ struct SourceTiming {
 impl ModuleT for StreamInput {
     type Params = StreamInputParams;
     type Indication = ();
+    type Event = ();
 
     fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let recv = params.mountpoint.as_ref().and_then(|mountpoint|

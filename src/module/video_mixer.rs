@@ -33,6 +33,7 @@ struct StoredFrame {
 impl ModuleT for VideoMixer {
     type Params = VideoMixerParams;
     type Indication = ();
+    type Event = ();
 
     fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let mixer = VideoMixer {

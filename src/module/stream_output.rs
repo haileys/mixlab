@@ -34,6 +34,7 @@ pub struct StreamOutput {
 impl ModuleT for StreamOutput {
     type Params = StreamOutputParams;
     type Indication = StreamOutputIndication;
+    type Event = ();
 
     fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let indic = StreamOutputIndication {

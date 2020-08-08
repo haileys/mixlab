@@ -10,6 +10,7 @@ pub struct StereoPanner {
 impl ModuleT for StereoPanner {
     type Params = ();
     type Indication = ();
+    type Event = ();
 
     fn create(_: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {

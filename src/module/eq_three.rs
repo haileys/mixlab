@@ -28,6 +28,7 @@ pub struct EqThree {
 impl ModuleT for EqThree {
     type Params = EqThreeParams;
     type Indication = ();
+    type Event = ();
 
     fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let lo = LowPass::new(FREQ_LO);

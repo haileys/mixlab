@@ -43,6 +43,7 @@ impl Debug for OutputDevice {
 impl ModuleT for OutputDevice {
     type Params = OutputDeviceParams;
     type Indication = OutputDeviceIndication;
+    type Event = ();
 
     fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let host = cpal::default_host();
