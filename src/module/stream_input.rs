@@ -136,14 +136,6 @@ impl ModuleT for StreamInput {
                 self.video_frame = Some(frame);
                 None
             } else {
-                // TODO
-                // let frame = Rc::new(AvcFrame {
-                //     data: frame.data,
-                //     tick_offset,
-                //     duration,
-                //     previous,
-                // });
-
                 Some(VideoFrame {
                     data: frame.data,
                     tick_offset,
