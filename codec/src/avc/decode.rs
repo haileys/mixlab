@@ -1,7 +1,6 @@
-use std::mem;
+use std::convert::TryFrom;
 use std::os::raw::c_int;
 use std::ptr;
-use std::slice;
 
 use ffmpeg_dev::sys as ff;
 
@@ -13,7 +12,7 @@ pub struct AvcDecoder {
 }
 
 impl AvcDecoder {
-    pub fn new(time_base: usize) -> Result<Self, ()> {
+    pub fn new(time_base: usize, dcr: &[u8]) -> Result<Self, ()> {
         let codec = unsafe { ff::avcodec_find_decoder(ff::AVCodecID_AV_CODEC_ID_H264) };
 
         if codec == ptr::null_mut() {
@@ -30,8 +29,21 @@ impl AvcDecoder {
         // set codec context params
         unsafe {
             let avctx = &mut *ctx.as_mut_ptr();
+
             avctx.time_base.num = 1;
             avctx.time_base.den = time_base as c_int;
+
+            // extradata must be allocated through ffmpeg allocator
+            let extradata_alloc_len = dcr.len() + ff::AV_INPUT_BUFFER_PADDING_SIZE as usize;
+            let extradata = ff::av_mallocz(extradata_alloc_len) as *mut u8;
+            if extradata == ptr::null_mut() {
+                panic!("could not allocate extradata");
+            }
+
+            // copy extradata
+            ptr::copy(dcr.as_ptr(), extradata, dcr.len());
+            avctx.extradata = extradata;
+            avctx.extradata_size = c_int::try_from(dcr.len()).expect("dcr len too large for c_int");
         }
 
         let rc = unsafe { ff::avcodec_open2(ctx.as_mut_ptr(), codec, opts.as_mut() as *mut *mut _) };

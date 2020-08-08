@@ -1,6 +1,5 @@
 use std::io;
 use std::mem;
-use std::slice;
 use std::thread;
 
 use bytes::Bytes;
@@ -13,8 +12,8 @@ use rml_rtmp::time::RtmpTimestamp;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use mixlab_codec::aac;
-use mixlab_codec::avc::decode::{self, AvcDecoder, RecvFrameError};
-use mixlab_codec::ffmpeg::{AvError, AvPacketRef, PacketInfo, PacketSideData};
+use mixlab_codec::avc::decode::{AvcDecoder, RecvFrameError};
+use mixlab_codec::ffmpeg::{AvError, AvPacketRef, PacketInfo};
 use mixlab_util::time::{MediaDuration, MediaTime};
 
 use crate::listen::PeekTcpStream;
@@ -84,8 +83,6 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
     audio_codec.set_min_output_channels(2)?;
     audio_codec.set_max_output_channels(2)?;
 
-    let video_codec = AvcDecoder::new(TIME_BASE as usize).unwrap();
-
     let mut ctx = ReceiveContext {
         stream,
         session,
@@ -94,8 +91,7 @@ pub async fn accept(mut stream: PeekTcpStream) -> Result<(), RtmpError> {
         audio_codec,
         audio_asc: None,
         audio_timestamp: MediaTime::new(0, 1),
-        video_codec,
-        video_dcr: None,
+        video_codec: None,
     };
 
     thread::spawn(move || {
@@ -113,8 +109,7 @@ struct ReceiveContext {
     audio_codec: fdk_aac::dec::Decoder,
     audio_asc: Option<aac::AudioSpecificConfiguration>,
     audio_timestamp: MediaTime,
-    video_codec: AvcDecoder,
-    video_dcr: Option<Bytes>,
+    video_codec: Option<AvcDecoder>,
 }
 
 struct StreamMeta {
@@ -277,30 +272,36 @@ fn receive_video_packet(
 
     match packet.packet_type {
         VideoPacketType::SequenceHeader => {
-            ctx.video_dcr = Some(packet.data.clone());
+            // initialize video codec with dcr
+            let dcr = &packet.data;
+            ctx.video_codec = Some(AvcDecoder::new(TIME_BASE as usize, dcr).unwrap());
         }
         VideoPacketType::Nalu => {
-            let dcr = ctx.video_dcr.take();
+            let codec = match ctx.video_codec.as_mut() {
+                Some(codec) => codec,
+                None => {
+                    // nothing we can do with this nalu until receiving dcr
+                    // drop packet
+                    return Ok(());
+                }
+            };
 
             // TODO rtmp timestamps are only 32 bit and have arbitrary
             // user-defined epochs - we need to handle rollover
             let dts = timestamp.value as i64;
             let pts = dts + packet.composition_time as i64;
 
-            let side_data = dcr.as_deref().map(PacketSideData::new_extradata);
-            let side_data = side_data.as_ref().map(slice::from_ref).unwrap_or(&[]);
-
             let av_packet = AvPacketRef::borrowed(PacketInfo {
                 dts,
                 pts,
                 data: &packet.data,
-                side_data: &side_data,
             });
 
-            ctx.video_codec.send_packet(&av_packet);
+            codec.send_packet(&av_packet)
+                .expect("avc::decode::send_packet in rtmp");
 
             loop {
-                match ctx.video_codec.recv_frame() {
+                match codec.recv_frame() {
                     Ok(decoded) => {
                         let timestamp = MediaTime::new(decoded.presentation_timestamp(), TIME_BASE);
 

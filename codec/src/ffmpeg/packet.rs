@@ -4,6 +4,7 @@ use std::ops::Deref;
 use std::os::raw::c_int;
 use std::ptr;
 use std::slice;
+use std::mem::ManuallyDrop;
 
 use ffmpeg_dev::sys as ff;
 
@@ -80,7 +81,7 @@ impl Drop for AvPacket {
 }
 
 pub struct AvPacketRef<'a> {
-    packet: AvPacket,
+    packet: ManuallyDrop<AvPacket>,
     phantom: PhantomData<&'a [u8]>
 }
 
@@ -94,15 +95,15 @@ impl<'a> AvPacketRef<'a> {
             size: c_int::try_from(info.data.len()).expect("packet size too large for c_int"),
             stream_index: 0,
             flags: 0,
-            side_data: info.side_data.as_ptr() as *mut _, // never mutated
-            side_data_elems: c_int::try_from(info.side_data.len()).expect("side_data_elems too large for c_int"),
+            side_data: ptr::null_mut(),
+            side_data_elems: 0,
             duration: 0,
             pos: -1,
             convergence_duration: 0,
         };
 
         AvPacketRef {
-            packet: AvPacket { packet },
+            packet: ManuallyDrop::new(AvPacket { packet }),
             phantom: PhantomData,
         }
     }
@@ -120,24 +121,4 @@ pub struct PacketInfo<'a> {
     pub pts: i64,
     pub dts: i64,
     pub data: &'a [u8],
-    pub side_data: &'a [PacketSideData<'a>],
-}
-
-#[repr(transparent)]
-pub struct PacketSideData<'a> {
-    side_data: ff::AVPacketSideData,
-    phantom: PhantomData<&'a [u8]>,
-}
-
-impl<'a> PacketSideData<'a> {
-    pub fn new_extradata(data: &'a [u8]) -> Self {
-        PacketSideData {
-            side_data: ff::AVPacketSideData {
-                data: data.as_ptr() as *mut u8, // never mutated
-                size: data.len().try_into().expect("c_int from side data size"),
-                type_: ff::AVPacketSideDataType_AV_PKT_DATA_NEW_EXTRADATA,
-            },
-            phantom: PhantomData,
-        }
-    }
 }
