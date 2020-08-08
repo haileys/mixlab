@@ -1,16 +1,13 @@
-use std::any::Any;
 use std::fmt;
 use std::future::Future;
 
 use tokio::runtime;
 use tokio::sync::mpsc;
 
-use mixlab_protocol::{MediaId, ModuleParams, Indication, Terminal};
+use mixlab_protocol::{ModuleParams, Indication, Terminal};
 
 use crate::engine::{InputRef, OutputRef};
 use crate::module::{self, ModuleT};
-use crate::project::media;
-use crate::project::stream::ReadStream;
 use crate::project::ProjectBaseRef;
 
 #[derive(Debug)]

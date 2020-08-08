@@ -8,6 +8,7 @@ use mixlab_protocol::{MediaId, MediaSourceParams};
 #[derive(Debug)]
 pub struct MediaSource {
     ctx: ModuleCtx<Self>,
+    params: MediaSourceParams,
     media: Option<OpenMedia>,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
@@ -30,25 +31,30 @@ impl ModuleT for MediaSource {
     type Event = MediaSourceEvent;
 
     fn create(params: Self::Params, ctx: ModuleCtx<Self>) -> (Self, Self::Indication) {
-        (Self {
+        let mut module = Self {
             ctx,
+            params: MediaSourceParams::default(),
             media: None,
             inputs: vec![],
             outputs: vec![
                 LineType::Video.unlabeled(),
                 LineType::Stereo.unlabeled(),
             ],
-        }, ())
+        };
+
+        module.update(params);
+
+        (module, ())
     }
 
     fn params(&self) -> Self::Params {
-        MediaSourceParams {
-            media_id: self.current_media_id(),
-        }
+        self.params.clone()
     }
 
     fn update(&mut self, params: Self::Params) -> Option<Self::Indication> {
-        if params.media_id != self.current_media_id() {
+        if self.params.media_id != params.media_id {
+            self.params.media_id = params.media_id;
+
             let project = self.ctx.project();
 
             self.ctx.spawn_async(async move {
@@ -82,11 +88,5 @@ impl ModuleT for MediaSource {
 
     fn outputs(&self)-> &[Terminal] {
         &self.outputs
-    }
-}
-
-impl MediaSource {
-    fn current_media_id(&self) -> Option<MediaId> {
-        self.media.as_ref().map(|m| m.media_id)
     }
 }
