@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 
-use mixlab_protocol::{PerformanceInfo, PerformanceAccount, TemporalWarningStatus};
+use mixlab_protocol::{PerformanceInfo, PerformanceAccount, TemporalWarningStatus, ModuleId};
 
 use crate::session::{SessionRef, WorkspaceStateRef};
 use crate::util::notify;
@@ -63,9 +63,17 @@ impl Component for Sidebar {
 }
 
 impl Sidebar {
+    fn module_name(&self, module_id: ModuleId) -> String {
+        let workspace = self.props.workspace.borrow();
+
+        workspace.modules.get(&module_id).map(|module| {
+            format!("{:?}", module).chars()
+                .take_while(|c| c.is_alphanumeric()).collect::<String>()
+        }).unwrap_or("-".to_owned())
+    }
+
     fn view_perf_info(&self) -> Html {
         if let Some(perf_info) = &self.perf_info {
-            let workspace = self.props.workspace.borrow();
 
             let realtime_status_class = if perf_info.realtime {
                 "status-light status-light-green-active"
@@ -110,10 +118,7 @@ impl Sidebar {
                                             html! { <td class="perf-info-account perf-info-account-engine">{"Engine"}</td> }
                                         }
                                         PerformanceAccount::Module(id) => {
-                                            let name = workspace.modules.get(id).map(|module| {
-                                                format!("{:?}", module).chars().take_while(|c| c.is_alphanumeric()).collect::<String>()
-                                            }).unwrap_or("-".to_owned());
-
+                                            let name = self.module_name(*id);
                                             html! { <td class="perf-info-account perf-info-account-module">{name}</td> }
                                         }
                                     } }
