@@ -14,7 +14,6 @@ use tokio::sync::{oneshot, broadcast, watch};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, WorkspaceState, ServerUpdate, Indication, ClientSequence, WorkspaceMessage, WorkspaceOp, PerformanceInfo};
 
-use crate::module::ModuleE;
 use crate::project::ProjectBaseRef;
 use crate::util::Sequence;
 
@@ -27,7 +26,7 @@ use timing::{EngineStat, TickStat};
 use workspace::SyncWorkspace;
 
 pub use io::{InputRef, OutputRef, Output, VideoFrame};
-pub use module::ModuleCtx;
+pub use module::{ModuleCtx, DynModuleHost};
 pub use workspace::WorkspaceEmbryo;
 
 pub type Sample = f32;
@@ -286,7 +285,7 @@ impl Engine {
                 let op = {
                     let mut workspace = self.workspace.borrow_mut();
                     let id = ModuleId(workspace.module_seq.next());
-                    let (module, indication) = ModuleE::create(params.clone(), self.base.clone());
+                    let (module, indication) = module::host(params.clone(), self.base.clone());
                     let inputs = module.inputs().to_vec();
                     let outputs = module.outputs().to_vec();
                     workspace.modules.insert(id, module);
@@ -431,7 +430,7 @@ impl Engine {
         }
 
         struct Topsort<'a> {
-            modules: &'a HashMap<ModuleId, ModuleE>,
+            modules: &'a HashMap<ModuleId, DynModuleHost>,
             connections: &'a HashMap<InputId, OutputId>,
             run_order: Vec<ModuleId>,
             seen: HashSet<ModuleId>,

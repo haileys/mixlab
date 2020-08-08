@@ -1,13 +1,14 @@
-use mixlab_protocol::{ModuleParams, Indication, Terminal, LineType};
+use std::any::Any;
+
+use mixlab_protocol::{Terminal, LineType};
 
 use crate::engine::{self, InputRef, OutputRef, ModuleCtx};
-use crate::project::ProjectBaseRef;
 
-pub trait ModuleT: Sized {
+pub trait ModuleT: Any + Sized {
     type Params;
     type Indication;
 
-    fn create(params: Self::Params, ctx: engine::ModuleCtx<Self>) -> (Self, Self::Indication);
+    fn create(params: Self::Params, ctx: ModuleCtx<Self>) -> (Self, Self::Indication);
     fn params(&self) -> Self::Params;
     fn update(&mut self, new_params: Self::Params) -> Option<Self::Indication>;
     fn run_tick(&mut self, t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication>;
@@ -18,82 +19,31 @@ pub trait ModuleT: Sized {
 macro_rules! gen_modules {
     ($( $mod_name:ident::$module:ident , )*) => {
         $( pub mod $mod_name; )*
-        $( use $mod_name::$module; )*
+    }
+}
 
-        #[derive(Debug)]
-        pub enum ModuleE {
-            $( $module($module), )*
-        }
-
-        impl ModuleE {
-            pub fn create(params: ModuleParams, base: ProjectBaseRef) -> (Self, Indication) {
-                match params {
-                    $(
-                        ModuleParams::$module(params) => {
-                            let (module, indication) = $module::create(params, ModuleCtx::new(base));
-                            (ModuleE::$module(module), Indication::$module(indication))
-                        }
-                    )*
-                }
-            }
-
-            pub fn params(&self) -> ModuleParams {
-                match self {
-                    $(ModuleE::$module(m) => ModuleParams::$module(m.params()),)*
-                }
-            }
-
-            pub fn update(&mut self, new_params: ModuleParams) -> Option<Indication> {
-                match (self, new_params) {
-                    $(
-                        (ModuleE::$module(m), ModuleParams::$module(ref new_params)) => {
-                            m.update(new_params.clone()).map(Indication::$module)
-                        }
-                        (ModuleE::$module(m), ref params) => {
-                            panic!("module params mismatch! module = {:?}, params = {:?}", m, params);
-                        }
-                    )*
-                }
-            }
-
-            pub fn run_tick(&mut self, t: u64, inputs: &[InputRef], outputs: &mut [OutputRef]) -> Option<Indication> {
-                match self {
-                    $(
-                        ModuleE::$module(m) => m.run_tick(t, inputs, outputs).map(Indication::$module),
-                    )*
-                }
-            }
-
-            pub fn inputs(&self) -> &[Terminal] {
-                match self {
-                    $(ModuleE::$module(m) => m.inputs(),)*
-                }
-            }
-
-            pub fn outputs(&self) -> &[Terminal] {
-                match self {
-                    $(ModuleE::$module(m) => m.outputs(),)*
-                }
-            }
+#[macro_export]
+macro_rules! enumerate_modules {
+    (then $cb:ident!) => {
+        $cb!{
+            amplifier::Amplifier,
+            envelope::Envelope,
+            eq_three::EqThree,
+            fm_sine::FmSine,
+            mixer::Mixer,
+            monitor::Monitor,
+            oscillator::Oscillator,
+            output_device::OutputDevice,
+            plotter::Plotter,
+            stereo_panner::StereoPanner,
+            stereo_splitter::StereoSplitter,
+            stream_input::StreamInput,
+            stream_output::StreamOutput,
+            trigger::Trigger,
+            video_mixer::VideoMixer,
+            media_source::MediaSource,
         }
     }
 }
 
-gen_modules!{
-    amplifier::Amplifier,
-    envelope::Envelope,
-    eq_three::EqThree,
-    fm_sine::FmSine,
-    mixer::Mixer,
-    monitor::Monitor,
-    oscillator::Oscillator,
-    output_device::OutputDevice,
-    plotter::Plotter,
-    stereo_panner::StereoPanner,
-    stereo_splitter::StereoSplitter,
-    stream_input::StreamInput,
-    stream_output::StreamOutput,
-    trigger::Trigger,
-    video_mixer::VideoMixer,
-    media_source::MediaSource,
-}
+enumerate_modules!{then gen_modules!}
