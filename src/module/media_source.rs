@@ -1,6 +1,7 @@
 use crate::engine::{InputRef, OutputRef, ModuleCtx};
 use crate::module::{ModuleT, LineType, Terminal};
 use crate::project::media;
+use crate::project::ProjectBaseRef;
 use crate::project::stream::ReadStream;
 
 use mixlab_protocol::{MediaId, MediaSourceParams};
@@ -22,7 +23,6 @@ pub enum MediaSourceEvent {
 #[derive(Debug)]
 pub struct OpenMedia {
     media_id: MediaId,
-    stream: ReadStream,
 }
 
 impl ModuleT for MediaSource {
@@ -59,16 +59,7 @@ impl ModuleT for MediaSource {
 
             self.ctx.spawn_async(async move {
                 let media = match params.media_id {
-                    Some(media_id) => {
-                        match media::open(project, media_id).await {
-                            Ok(Some(stream)) => Some(OpenMedia { media_id, stream }),
-                            Ok(None) => None,
-                            Err(e) => {
-                                eprintln!("media_source: could not open {:?}: {:?}", media_id, e);
-                                None
-                            }
-                        }
-                    }
+                    Some(media_id) => open_media(project, media_id).await,
                     None => None,
                 };
 
@@ -89,4 +80,19 @@ impl ModuleT for MediaSource {
     fn outputs(&self)-> &[Terminal] {
         &self.outputs
     }
+}
+
+async fn open_media(project: ProjectBaseRef, media_id: MediaId) -> Option<OpenMedia> {
+    match media::open(project, media_id).await {
+        Ok(Some(stream)) => Some(OpenMedia { media_id }),
+        Ok(None) => None,
+        Err(e) => {
+            eprintln!("media_source: could not open {:?}: {:?}", media_id, e);
+            None
+        }
+    }
+}
+
+async fn run_decode_thread() {
+
 }
