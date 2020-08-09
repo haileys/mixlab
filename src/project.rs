@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use derive_more::From;
 use futures::stream::{Stream, StreamExt};
-use sqlx::SqlitePool;
+use rusqlite::{self, Connection};
 use tokio::sync::watch;
 use tokio::{fs, io, task, runtime};
 
@@ -25,7 +25,11 @@ pub struct ProjectHandle {
 }
 
 pub struct ProjectBase {
-    database: SqlitePool,
+    // must be Arc of a blocking Mutex because task::spawn_blocking requires
+    // that the passed closure is 'static, so we are forced to lock the mutex
+    // in the blocking context and pass it as an Arc rather than a reference
+    database: Arc<std::sync::Mutex<Connection>>,
+
     notify: NotifyTx,
 }
 
@@ -35,29 +39,38 @@ type ProjectBaseRef = Arc<ProjectBase>;
 pub enum OpenError {
     Io(io::Error),
     Json(serde_json::Error),
-    Database(sqlx::Error),
+    Database(rusqlite::Error),
     NotDirectory,
 }
 
 impl ProjectBase {
-    async fn attach(path: PathBuf, notify: NotifyTx) -> Result<Self, sqlx::Error> {
+    pub fn with_database_in_blocking_context<T>(&self, f: impl FnOnce(&mut Connection) -> T) -> T {
+        f(&mut self.database.lock().expect("lock sqlite connection"))
+    }
+
+    pub async fn with_database<T: Send + 'static>(&self, f: impl FnOnce(&mut Connection) -> T + Send + 'static) -> T {
+        let conn = self.database.clone();
+        task::spawn_blocking(move || {
+            f(&mut conn.lock().expect("lock sqlite connection"))
+        }).await.expect("blocking database section")
+    }
+
+    async fn attach(path: PathBuf, notify: NotifyTx) -> Result<Self, rusqlite::Error> {
         let mut sqlite_path = path.clone();
         sqlite_path.set_extension("mixlab");
-
-        let database = db::attach(&sqlite_path).await?;
+        let database = db::attach(sqlite_path).await?;
 
         Ok(ProjectBase {
-            database,
+            database: Arc::new(std::sync::Mutex::new(database)),
             notify,
         })
     }
 
     async fn read_workspace(&self) -> Result<persist::Workspace, OpenError> {
-        let serialized = sqlx::query_scalar::<_, Vec<u8>>(r"
-                SELECT serialized FROM workspace WHERE rowid = 1
-            ")
-            .fetch_optional(&self.database)
-            .await?;
+        let serialized = self.with_database(|conn| -> Result<Option<Vec<u8>>, rusqlite::Error> {
+            conn.query_row("SELECT serialized FROM workspace WHERE rowid = 1", rusqlite::NO_PARAMS,
+                |row| row.get(0))
+        }).await?;
 
         let workspace = match serialized {
             Some(serialized) => serde_json::from_slice(&serialized)?,
@@ -67,18 +80,18 @@ impl ProjectBase {
         Ok(workspace)
     }
 
-    async fn write_workspace(&self, workspace: &persist::Workspace) -> Result<(), sqlx::Error> {
+    async fn write_workspace(&self, workspace: &persist::Workspace) -> Result<(), rusqlite::Error> {
         let serialized = serde_json::to_vec(workspace).expect("serde_json::to_vec");
 
-        sqlx::query(r"
-                INSERT INTO workspace (rowid, serialized) VALUES (1, ?)
-                ON CONFLICT (rowid) DO UPDATE SET serialized = excluded.serialized
-            ")
-            .bind(serialized)
-            .execute(&self.database)
-            .await?;
+        self.with_database(move |conn| -> Result<(), rusqlite::Error> {
+            conn.execute(r"
+                    INSERT INTO workspace (rowid, serialized) VALUES (1, ?)
+                    ON CONFLICT (rowid) DO UPDATE SET serialized = excluded.serialized
+                ",
+                &[serialized])?;
 
-        Ok(())
+            Ok(())
+        }).await
     }
 }
 
@@ -150,7 +163,7 @@ impl ProjectHandle {
         media::MediaUpload::new(self.base.clone(), info).await
     }
 
-    pub async fn fetch_media_library(&self) -> Result<protocol::MediaLibrary, sqlx::Error> {
+    pub async fn fetch_media_library(&self) -> Result<protocol::MediaLibrary, rusqlite::Error> {
         media::library(self.base.clone()).await
     }
 }

@@ -1,20 +1,22 @@
 use std::cmp;
 use std::convert::{TryInto, TryFrom};
+use std::mem;
 
 use derive_more::From;
+use rusqlite::{params, OptionalExtension};
 
 use crate::project::ProjectBaseRef;
 
 const STREAM_BLOB_SIZE: usize = 1024 * 1024;
 
+#[derive(Debug, Clone, Copy)]
 pub struct StreamId(pub i64);
 
-pub async fn create(base: ProjectBaseRef) -> Result<WriteStream, sqlx::Error> {
-    let stream_id = StreamId(
-        sqlx::query("INSERT INTO streams (size) VALUES (0)")
-            .execute(&base.database)
-            .await?
-            .last_insert_rowid());
+pub async fn create(base: ProjectBaseRef) -> Result<WriteStream, rusqlite::Error> {
+    let stream_id = base.with_database(|conn| -> Result<StreamId, rusqlite::Error> {
+        conn.execute("INSERT INTO streams (size) VALUES (0)", rusqlite::NO_PARAMS)?;
+        Ok(StreamId(conn.last_insert_rowid()))
+    }).await?;
 
     Ok(WriteStream {
         base,
@@ -27,16 +29,18 @@ pub async fn create(base: ProjectBaseRef) -> Result<WriteStream, sqlx::Error> {
 #[derive(From, Debug)]
 pub enum OpenError {
     NoSuchStream,
-    Database(sqlx::Error),
+    Database(rusqlite::Error),
 }
 
 #[allow(unused)]
 pub async fn open(base: ProjectBaseRef, stream_id: StreamId) -> Result<ReadStream, OpenError> {
-    let (size,) = sqlx::query_as::<_, (i64,)>("SELECT size FROM streams WHERE rowid = ?")
-        .bind(stream_id.0)
-        .fetch_optional(&base.database)
-        .await?
-        .ok_or(OpenError::NoSuchStream)?;
+    let size: i64 = base.with_database(move |conn| {
+        conn.query_row(
+            r"SELECT size FROM streams WHERE rowid = ?",
+            &[stream_id.0],
+            |row| row.get(0)
+        ).optional()?.ok_or(OpenError::NoSuchStream)
+    }).await?;
 
     Ok(ReadStream {
         base,
@@ -55,7 +59,7 @@ pub struct WriteStream {
 }
 
 impl WriteStream {
-    pub async fn write(&mut self, mut bytes: &[u8]) -> Result<(), sqlx::Error> {
+    pub async fn write(&mut self, mut bytes: &[u8]) -> Result<(), rusqlite::Error> {
         while !bytes.is_empty() {
             let take = cmp::min(bytes.len(), STREAM_BLOB_SIZE - self.buff.len());
 
@@ -73,28 +77,29 @@ impl WriteStream {
         Ok(())
     }
 
-    pub async fn finalize(mut self) -> Result<StreamId, sqlx::Error> {
+    pub async fn finalize(mut self) -> Result<StreamId, rusqlite::Error> {
         self.flush().await?;
         Ok(self.id)
     }
 
-    async fn flush(&mut self) -> Result<(), sqlx::Error> {
+    async fn flush(&mut self) -> Result<(), rusqlite::Error> {
         if self.buff.len() > 0 {
-            sqlx::query("INSERT INTO blobs (stream_id, offset, data) VALUES (?, ?, ?)")
-                .bind(self.id.0)
-                .bind(self.offset)
-                .bind(&self.buff)
-                .execute(&self.base.database)
-                .await?;
+            let id = self.id;
+            let offset = self.offset;
+            let buff_len = i64::try_from(self.buff.len()).expect("buff.len as i64");
+            let buff = mem::take(&mut self.buff);
 
-            self.offset += i64::try_from(self.buff.len()).expect("buff.len as i64");
-            self.buff.truncate(0);
+            self.base.with_database(move |conn| -> Result<(), rusqlite::Error> {
+                conn.execute(r"INSERT INTO blobs (stream_id, offset, data) VALUES (?, ?, ?)",
+                    params![id.0, offset, &buff])?;
 
-            sqlx::query("UPDATE streams SET size = ? WHERE id = ?")
-                .bind(self.offset)
-                .bind(self.id.0)
-                .execute(&self.base.database)
-                .await?;
+                conn.execute(r"UPDATE streams SET size = ? WHERE id = ?",
+                    params![id.0, offset + buff_len])?;
+
+                Ok(())
+            }).await?;
+
+            self.offset += buff_len;
         }
 
         Ok(())
@@ -111,16 +116,16 @@ pub struct ReadStream {
 
 impl ReadStream {
     #[allow(unused)]
-    pub async fn read_chunk(&mut self) -> Result<Option<Vec<u8>>, sqlx::Error> {
-        let result = sqlx::query_as::<_, (Vec<u8>,)>("SELECT data FROM blobs WHERE stream_id = ? AND offset = ?")
-            .bind(self.stream_id.0)
-            .bind(self.offset)
-            .fetch_optional(&self.base.database)
-            .await?;
+    pub async fn read_chunk(&mut self) -> Result<Option<Vec<u8>>, rusqlite::Error> {
+        let stream_id = self.stream_id;
+        let offset = self.offset;
 
-        match result {
-            Some((data,)) => Ok(Some(data)),
-            None => Ok(None),
-        }
+        self.base.with_database(move |conn| -> Result<Option<Vec<u8>>, rusqlite::Error> {
+            conn.query_row(
+                    "SELECT data FROM blobs WHERE stream_id = ? AND offset = ?",
+                    params![stream_id.0, offset],
+                    |data| data.get(0))
+                .optional()
+        }).await
     }
 }

@@ -2,6 +2,7 @@ use std::convert::TryInto;
 
 use derive_more::From;
 use mixlab_protocol as protocol;
+use rusqlite::params;
 
 use crate::project::ProjectBaseRef;
 use crate::project::stream::{self, WriteStream};
@@ -19,7 +20,7 @@ pub struct MediaUpload {
 
 #[derive(From, Debug)]
 pub enum UploadError {
-    Database(sqlx::Error),
+    Database(rusqlite::Error),
 }
 
 impl MediaUpload {
@@ -40,13 +41,15 @@ impl MediaUpload {
 
     pub async fn finalize(self) -> Result<(), UploadError> {
         let stream_id = self.stream.finalize().await?;
+        let info = self.info;
 
-        sqlx::query("INSERT INTO media (name, kind, stream_id) VALUES (?, ?, ?)")
-            .bind(self.info.name)
-            .bind(self.info.kind)
-            .bind(stream_id.0)
-            .execute(&self.base.database)
-            .await?;
+        self.base.with_database(move |conn| -> Result<(), rusqlite::Error> {
+            conn.execute(
+                    "INSERT INTO media (name, kind, stream_id) VALUES (?, ?, ?)",
+                    params![info.name, info.kind, stream_id.0])?;
+
+            Ok(())
+        }).await?;
 
         let _ = self.base.notify.media.broadcast(());
 
@@ -54,8 +57,8 @@ impl MediaUpload {
     }
 }
 
-pub async fn library(base: ProjectBaseRef) -> Result<protocol::MediaLibrary, sqlx::Error> {
-    #[derive(sqlx::FromRow, Debug)]
+pub async fn library(base: ProjectBaseRef) -> Result<protocol::MediaLibrary, rusqlite::Error> {
+    #[derive(Debug)]
     struct Item {
         id: i64,
         name: String,
@@ -63,22 +66,22 @@ pub async fn library(base: ProjectBaseRef) -> Result<protocol::MediaLibrary, sql
         size: i64,
     }
 
-    let items = sqlx::query_as::<_, Item>(r"
-            SELECT media.id, media.name, media.kind, streams.size FROM media
-            INNER JOIN streams ON streams.id = media.stream_id
-            ORDER BY media.id DESC
-        ")
-        .fetch_all(&base.database)
-        .await?;
-
-    let items = items.into_iter().map(|item| {
-        protocol::MediaItem {
-            id: protocol::MediaId(item.id),
-            name: item.name,
-            kind: item.kind,
-            size: item.size.try_into().expect("size is u64"),
-        }
-    }).collect();
+    let items = base.with_database(|conn| -> Result<Vec<protocol::MediaItem>, rusqlite::Error> {
+        conn.prepare(r"
+                SELECT media.id, media.name, media.kind, streams.size FROM media
+                INNER JOIN streams ON streams.id = media.stream_id
+                ORDER BY media.id DESC
+            ")?
+            .query_map(rusqlite::NO_PARAMS,
+                |row| Ok(protocol::MediaItem {
+                    id: protocol::MediaId(row.get(0)?),
+                    name: row.get(1)?,
+                    kind: row.get(2)?,
+                    size: row.get::<_, i64>(3)?.try_into().unwrap(),
+                })
+            )?
+            .collect()
+    }).await?;
 
     Ok(protocol::MediaLibrary { items })
 }
