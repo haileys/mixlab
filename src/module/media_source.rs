@@ -2,7 +2,6 @@ use crate::engine::{InputRef, OutputRef, ModuleCtx};
 use crate::module::{ModuleT, LineType, Terminal};
 use crate::project::media;
 use crate::project::ProjectBaseRef;
-use crate::project::stream::ReadStream;
 
 use mixlab_protocol::{MediaId, MediaSourceParams};
 
@@ -84,7 +83,7 @@ impl ModuleT for MediaSource {
 
 async fn open_media(project: ProjectBaseRef, media_id: MediaId) -> Option<OpenMedia> {
     match media::open(project, media_id).await {
-        Ok(Some(stream)) => Some(OpenMedia { media_id }),
+        Ok(Some(_stream)) => Some(OpenMedia { media_id }),
         Ok(None) => None,
         Err(e) => {
             eprintln!("media_source: could not open {:?}: {:?}", media_id, e);
