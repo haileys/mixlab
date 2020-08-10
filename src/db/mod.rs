@@ -12,7 +12,7 @@ fn schema_version(conn: &Connection) -> Result<Option<i64>, rusqlite::Error> {
     match result {
         Ok(schema_version) => Ok(Some(schema_version)),
         // TODO double check what the rusqlite error here is
-        // Err(sqlx::Error::Database(e)) if e.message() == "no such table: schema_migrations" => Ok(None),
+        Err(rusqlite::Error::SqliteFailure(_, Some(msg))) if msg == "no such table: schema_migrations" => Ok(None),
         Err(e) => Err(e),
     }
 }
@@ -44,7 +44,7 @@ fn attach_blocking(path: PathBuf) -> Result<Connection, rusqlite::Error> {
 
         // run migrations to bring database up to date
         for (_, sql) in &migrations {
-            txn.execute(sql, rusqlite::NO_PARAMS)?;
+            txn.execute_batch(sql)?;
         }
 
         // update database schema version if migrations were performed
