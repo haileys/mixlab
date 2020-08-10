@@ -1,8 +1,12 @@
+use std::thread;
+
 use crate::engine::{InputRef, OutputRef, ModuleCtx};
 use crate::module::{ModuleT, LineType, Terminal};
 use crate::project::media;
+use crate::project::stream::ReadStream;
 use crate::project::ProjectBaseRef;
 
+use mixlab_codec::ffmpeg::{AvIoError, AvIoReader, InputContainer};
 use mixlab_protocol::{MediaId, MediaSourceParams};
 
 #[derive(Debug)]
@@ -82,8 +86,17 @@ impl ModuleT for MediaSource {
 }
 
 async fn open_media(project: ProjectBaseRef, media_id: MediaId) -> Option<OpenMedia> {
+    println!("open_media!");
+
     match media::open(project, media_id).await {
-        Ok(Some(_stream)) => Some(OpenMedia { media_id }),
+        Ok(Some(stream)) => {
+            println!("stream -> {:?}", stream);
+            thread::spawn(move || {
+                let result = run_decode_thread(stream);
+                println!("decode thread said: {:?}", result);
+            });
+            Some(OpenMedia { media_id })
+        }
         Ok(None) => None,
         Err(e) => {
             eprintln!("media_source: could not open {:?}: {:?}", media_id, e);
@@ -92,6 +105,18 @@ async fn open_media(project: ProjectBaseRef, media_id: MediaId) -> Option<OpenMe
     }
 }
 
-async fn run_decode_thread() {
+fn run_decode_thread(stream: ReadStream) -> Result<(), AvIoError<ReadStream>> {
+    let mut container = InputContainer::open(AvIoReader::new(stream))?;
 
+    for (idx, stream) in container.streams().iter().enumerate() {
+        println!("Stream #{}: {}", idx, stream.codec_name().unwrap_or("-"));
+        println!("            Time base: {}", stream.time_base());
+    }
+
+    for i in 0..10 {
+        println!("----- packet #{}:\n", i);
+        println!("{:#?}", container.read_packet());
+    }
+
+    Ok(())
 }

@@ -1,5 +1,6 @@
 use std::convert::TryInto;
 use std::ffi::CStr;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::slice;
 
@@ -8,19 +9,18 @@ use num_rational::Rational64;
 
 use mixlab_util::time::MediaDuration;
 
-use crate::ffmpeg::AvError;
+use crate::ffmpeg::{AvIoError, AvPacket};
 use crate::ffmpeg::ioctx::{IoReader, AvIoReader};
 
 pub struct InputContainer<R: IoReader> {
     ctx: RawContext,
     // must be held alive as it is referenced by AVFormatContext
     // must not be used from rust
-    _io: AvIoReader<R>,
+    io: AvIoReader<R>,
 }
 
 impl<R: IoReader> InputContainer<R> {
-    #[allow(unused)]
-    pub fn open(mut io: AvIoReader<R>) -> Result<Self, AvError> {
+    pub fn open(mut io: AvIoReader<R>) -> Result<Self, AvIoError<R>> {
         let mut ctx = RawContext::alloc();
 
         let rc = unsafe {
@@ -34,22 +34,18 @@ impl<R: IoReader> InputContainer<R> {
             )
         };
 
-        if rc != 0 {
-            return Err(AvError(rc));
-        }
+        io.check_error(rc)?;
 
         Ok(InputContainer {
             ctx,
-            _io: io,
+            io,
         })
     }
 
-    #[allow(unused)]
     fn as_underlying(&self) -> &ff::AVFormatContext {
         unsafe { &*(self.ctx.ptr as *const _) }
     }
 
-    #[allow(unused)]
     pub fn streams(&self) -> &[InputStream] {
         let underlying = self.as_underlying();
 
@@ -62,6 +58,17 @@ impl<R: IoReader> InputContainer<R> {
 
         unsafe { slice::from_raw_parts(ptr, len) }
     }
+
+    pub fn read_packet(&mut self) -> Result<AvPacket, AvIoError<R>> {
+        unsafe {
+            let mut pkt = MaybeUninit::uninit();
+
+            let rc = ff::av_read_frame(self.ctx.ptr, pkt.as_mut_ptr());
+            self.io.check_error(rc)?;
+
+            Ok(AvPacket::new(pkt.assume_init()))
+        }
+    }
 }
 
 impl<R: IoReader> Drop for InputContainer<R> {
@@ -73,18 +80,15 @@ impl<R: IoReader> Drop for InputContainer<R> {
 }
 
 #[repr(transparent)]
-#[allow(unused)]
 pub struct InputStream {
     ptr: *mut ff::AVStream,
 }
 
 impl InputStream {
-    #[allow(unused)]
     pub fn id(&self) -> i32 {
         self.as_underlying().id as i32
     }
 
-    #[allow(unused)]
     pub fn codec_name(&self) -> Option<&'static str> {
         let codec_id = self.codec_parameters().codec_id;
         let codec = unsafe { ff::avcodec_find_decoder(codec_id) };
@@ -97,23 +101,19 @@ impl InputStream {
         Some(long_name.to_str().expect("utf8 codec name"))
     }
 
-    #[allow(unused)]
     pub fn duration(&self) -> MediaDuration {
         MediaDuration::from(self.time_base() * self.as_underlying().duration)
     }
 
-    #[allow(unused)]
-    fn time_base(&self) -> Rational64 {
+    pub fn time_base(&self) -> Rational64 {
         let underlying = self.as_underlying();
         Rational64::new(underlying.time_base.num.into(), underlying.time_base.den.into())
     }
 
-    #[allow(unused)]
     fn codec_parameters(&self) -> &ff::AVCodecParameters {
         unsafe { &*self.as_underlying().codecpar }
     }
 
-    #[allow(unused)]
     fn as_underlying(&self) -> &ff::AVStream {
         unsafe { &*(self.ptr as *const _) }
     }
