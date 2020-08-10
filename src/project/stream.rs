@@ -69,7 +69,7 @@ impl WriteStream {
                     params![id.0, offset, &buff])?;
 
                 conn.execute(r"UPDATE streams SET size = ? WHERE id = ?",
-                    params![id.0, offset + buff_len])?;
+                    params![offset + buff_len, id.0])?;
 
                 Ok(())
             }).await?;
