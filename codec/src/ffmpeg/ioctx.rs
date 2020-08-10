@@ -10,7 +10,7 @@ use std::slice;
 
 use ffmpeg_dev::sys as ff;
 
-use crate::ffmpeg::{MIXLAB_IOCTX_ERROR, MIXLAB_IOCTX_PANIC};
+use crate::ffmpeg::{AvError, MIXLAB_IOCTX_ERROR, MIXLAB_IOCTX_PANIC};
 
 pub trait IoReader {
     type Error;
@@ -85,6 +85,28 @@ impl<R: IoReader> AvIoReader<R> {
     pub fn as_mut_ptr(&mut self) -> *mut ff::AVIOContext {
         self.ctx.ptr
     }
+
+    pub fn check_error(&mut self, rc: c_int) -> Result<(), AvIoError<R>> {
+        if rc == 0 {
+            Ok(())
+        } else {
+            match self.take_last_error() {
+                Some(ReaderError::Error(e)) => {
+                    return Err(AvIoError::Io(e));
+                }
+                Some(ReaderError::Panic(payload)) => {
+                    panic::resume_unwind(payload);
+                }
+                None => {
+                    Err(AvIoError::Av(AvError(rc)))
+                }
+            }
+        }
+    }
+
+    fn take_last_error(&mut self) -> Option<ReaderError<R::Error>> {
+        unsafe { &mut *self.reader }.error.take()
+    }
 }
 
 impl<R: IoReader> Drop for AvIoReader<R> {
@@ -93,6 +115,12 @@ impl<R: IoReader> Drop for AvIoReader<R> {
             mem::drop(Box::from_raw(self.reader));
         }
     }
+}
+
+#[derive(Debug)]
+pub enum AvIoError<R: IoReader> {
+    Io(R::Error),
+    Av(AvError),
 }
 
 struct ReaderState<R: IoReader> {
@@ -120,7 +148,7 @@ impl<R: IoReader> ReaderState<R> {
     }
 }
 
-enum ReaderError<T> {
+pub enum ReaderError<T> {
     Error(T),
     Panic(Box<dyn Any + Send + 'static>),
 }
