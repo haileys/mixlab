@@ -385,11 +385,11 @@ impl LiveOutput {
         while let Some(segment) = self.encode.recv_segment() {
             match segment {
                 StreamSegment::Audio(audio) => {
-                    let timestamp = RtmpTimestamp::new(audio.decode_timestamp.round_to_base(rtmp::TIME_BASE) as u32);
+                    let timestamp = RtmpTimestamp::new(audio.decode_timestamp.round_to_base(rtmp::TIME_BASE.into()) as u32);
                     self.publish.publish_audio(AudioPacket::AacRawData(audio.frame), timestamp).expect("TODO");
                 }
                 StreamSegment::Video(video) => {
-                    let timestamp = RtmpTimestamp::new(video.decode_timestamp.round_to_base(rtmp::TIME_BASE) as u32);
+                    let timestamp = RtmpTimestamp::new(video.decode_timestamp.round_to_base(rtmp::TIME_BASE.into()) as u32);
                     self.publish.publish_video(VideoPacket {
                         frame_type: if video.frame.is_key_frame {
                             VideoFrameType::KeyFrame
@@ -397,7 +397,7 @@ impl LiveOutput {
                             VideoFrameType::InterFrame
                         },
                         packet_type: VideoPacketType::Nalu,
-                        composition_time: video.frame.composition_time.round_to_base(rtmp::TIME_BASE) as u32,
+                        composition_time: video.frame.composition_time.round_to_base(rtmp::TIME_BASE.into()) as u32,
                         data: video.frame.data,
                     }, timestamp).expect("TODO");
                 }

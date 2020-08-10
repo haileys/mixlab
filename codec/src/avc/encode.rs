@@ -8,7 +8,8 @@ use bytes::Bytes;
 use ffmpeg_dev::sys as ff;
 
 use crate::avc::{bitstream, nal, AvcError, DecoderConfigurationRecord};
-use crate::ffmpeg::{AvCodecContext, AvFrame, AvError, AvDict, AvPacket, PixelFormat};
+use crate::ffmpeg::codec::AvCodecContext;
+use crate::ffmpeg::{AvFrame, AvError, AvDict, AvPacket, PixelFormat};
 
 #[derive(Debug)]
 pub struct AvcEncoder {

@@ -5,14 +5,14 @@ use std::thread;
 use bytes::Bytes;
 use derive_more::From;
 use futures::executor::block_on;
-use num_rational::Rational64;
+use num_rational::{Rational32, Rational64};
 use rml_rtmp::handshake::HandshakeError;
 use rml_rtmp::sessions::{ServerSession, ServerSessionResult, ServerSessionError, ServerSessionEvent};
 use rml_rtmp::time::RtmpTimestamp;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use mixlab_codec::aac;
-use mixlab_codec::avc::decode::{AvcDecoder, RecvFrameError};
+use mixlab_codec::ffmpeg::codec::{self, CodecBuilder, DecodeContext, RecvFrameError};
 use mixlab_codec::ffmpeg::{AvError, AvPacketRef, PacketInfo};
 use mixlab_util::time::{MediaDuration, MediaTime};
 
@@ -38,7 +38,7 @@ pub fn listen(mountpoint: &str) -> Result<SourceRecv, ListenError> {
     MOUNTPOINTS.listen(mountpoint)
 }
 
-pub const TIME_BASE: i64 = 1000;
+pub const TIME_BASE: i32 = 1000;
 
 #[derive(From, Debug)]
 pub enum RtmpError {
@@ -51,6 +51,7 @@ pub enum RtmpError {
     SourceSend,
     Aac(aac::AacError),
     AacCodec(fdk_aac::dec::DecoderError),
+    CodecOpen(codec::OpenError),
     AvCodec(AvError),
 }
 
@@ -109,7 +110,7 @@ struct ReceiveContext {
     audio_codec: fdk_aac::dec::Decoder,
     audio_asc: Option<aac::AudioSpecificConfiguration>,
     audio_timestamp: MediaTime,
-    video_codec: Option<AvcDecoder>,
+    video_codec: Option<DecodeContext>,
 }
 
 struct StreamMeta {
@@ -167,7 +168,7 @@ fn handle_event(
         ServerSessionEvent::StreamMetadataChanged { app_name: _, stream_key: _, metadata } => {
             let video_frame_duration =
                 if let Some(frame_rate) = metadata.video_frame_rate {
-                    let frame_rate = Rational64::new((frame_rate * TIME_BASE as f32) as i64, TIME_BASE);
+                    let frame_rate = Rational64::new((frame_rate * TIME_BASE as f32) as i64, TIME_BASE.into());
                     MediaDuration::from(frame_rate.recip())
                 } else {
                     eprintln!("rtmp: no frame rate in metadata");
@@ -272,9 +273,16 @@ fn receive_video_packet(
 
     match packet.packet_type {
         VideoPacketType::SequenceHeader => {
-            // initialize video codec with dcr
-            let dcr = &packet.data;
-            ctx.video_codec = Some(AvcDecoder::new(TIME_BASE as usize, dcr).unwrap());
+            let time_base = Rational32::new(1, TIME_BASE);
+
+            let decode = CodecBuilder::h264(time_base)
+                // h264 extradata is the decoder configuration record:
+                .with_extradata(&packet.data)
+                // use avcc encoding (length-prefixed NALs) rather than default of annex-b:
+                .with_opt("is_avc", "1")
+                .open_decoder()?;
+
+            ctx.video_codec = Some(decode);
         }
         VideoPacketType::Nalu => {
             let codec = match ctx.video_codec.as_mut() {
@@ -303,7 +311,7 @@ fn receive_video_packet(
             loop {
                 match codec.recv_frame() {
                     Ok(decoded) => {
-                        let timestamp = MediaTime::new(decoded.presentation_timestamp(), TIME_BASE);
+                        let timestamp = MediaTime::new(decoded.presentation_timestamp(), TIME_BASE.into());
 
                         let frame = video::Frame {
                             decoded: decoded,

@@ -6,7 +6,7 @@ use std::ptr;
 pub use ffmpeg_dev::sys as sys;
 use sys as ff;
 
-mod codec;
+pub mod codec;
 mod format;
 mod frame;
 mod ioctx;
@@ -14,7 +14,6 @@ mod packet;
 mod pixfmt;
 mod scale;
 
-pub use codec::AvCodecContext;
 pub use format::InputContainer;
 pub use frame::{AvFrame, PictureSettings, PictureData, PictureDataMut};
 pub use ioctx::{AvIoError, IoReader, AvIoReader};
