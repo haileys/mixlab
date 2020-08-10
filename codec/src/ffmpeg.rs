@@ -13,10 +13,12 @@ mod packet;
 mod pixfmt;
 mod scale;
 
+pub use format::InputContainer;
 pub use frame::{AvFrame, PictureSettings, PictureData, PictureDataMut};
+pub use ioctx::{IoReader, AvIoReader};
 pub use packet::{AvPacket, AvPacketRef, PacketInfo};
-pub use scale::SwsContext;
 pub use pixfmt::{PixelFormat, PixFmtDescriptor, PlaneInfo, ColorFormat};
+pub use scale::SwsContext;
 
 #[derive(Debug)]
 pub struct AvCodecContext {

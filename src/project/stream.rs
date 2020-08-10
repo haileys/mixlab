@@ -1,8 +1,10 @@
 use std::cmp;
 use std::convert::TryFrom;
+use std::io::SeekFrom;
 use std::mem;
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, OptionalExtension, types::ValueRef};
+use mixlab_codec::ffmpeg;
 
 use crate::project::ProjectBaseRef;
 
@@ -106,18 +108,83 @@ impl ReadStream {
             }
         }))
     }
+}
 
-    #[allow(unused)]
-    pub async fn read_chunk(&mut self) -> Result<Option<Vec<u8>>, rusqlite::Error> {
-        let stream_id = self.stream_id;
-        let offset = self.offset;
+impl ffmpeg::IoReader for ReadStream {
+    type Error = rusqlite::Error;
+    const BUFFER_SIZE: usize = STREAM_BLOB_SIZE;
 
-        self.base.with_database(move |conn| -> Result<Option<Vec<u8>>, rusqlite::Error> {
-            conn.query_row(
-                    "SELECT data FROM blobs WHERE stream_id = ? AND offset = ?",
-                    params![stream_id.0, offset],
-                    |data| data.get(0))
-                .optional()
-        }).await
+    fn read(&mut self, out: &mut [u8]) -> Result<usize, Self::Error> {
+        let mut read_bytes = 0;
+
+        self.base.with_database_in_blocking_context(|conn| -> Result<(), rusqlite::Error> {
+            let mut stmt = conn.prepare(r"
+                SELECT offset, data FROM blobs
+                WHERE stream_id = ? AND offset <= ?
+                ORDER BY offset DESC
+                LIMIT 1
+            ")?;
+
+            while out.len() > read_bytes {
+                let cursor_offset = self.offset + read_bytes as i64;
+                let mut rows = stmt.query(params![self.stream_id.0, cursor_offset])?;
+
+                match rows.next()? {
+                    Some(row) => {
+                        // pull offset and data out of row
+                        let blob_offset = row.get::<_, i64>(0)?;
+                        let blob_data = match row.get_raw(1) {
+                            ValueRef::Blob(data) => data,
+                            _ => unreachable!("data column is always blob"),
+                        };
+
+                        // seek blob from db
+                        let blob_data_offset = usize::try_from(cursor_offset - blob_offset)
+                            .expect("cursor_offset > blob_offset");
+
+                        let data = match blob_data.get(blob_data_offset..) {
+                            Some([]) | None => {
+                                // reached end of stream
+                                break;
+                            }
+                            Some(data) => data,
+                        };
+
+                        // copy to out
+                        let out = &mut out[read_bytes..];
+                        let copy_len = cmp::min(out.len(), data.len());
+                        out[..copy_len].copy_from_slice(&data[0..copy_len]);
+
+                        // advance
+                        read_bytes += copy_len;
+                    }
+                    None => {
+                        // reached end of stream
+                        break;
+                    }
+                }
+            }
+
+            Ok(())
+        })?;
+
+        self.offset += read_bytes as i64;
+        Ok(read_bytes)
+    }
+
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64, Self::Error> {
+        let new_offset = match pos {
+            SeekFrom::Start(pos) => i64::try_from(pos).expect("seek position too large"),
+            SeekFrom::Current(offset) => self.offset + offset,
+            SeekFrom::End(offset) => self.size + offset,
+        };
+
+        self.offset = cmp::max(new_offset, 0);
+
+        Ok(self.offset as u64)
+    }
+
+    fn size(&mut self) -> Result<u64, Self::Error> {
+        Ok(self.size as u64)
     }
 }
