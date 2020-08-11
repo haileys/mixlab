@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use derive_more::From;
 use futures::stream::{Stream, StreamExt};
-use rusqlite::{self, Connection};
+use rusqlite::{self, Connection, OptionalExtension};
 use tokio::sync::watch;
 use tokio::{fs, io, task, runtime};
 
@@ -70,7 +70,7 @@ impl ProjectBase {
     async fn read_workspace(&self) -> Result<persist::Workspace, OpenError> {
         let serialized = self.with_database(|conn| -> Result<Option<Vec<u8>>, rusqlite::Error> {
             conn.query_row("SELECT serialized FROM workspace WHERE rowid = 1", rusqlite::NO_PARAMS,
-                |row| row.get(0))
+                |row| row.get(0)).optional()
         }).await?;
 
         let workspace = match serialized {
