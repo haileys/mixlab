@@ -3,7 +3,7 @@ use std::sync::mpsc::{self, SyncSender, Receiver, TryRecvError};
 use std::thread;
 
 use derive_more::From;
-use mixlab_codec::ffmpeg::codec::{self, CodecBuilder, RecvFrameError, DecodeContext};
+use mixlab_codec::ffmpeg::codec::{self, CodecBuilder, RecvFrameError, Decode};
 use mixlab_codec::ffmpeg::{AvError, AvIoError, AvIoReader, IoReader, InputContainer};
 use mixlab_protocol::{MediaId, MediaSourceParams};
 use mixlab_util::time::{MediaTime, MediaDuration, TimeBase};
@@ -218,7 +218,7 @@ fn run_decode_thread(stream: ReadStream, tx: SyncSender<Frame>) -> Result<(), De
 
 struct PlaybackContext {
     container: InputContainer<ReadStream>,
-    video_decode: DecodeContext,
+    video_decode: Decode,
     video_time_base: TimeBase,
     throttle: MediaThrottle,
     tx: SyncSender<Frame>,

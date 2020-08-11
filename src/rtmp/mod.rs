@@ -12,7 +12,7 @@ use rml_rtmp::time::RtmpTimestamp;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use mixlab_codec::aac;
-use mixlab_codec::ffmpeg::codec::{self, CodecBuilder, DecodeContext, RecvFrameError};
+use mixlab_codec::ffmpeg::codec::{self, CodecBuilder, Decode, RecvFrameError};
 use mixlab_codec::ffmpeg::{AvError, AvPacketRef, PacketInfo};
 use mixlab_util::time::{MediaDuration, MediaTime, TimeBase};
 
@@ -110,7 +110,7 @@ struct ReceiveContext {
     audio_codec: fdk_aac::dec::Decoder,
     audio_asc: Option<aac::AudioSpecificConfiguration>,
     audio_timestamp: MediaTime,
-    video_codec: Option<DecodeContext>,
+    video_codec: Option<Decode>,
 }
 
 struct StreamMeta {

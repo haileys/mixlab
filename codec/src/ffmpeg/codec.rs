@@ -47,7 +47,7 @@ impl<'a> CodecBuilder<'a> {
         self
     }
 
-    pub fn open_decoder(mut self) -> Result<DecodeContext, OpenError> {
+    pub fn open_decoder(mut self) -> Result<Decode, OpenError> {
         // find codec
         let codec = unsafe { ff::avcodec_find_decoder(self.codec_id) };
 
@@ -103,7 +103,7 @@ impl<'a> CodecBuilder<'a> {
             return Err(OpenError::Av(AvError(rc)));
         }
 
-        Ok(DecodeContext { ctx })
+        Ok(Decode { ctx })
     }
 }
 
@@ -126,11 +126,11 @@ impl<'a> Deref for AvCodecParameters<'a> {
 }
 
 #[derive(Debug)]
-pub struct DecodeContext {
+pub struct Decode {
     ctx: AvCodecContext,
 }
 
-impl DecodeContext {
+impl Decode {
     pub fn send_packet(&mut self, pkt: &AvPacket) -> Result<(), AvError> {
         let rc = unsafe { ff::avcodec_send_packet(self.ctx.as_mut_ptr(), pkt.as_ptr()) };
 
