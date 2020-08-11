@@ -3,6 +3,7 @@ use std::sync::mpsc::{self, SyncSender, Receiver, TryRecvError};
 use std::thread;
 
 use derive_more::From;
+use mixlab_codec::ffmpeg::media::Video;
 use mixlab_codec::ffmpeg::codec::{self, CodecBuilder, RecvFrameError, Decode};
 use mixlab_codec::ffmpeg::{AvError, AvIoError, AvIoReader, IoReader, InputContainer};
 use mixlab_protocol::{MediaId, MediaSourceParams};
@@ -165,6 +166,7 @@ struct Frame {
 
 #[derive(Debug, From)]
 enum DecodeError {
+    CodecBuild(codec::BuildError),
     CodecOpen(codec::OpenError),
     NoFrames,
     RecvFrame(RecvFrameError),
@@ -193,7 +195,7 @@ fn run_decode_thread(stream: ReadStream, tx: SyncSender<Frame>) -> Result<(), De
     let video_time_base = video_stream.time_base();
     let video_codec_params = video_stream.codec_parameters();
 
-    let video_decode = CodecBuilder::new(video_codec_params.codec_id, video_time_base)
+    let video_decode = CodecBuilder::<Video>::new(video_codec_params.codec_id, video_time_base)?
         .with_parameters(video_codec_params)
         .open_decoder()?;
 
@@ -218,7 +220,7 @@ fn run_decode_thread(stream: ReadStream, tx: SyncSender<Frame>) -> Result<(), De
 
 struct PlaybackContext {
     container: InputContainer<ReadStream>,
-    video_decode: Decode,
+    video_decode: Decode<Video>,
     video_time_base: TimeBase,
     throttle: MediaThrottle,
     tx: SyncSender<Frame>,

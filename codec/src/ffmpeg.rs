@@ -7,6 +7,7 @@ pub use ffmpeg_dev::sys as sys;
 use sys as ff;
 
 pub mod codec;
+pub mod media;
 mod format;
 mod frame;
 mod ioctx;

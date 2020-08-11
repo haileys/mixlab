@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::os::raw::c_int;
 use std::ptr;
@@ -8,28 +9,55 @@ use ffmpeg_dev::sys as ff;
 use mixlab_util::time::TimeBase;
 
 use crate::ffmpeg::{AvError, AvDict, AvPacket, AvFrame, AGAIN, EOF};
+use crate::ffmpeg::media::{Video, MediaType};
 
-pub struct CodecBuilder<'a> {
-    codec_id: ff::AVCodecID,
+pub struct CodecBuilder<'a, FrameType> {
+    codec: &'static ff::AVCodec,
     time_base: TimeBase,
     opts: AvDict,
     parameters: Option<AvCodecParameters<'a>>,
     extradata: Option<&'a [u8]>,
+    phantom: PhantomData<FrameType>,
 }
 
-impl<'a> CodecBuilder<'a> {
-    pub fn h264(time_base: TimeBase) -> Self {
-        Self::new(ff::AVCodecID_AV_CODEC_ID_H264, time_base)
+impl<'a> CodecBuilder<'a, Video> {
+    pub fn h264(time_base: TimeBase) -> CodecBuilder<'a, Video> {
+        match Self::new(ff::AVCodecID_AV_CODEC_ID_H264, time_base) {
+            Ok(builder) => builder,
+            Err(BuildError::MediaTypeMismatch) => unreachable!(),
+            Err(BuildError::CodecNotFound) => unreachable!(),
+        }
     }
+}
 
-    pub fn new(codec_id: ff::AVCodecID, time_base: TimeBase) -> Self {
-        Self {
-            codec_id,
+#[derive(Debug)]
+pub enum BuildError {
+    MediaTypeMismatch,
+    CodecNotFound,
+}
+
+impl<'a, FrameType: MediaType> CodecBuilder<'a, FrameType> {
+    pub fn new(codec_id: ff::AVCodecID, time_base: TimeBase) -> Result<Self, BuildError> {
+        let codec = unsafe { ff::avcodec_find_decoder(codec_id) };
+
+        if codec == ptr::null_mut() {
+            return Err(BuildError::CodecNotFound);
+        }
+
+        let codec = unsafe { &*codec };
+
+        if codec.type_ != FrameType::FFMPEG_MEDIA_TYPE {
+            return Err(BuildError::MediaTypeMismatch);
+        }
+
+        Ok(Self {
+            codec,
             time_base,
             opts: AvDict::new(),
             parameters: None,
             extradata: None,
-        }
+            phantom: PhantomData,
+        })
     }
 
     pub fn with_opt(mut self, name: &str, value: &str) -> Self {
@@ -47,16 +75,9 @@ impl<'a> CodecBuilder<'a> {
         self
     }
 
-    pub fn open_decoder(mut self) -> Result<Decode, OpenError> {
-        // find codec
-        let codec = unsafe { ff::avcodec_find_decoder(self.codec_id) };
-
-        if codec == ptr::null_mut() {
-            return Err(OpenError::CodecNotFound);
-        }
-
+    pub fn open_decoder(mut self) -> Result<Decode<Video>, OpenError> {
         // alloc codec
-        let mut ctx = unsafe { AvCodecContext::alloc(codec) };
+        let mut ctx = unsafe { AvCodecContext::alloc(self.codec) };
 
         // copy codec parameters
         if let Some(parameters) = self.parameters {
@@ -96,14 +117,14 @@ impl<'a> CodecBuilder<'a> {
 
         // open codec
         let rc = unsafe {
-            ff::avcodec_open2(ctx.as_mut_ptr(), codec, self.opts.as_mut() as *mut *mut _)
+            ff::avcodec_open2(ctx.as_mut_ptr(), self.codec, self.opts.as_mut() as *mut *mut _)
         };
 
         if rc != 0 {
             return Err(OpenError::Av(AvError(rc)));
         }
 
-        Ok(Decode { ctx })
+        Ok(Decode::new(ctx))
     }
 }
 
@@ -126,11 +147,19 @@ impl<'a> Deref for AvCodecParameters<'a> {
 }
 
 #[derive(Debug)]
-pub struct Decode {
+pub struct Decode<FrameType> {
     ctx: AvCodecContext,
+    phantom: PhantomData<FrameType>,
 }
 
-impl Decode {
+impl<FrameType> Decode<FrameType> {
+    fn new(ctx: AvCodecContext) -> Self {
+        Decode {
+            ctx,
+            phantom: PhantomData,
+        }
+    }
+
     pub fn send_packet(&mut self, pkt: &AvPacket) -> Result<(), AvError> {
         let rc = unsafe { ff::avcodec_send_packet(self.ctx.as_mut_ptr(), pkt.as_ptr()) };
 
@@ -172,7 +201,6 @@ impl Decode {
 
 #[derive(Debug, From)]
 pub enum OpenError {
-    CodecNotFound,
     Av(AvError),
 }
 
