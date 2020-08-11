@@ -1147,6 +1147,7 @@ dependencies = [
  "mpeg2ts",
  "num-rational",
  "packed_simd",
+ "percent-encoding",
  "ringbuf",
  "rml_rtmp",
  "rusqlite",
