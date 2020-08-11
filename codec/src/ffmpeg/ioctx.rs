@@ -10,7 +10,7 @@ use std::slice;
 
 use ffmpeg_dev::sys as ff;
 
-use crate::ffmpeg::{AvError, MIXLAB_IOCTX_ERROR, MIXLAB_IOCTX_PANIC};
+use crate::ffmpeg::{AvError, MIXLAB_IOCTX_ERROR, MIXLAB_IOCTX_PANIC, EOF};
 
 pub trait IoReader {
     type Error;
@@ -55,9 +55,13 @@ impl<R: IoReader> AvIoReader<R> {
                 let buf = slice::from_raw_parts_mut(buf, usize::try_from(buf_size).expect("read callback: buf_size as usize"));
 
                 reader.read(buf).map(|bytes| {
-                    // this should never overflow, because buf_size is a c_int
-                    // and the largest this could possibly be is also a c_int
-                    bytes as c_int
+                    if bytes == 0 {
+                        EOF
+                    } else {
+                        // this should never overflow, because buf_size is a c_int
+                        // and the largest this could possibly be is also a c_int
+                        bytes as c_int
+                    }
                 })
             })
         }
