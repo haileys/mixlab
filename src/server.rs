@@ -7,6 +7,7 @@ use bytes::Buf;
 use derive_more::From;
 use futures::sink::{Sink, SinkExt};
 use futures::stream::{self, Stream, StreamExt};
+use percent_encoding::percent_decode;
 use structopt::StructOpt;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -90,7 +91,8 @@ pub async fn run(opts: RunOpts) {
         });
 
     let media_upload = warp::post()
-        .and(warp::path!("_upload" / String))
+        .and(warp::path!("_upload" / String)
+            .map(|filename: String| percent_decode(filename.as_bytes()).decode_utf8_lossy().into_owned()))
         .and(warp::header::<String>("content-type"))
         .and(warp::filters::body::stream())
         .and_then({
