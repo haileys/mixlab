@@ -8,6 +8,7 @@ use num_rational::Ratio;
 
 use mixlab_codec::avc::DecoderConfigurationRecord;
 use mixlab_codec::avc::encode::{AvcEncoder, AvcParams, Preset, Tune, RateControl};
+use mixlab_codec::ffmpeg::media::Video;
 use mixlab_codec::ffmpeg::sys;
 use mixlab_codec::ffmpeg::{AvFrame, AvPacket, PictureSettings, SwsContext};
 use mixlab_mux::mp4::AvcFrame;
@@ -57,7 +58,7 @@ impl EncodeStream {
         }
     }
 
-    pub fn send_video(&mut self, timestamp: MediaTime, duration_hint: MediaDuration, frame: AvFrame) {
+    pub fn send_video(&mut self, timestamp: MediaTime, duration_hint: MediaDuration, frame: AvFrame<Video>) {
         let end_timestamp = timestamp + duration_hint;
 
         if end_timestamp < self.video_timestamp {
@@ -82,7 +83,7 @@ impl EncodeStream {
         }
     }
 
-    fn encode_video(&mut self, duration: MediaDuration, mut frame: AvFrame) {
+    fn encode_video(&mut self, duration: MediaDuration, mut frame: AvFrame<Video>) {
         let time_base = self.video_ctx.time_base;
 
         let frame_start_timestamp = self.video_timestamp;
@@ -224,7 +225,7 @@ impl AudioCtx {
 pub struct VideoCtx {
     codec: AvcEncoder,
     scaler: DynamicScaler,
-    blank_frame: AvFrame,
+    blank_frame: AvFrame<Video>,
     time_base: i64,
 }
 
@@ -283,7 +284,7 @@ impl VideoCtx {
         self.codec.decoder_configuration_record()
     }
 
-    pub fn send_frame(&mut self, mut frame: AvFrame) {
+    pub fn send_frame(&mut self, mut frame: AvFrame<Video>) {
         // clear picture type so x264 can make its own decisions about keyframes:
         frame.set_picture_type(mixlab_codec::ffmpeg::sys::AVPictureType_AV_PICTURE_TYPE_NONE);
 
@@ -301,7 +302,7 @@ impl VideoCtx {
         }
     }
 
-    pub fn blank_frame(&self) -> AvFrame {
+    pub fn blank_frame(&self) -> AvFrame<Video> {
         self.blank_frame.clone()
     }
 }
@@ -319,7 +320,7 @@ struct ScaleSetting {
     letterbox_y: usize,
     scaled_width: usize,
     scaled_height: usize,
-    frame: AvFrame,
+    frame: AvFrame<Video>,
 }
 
 impl DynamicScaler {
@@ -334,7 +335,7 @@ impl DynamicScaler {
     // the returned reference can either by borrowed from self, or borrowed
     // from our argument, so we need to set up a few lifetime constraints to
     // express that the output lifetime is outlived by both self and arg
-    pub fn scale<'this: 'out, 'arg: 'out, 'out>(&'this mut self, frame: &'arg mut AvFrame) -> &'out mut AvFrame {
+    pub fn scale<'this: 'out, 'arg: 'out, 'out>(&'this mut self, frame: &'arg mut AvFrame<Video>) -> &'out mut AvFrame<Video> {
         let input_picture = frame.picture_settings();
         let output_picture = &self.output;
 

@@ -75,7 +75,7 @@ impl<'a, FrameType: MediaType> CodecBuilder<'a, FrameType> {
         self
     }
 
-    pub fn open_decoder(mut self) -> Result<Decode<Video>, OpenError> {
+    pub fn open_decoder(mut self) -> Result<Decode<FrameType>, OpenError> {
         // alloc codec
         let mut ctx = unsafe { AvCodecContext::alloc(self.codec) };
 
@@ -152,7 +152,7 @@ pub struct Decode<FrameType> {
     phantom: PhantomData<FrameType>,
 }
 
-impl<FrameType> Decode<FrameType> {
+impl<FrameType: MediaType> Decode<FrameType> {
     fn new(ctx: AvCodecContext) -> Self {
         Decode {
             ctx,
@@ -184,7 +184,7 @@ impl<FrameType> Decode<FrameType> {
         unsafe { ff::avcodec_flush_buffers(self.ctx.as_mut_ptr()); }
     }
 
-    pub fn recv_frame(&mut self) -> Result<AvFrame, RecvFrameError> {
+    pub fn recv_frame(&mut self) -> Result<AvFrame<FrameType>, RecvFrameError> {
         let mut frame = AvFrame::new();
         let rc = unsafe {
             ff::avcodec_receive_frame(self.ctx.as_mut_ptr(), frame.as_mut_ptr())

@@ -6,6 +6,7 @@ pub trait MediaType {
     const FFMPEG_MEDIA_TYPE: ff::AVMediaType;
 }
 
+#[derive(Debug)]
 pub struct Video;
 
 impl MediaType for Video {
