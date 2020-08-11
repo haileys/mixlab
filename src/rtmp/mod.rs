@@ -5,7 +5,7 @@ use std::thread;
 use bytes::Bytes;
 use derive_more::From;
 use futures::executor::block_on;
-use num_rational::{Rational32, Rational64};
+use num_rational::Rational64;
 use rml_rtmp::handshake::HandshakeError;
 use rml_rtmp::sessions::{ServerSession, ServerSessionResult, ServerSessionError, ServerSessionEvent};
 use rml_rtmp::time::RtmpTimestamp;
@@ -14,7 +14,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use mixlab_codec::aac;
 use mixlab_codec::ffmpeg::codec::{self, CodecBuilder, DecodeContext, RecvFrameError};
 use mixlab_codec::ffmpeg::{AvError, AvPacketRef, PacketInfo};
-use mixlab_util::time::{MediaDuration, MediaTime};
+use mixlab_util::time::{MediaDuration, MediaTime, TimeBase};
 
 use crate::listen::PeekTcpStream;
 use crate::source::{Registry, ConnectError, SourceRecv, SourceSend, ListenError};
@@ -273,7 +273,7 @@ fn receive_video_packet(
 
     match packet.packet_type {
         VideoPacketType::SequenceHeader => {
-            let time_base = Rational32::new(1, TIME_BASE);
+            let time_base = TimeBase::new(1, TIME_BASE);
 
             let decode = CodecBuilder::h264(time_base)
                 // h264 extradata is the decoder configuration record:

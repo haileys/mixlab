@@ -24,6 +24,9 @@ pub use scale::SwsContext;
 pub const MIXLAB_IOCTX_ERROR: c_int = -0x6d786c00; // 'M' 'X' 'L' 0x00
 pub const MIXLAB_IOCTX_PANIC: c_int = -0x6d786c01; // 'M' 'X' 'L' 0x01
 
+pub const AGAIN: c_int = -(ff::EAGAIN as c_int);
+pub const EOF: c_int = -0x20464f45; // 'EOF '
+
 pub struct AvError(pub(crate) c_int);
 
 impl AvError {

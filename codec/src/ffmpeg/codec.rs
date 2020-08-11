@@ -1,27 +1,28 @@
 use std::convert::TryFrom;
+use std::ops::Deref;
 use std::os::raw::c_int;
 use std::ptr;
 
 use derive_more::From;
 use ffmpeg_dev::sys as ff;
-use num_rational::Rational32;
+use mixlab_util::time::TimeBase;
 
-use crate::ffmpeg::{AvError, AvDict, AvPacket, AvFrame};
+use crate::ffmpeg::{AvError, AvDict, AvPacket, AvFrame, AGAIN, EOF};
 
 pub struct CodecBuilder<'a> {
     codec_id: ff::AVCodecID,
-    time_base: Rational32,
+    time_base: TimeBase,
     opts: AvDict,
-    parameters: Option<&'a ff::AVCodecParameters>,
+    parameters: Option<AvCodecParameters<'a>>,
     extradata: Option<&'a [u8]>,
 }
 
 impl<'a> CodecBuilder<'a> {
-    pub fn h264(time_base: Rational32) -> Self {
+    pub fn h264(time_base: TimeBase) -> Self {
         Self::new(ff::AVCodecID_AV_CODEC_ID_H264, time_base)
     }
 
-    pub fn new(codec_id: ff::AVCodecID, time_base: Rational32) -> Self {
+    pub fn new(codec_id: ff::AVCodecID, time_base: TimeBase) -> Self {
         Self {
             codec_id,
             time_base,
@@ -36,8 +37,7 @@ impl<'a> CodecBuilder<'a> {
         self
     }
 
-    /// unsafe because params contains pointers that must be valid
-    pub unsafe fn with_parameters(mut self, parameters: &'a ff::AVCodecParameters) -> Self {
+    pub fn with_parameters(mut self, parameters: AvCodecParameters<'a>) -> Self {
         self.parameters = Some(parameters);
         self
     }
@@ -61,7 +61,7 @@ impl<'a> CodecBuilder<'a> {
         // copy codec parameters
         if let Some(parameters) = self.parameters {
             let rc = unsafe {
-                ff::avcodec_parameters_to_context(ctx.as_mut_ptr(), parameters)
+                ff::avcodec_parameters_to_context(ctx.as_mut_ptr(), parameters.0)
             };
 
             if rc != 0 {
@@ -73,8 +73,8 @@ impl<'a> CodecBuilder<'a> {
         unsafe {
             let underlying = &mut *ctx.as_mut_ptr();
 
-            underlying.time_base.num = *self.time_base.numer();
-            underlying.time_base.den = *self.time_base.denom();
+            underlying.time_base.num = *self.time_base.as_rational().numer();
+            underlying.time_base.den = *self.time_base.as_rational().denom();
 
             if let Some(extradata_bytes) = self.extradata {
                 let extradata_int_len = c_int::try_from(extradata_bytes.len())
@@ -107,6 +107,24 @@ impl<'a> CodecBuilder<'a> {
     }
 }
 
+/// wrapper type around a reference to AVCodecParameters with an unsafe
+/// constructor that vouches for the soundness of its parameters
+pub struct AvCodecParameters<'a>(&'a ff::AVCodecParameters);
+
+impl<'a> AvCodecParameters<'a> {
+    pub unsafe fn from_raw(params: &'a ff::AVCodecParameters) -> Self {
+        AvCodecParameters(params)
+    }
+}
+
+impl<'a> Deref for AvCodecParameters<'a> {
+    type Target = ff::AVCodecParameters;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 #[derive(Debug)]
 pub struct DecodeContext {
     ctx: AvCodecContext,
@@ -123,14 +141,25 @@ impl DecodeContext {
         }
     }
 
+    pub fn end_of_stream(&mut self) -> Result<(), AvError> {
+        let rc = unsafe { ff::avcodec_send_packet(self.ctx.as_mut_ptr(), ptr::null()) };
+
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(AvError(rc))
+        }
+    }
+
+    pub fn flush_buffers(&mut self) {
+        unsafe { ff::avcodec_flush_buffers(self.ctx.as_mut_ptr()); }
+    }
+
     pub fn recv_frame(&mut self) -> Result<AvFrame, RecvFrameError> {
         let mut frame = AvFrame::new();
         let rc = unsafe {
             ff::avcodec_receive_frame(self.ctx.as_mut_ptr(), frame.as_mut_ptr())
         };
-
-        const AGAIN: c_int = -(ff::EAGAIN as c_int);
-        const EOF: c_int = -0x20464f45; // 'EOF '
 
         match rc {
             0 => Ok(frame),

@@ -5,11 +5,11 @@ use std::ptr;
 use std::slice;
 
 use ffmpeg_dev::sys as ff;
-use num_rational::Rational64;
 
-use mixlab_util::time::MediaDuration;
+use mixlab_util::time::{MediaDuration, MediaTime, TimeBase};
 
-use crate::ffmpeg::{AvIoError, AvPacket};
+use crate::ffmpeg::{AvIoError, AvPacket, AvError, EOF};
+use crate::ffmpeg::codec::AvCodecParameters;
 use crate::ffmpeg::ioctx::{IoReader, AvIoReader};
 
 pub struct InputContainer<R: IoReader> {
@@ -59,14 +59,36 @@ impl<R: IoReader> InputContainer<R> {
         unsafe { slice::from_raw_parts(ptr, len) }
     }
 
-    pub fn read_packet(&mut self) -> Result<AvPacket, AvIoError<R>> {
+    pub fn seek(&mut self, time: MediaTime) -> Result<(), AvIoError<R>> {
+        // TODO - is it ok to always seek with respect to stream 0?
+        let stream_index = 0;
+
+        let ts = self.streams()[stream_index].time_base().unscale_timestamp(time);
+
+        // seek file to start
+        self.io.check_error(unsafe {
+            ff::avio_seek((*self.ctx.ptr).pb, 0, ff::SEEK_SET as i32) as i32
+        })?;
+
+        // seek stream to start
+        self.io.check_error(unsafe {
+            ff::av_seek_frame(self.ctx.ptr, stream_index as i32, ts, 0)
+        })?;
+
+        Ok(())
+    }
+
+    pub fn read_packet(&mut self) -> Result<Option<AvPacket>, AvIoError<R>> {
         unsafe {
             let mut pkt = MaybeUninit::uninit();
 
             let rc = ff::av_read_frame(self.ctx.ptr, pkt.as_mut_ptr());
-            self.io.check_error(rc)?;
 
-            Ok(AvPacket::new(pkt.assume_init()))
+            match self.io.check_error(rc) {
+                Ok(()) => Ok(Some(AvPacket::new(pkt.assume_init()))),
+                Err(AvIoError::Av(AvError(EOF))) => Ok(None),
+                Err(e) => Err(e),
+            }
         }
     }
 }
@@ -102,16 +124,16 @@ impl InputStream {
     }
 
     pub fn duration(&self) -> MediaDuration {
-        MediaDuration::from(self.time_base() * self.as_underlying().duration)
+        self.time_base().scale_duration(self.as_underlying().duration)
     }
 
-    pub fn time_base(&self) -> Rational64 {
+    pub fn time_base(&self) -> TimeBase {
         let underlying = self.as_underlying();
-        Rational64::new(underlying.time_base.num.into(), underlying.time_base.den.into())
+        TimeBase::new(underlying.time_base.num, underlying.time_base.den)
     }
 
-    fn codec_parameters(&self) -> &ff::AVCodecParameters {
-        unsafe { &*self.as_underlying().codecpar }
+    pub fn codec_parameters(&self) -> AvCodecParameters<'_> {
+        unsafe { AvCodecParameters::from_raw(&*self.as_underlying().codecpar) }
     }
 
     fn as_underlying(&self) -> &ff::AVStream {
