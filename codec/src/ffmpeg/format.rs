@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 use std::ffi::CStr;
 use std::mem::MaybeUninit;
+use std::os::raw::c_int;
 use std::ptr;
 use std::slice;
 
@@ -25,6 +26,7 @@ impl<R: IoReader> InputContainer<R> {
 
         let rc = unsafe {
             (*ctx.ptr).pb = io.as_mut_ptr();
+            (*ctx.ptr).flags |= ff::AVFMT_FLAG_CUSTOM_IO as c_int;
 
             ff::avformat_open_input(
                 &mut ctx.ptr as *mut *mut _,
