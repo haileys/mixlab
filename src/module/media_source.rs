@@ -182,7 +182,7 @@ impl From<AvIoError<ReadStream>> for DecodeError {
 }
 
 fn run_decode_thread(stream: ReadStream, tx: SyncSender<Frame>) -> Result<(), DecodeError> {
-    let mut container = InputContainer::open(AvIoReader::new(stream))?;
+    let container = InputContainer::open(AvIoReader::new(stream))?;
 
     for (idx, stream) in container.streams().iter().enumerate() {
         println!("Stream #{}: {}", idx, stream.codec_name().unwrap_or("-"));
@@ -193,7 +193,7 @@ fn run_decode_thread(stream: ReadStream, tx: SyncSender<Frame>) -> Result<(), De
     let video_time_base = video_stream.time_base();
     let video_codec_params = video_stream.codec_parameters();
 
-    let mut video_decode = CodecBuilder::new(video_codec_params.codec_id, video_time_base)
+    let video_decode = CodecBuilder::new(video_codec_params.codec_id, video_time_base)
         .with_parameters(video_codec_params)
         .open_decoder()?;
 
