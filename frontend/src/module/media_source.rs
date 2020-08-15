@@ -4,7 +4,7 @@ use std::rc::Rc;
 use yew::{html, Component, ComponentLink, Html, ShouldRender, Properties};
 use yew_components::Select;
 
-use mixlab_protocol::{ModuleId, ModuleParams, MediaSourceParams, MediaLibrary, MediaItem};
+use mixlab_protocol::{ModuleId, ModuleParams, MediaSourceParams, MediaLibrary, MediaId};
 
 use crate::util::notify;
 use crate::session::SessionRef;
@@ -56,7 +56,7 @@ impl Component for MediaSource {
                     WindowMsg::UpdateParams(
                         ModuleParams::MediaSource(
                             MediaSourceParams {
-                                media_id: Some(source.0.id),
+                                media_id: Some(source.id),
                                 ..self.props.params.clone()
                             })));
                 false
@@ -72,12 +72,26 @@ impl Component for MediaSource {
     fn view(&self) -> Html {
         let options = self.library.iter()
             .flat_map(|library| library.items.iter().cloned())
-            .map(MediaSourceItem)
+            .map(|item| {
+                MediaSourceItem {
+                    id: item.id,
+                    name: item.name.clone(),
+                }
+            })
             .collect::<Vec<_>>();
+
+        let selected = self.props.params.media_id.map(|id| {
+            MediaSourceItem {
+                id,
+                // name can be empty, we never display this item
+                name: String::new(),
+            }
+        });
 
         html! {
             <Select<MediaSourceItem>
                 options={options}
+                selected={selected}
                 on_change={self.link.callback(MediaSourceMsg::ChangeSource)}
             />
         }
@@ -85,16 +99,19 @@ impl Component for MediaSource {
 }
 
 #[derive(Clone)]
-pub struct MediaSourceItem(MediaItem);
+pub struct MediaSourceItem {
+    id: MediaId,
+    name: String,
+}
 
 impl PartialEq for MediaSourceItem {
     fn eq(&self, other: &MediaSourceItem) -> bool {
-        self.0.id == other.0.id
+        self.id == other.id
     }
 }
 
 impl Display for MediaSourceItem {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0.name)
+        write!(f, "{}", self.name)
     }
 }
