@@ -52,7 +52,6 @@ impl ModuleT for MediaSource {
             inputs: vec![],
             outputs: vec![
                 LineType::Video.unlabeled(),
-                LineType::Stereo.unlabeled(),
             ],
         };
 
