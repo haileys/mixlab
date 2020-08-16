@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 mixlab-codec = { path = "codec" }
+mixlab-graphics = { path = "graphics" }
 mixlab-mux = { path = "mux" }
 mixlab-protocol = { path = "protocol" }
 mixlab-util = { path = "util" }
