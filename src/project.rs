@@ -44,6 +44,7 @@ pub enum OpenError {
 }
 
 impl ProjectBase {
+    #[allow(unused)]
     pub fn with_database_in_blocking_context<T>(&self, f: impl FnOnce(&mut Connection) -> T) -> T {
         f(&mut self.database.lock().expect("lock sqlite connection"))
     }
