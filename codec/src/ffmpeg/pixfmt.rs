@@ -13,6 +13,10 @@ impl PixelFormat {
         PixelFormat(ff::AVPixelFormat_AV_PIX_FMT_YUV420P)
     }
 
+    pub const fn rgba() -> Self {
+        PixelFormat(ff::AVPixelFormat_AV_PIX_FMT_RGBA)
+    }
+
     pub unsafe fn from_raw(pixfmt: ff::AVPixelFormat) -> Self {
         PixelFormat(pixfmt)
     }

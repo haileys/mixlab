@@ -5,4 +5,9 @@ authors = ["Charlie Somerville <charlie@charlie.bz>"]
 edition = "2018"
 
 [dependencies]
-gfx-backend-metal = "0.6.0"
+mixlab-codec = { path = "../codec" }
+
+tokio = { version = "0.2" }
+
+# latest master at time of commit - need changes since 0.5.0 release:
+wgpu = { git = "https://github.com/gfx-rs/wgpu-rs", rev = "b0e1f055c693cee9075a04f007978ab9da1dc54b" }

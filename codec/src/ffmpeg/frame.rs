@@ -376,6 +376,14 @@ pub struct PictureSettings {
 }
 
 impl PictureSettings {
+    pub fn rgba(width: usize, height: usize) -> Self {
+        PictureSettings {
+            width,
+            height,
+            pixel_format: PixelFormat::rgba(),
+        }
+    }
+
     pub fn yuv420p(width: usize, height: usize) -> Self {
         PictureSettings {
             width,
