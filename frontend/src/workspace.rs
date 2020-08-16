@@ -5,7 +5,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent, Element};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, WorkspaceOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams, VideoMixerParams, MediaSourceParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, WorkspaceOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams, VideoMixerParams, MediaSourceParams, ShaderParams};
 
 use crate::component::midi_target::MidiUiMode;
 use crate::module::amplifier::Amplifier;
@@ -484,6 +484,7 @@ impl Workspace {
             ("Monitor", ModuleParams::Monitor(())),
             ("Video Mixer", ModuleParams::VideoMixer(VideoMixerParams::default())),
             ("Media Source", ModuleParams::MediaSource(MediaSourceParams::default())),
+            ("Shader", ModuleParams::Shader(ShaderParams::default())),
         ];
 
         html! {
@@ -786,6 +787,9 @@ impl Window {
             }
             ModuleParams::MediaSource(params) => {
                 html! { <MediaSource id={self.props.id} module={self.link.clone()} params={params} session={self.props.session.clone()} /> }
+            }
+            ModuleParams::Shader(_) => {
+                html! {}
             }
         }
     }

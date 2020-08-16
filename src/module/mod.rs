@@ -37,6 +37,7 @@ macro_rules! enumerate_modules {
             oscillator::Oscillator,
             output_device::OutputDevice,
             plotter::Plotter,
+            shader::Shader,
             stereo_panner::StereoPanner,
             stereo_splitter::StereoSplitter,
             stream_input::StreamInput,

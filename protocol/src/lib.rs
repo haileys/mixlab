@@ -202,6 +202,7 @@ pub enum ModuleParams {
     Oscillator(OscillatorParams),
     OutputDevice(OutputDeviceParams),
     Plotter(()),
+    Shader(ShaderParams),
     StereoPanner(()),
     StereoSplitter(()),
     StreamInput(StreamInputParams),
@@ -222,6 +223,7 @@ pub enum Indication {
     Oscillator(()),
     OutputDevice(OutputDeviceIndication),
     Plotter(PlotterIndication),
+    Shader(()),
     StereoPanner(()),
     StereoSplitter(()),
     StreamInput(()),
@@ -423,6 +425,9 @@ impl Default for VideoMixerParams {
 pub struct MediaSourceParams {
     pub media_id: Option<MediaId>,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct ShaderParams {}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Coords {
