@@ -145,6 +145,7 @@ impl Component for WorkspaceContainer {
                 <Workspace
                     app={self.props.app.clone()}
                     state={state.clone()}
+                    session={self.props.session.clone()}
                 />
             }
         } else {

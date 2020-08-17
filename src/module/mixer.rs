@@ -1,22 +1,23 @@
 use mixlab_protocol::{MixerParams, LineType, Terminal};
 
-use crate::engine::{Sample, InputRef, OutputRef};
+use crate::engine::{self, Sample, InputRef, OutputRef};
 use crate::module::ModuleT;
 use crate::util;
 
 #[derive(Debug)]
 pub struct Mixer {
     params: MixerParams,
+    ctx: Option<engine::ModuleCtx<Self>>,
     inputs: Vec<Terminal>,
     outputs: Vec<Terminal>,
-    channel_gain: Vec<f64>,
 }
 
 impl ModuleT for Mixer {
     type Params = MixerParams;
     type Indication = ();
+    type Event = ();
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, ctx: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let mixer = Mixer {
             inputs: params.channels.iter().enumerate().map(|(i, _)| {
                 LineType::Stereo.labeled(&(i+1).to_string())
@@ -25,8 +26,8 @@ impl ModuleT for Mixer {
                 LineType::Stereo.labeled("Master"),
                 LineType::Stereo.labeled("Cue"),
             ],
-            channel_gain: vec![0.0; params.channels.len()],
             params,
+            ctx: Some(ctx),
         };
 
         (mixer, ())
@@ -37,7 +38,7 @@ impl ModuleT for Mixer {
     }
 
     fn update(&mut self, params: Self::Params) -> Option<Self::Indication> {
-        let (new, _) = Self::create(params);
+        let (new, _) = Self::create(params, self.ctx.take().unwrap());
         *self = new;
         None
     }

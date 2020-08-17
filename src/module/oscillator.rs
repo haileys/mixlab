@@ -2,7 +2,7 @@ use std::f64;
 
 use mixlab_protocol::{OscillatorParams, Waveform, LineType, Terminal};
 
-use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
+use crate::engine::{self, InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::ModuleT;
 
 #[derive(Debug)]
@@ -39,8 +39,9 @@ fn triangle(n: f64) -> f64 {
 impl ModuleT for Oscillator {
     type Params = OscillatorParams;
     type Indication = ();
+    type Event = ();
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {
             params,
             inputs: vec![],

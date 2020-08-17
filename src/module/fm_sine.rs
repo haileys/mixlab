@@ -2,7 +2,7 @@ use std::f64;
 
 use mixlab_protocol::{FmSineParams, LineType, Terminal};
 
-use crate::engine::{Sample, InputRef, OutputRef, SAMPLE_RATE, CHANNELS};
+use crate::engine::{self, Sample, InputRef, OutputRef, SAMPLE_RATE, CHANNELS};
 use crate::module::ModuleT;
 
 #[derive(Debug)]
@@ -15,8 +15,9 @@ pub struct FmSine {
 impl ModuleT for FmSine {
     type Params = FmSineParams;
     type Indication = ();
+    type Event = ();
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {
             params,
             inputs: vec![LineType::Mono.unlabeled()],

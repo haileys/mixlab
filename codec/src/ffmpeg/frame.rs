@@ -5,18 +5,20 @@ use std::ptr;
 
 use ffmpeg_dev::sys as ff;
 
+use crate::ffmpeg::media::{MediaType, Video};
 use crate::ffmpeg::{AvError, PixelFormat, ColorFormat};
 
 #[derive(Debug)]
-pub struct AvFrame {
+pub struct AvFrame<Mt: MediaType> {
     ptr: *mut ff::AVFrame,
+    phantom: PhantomData<Mt>,
 }
 
 // ffmpeg buffer refcounts are threadsafe
-unsafe impl Sync for AvFrame {}
-unsafe impl Send for AvFrame {}
+unsafe impl<Mt: MediaType> Sync for AvFrame<Mt> {}
+unsafe impl<Mt: MediaType> Send for AvFrame<Mt> {}
 
-impl AvFrame {
+impl<Mt: MediaType> AvFrame<Mt> {
     pub fn new() -> Self {
         let ptr = unsafe { ff::av_frame_alloc() };
 
@@ -24,9 +26,53 @@ impl AvFrame {
             panic!("av_frame_alloc: ENOMEM");
         }
 
-        AvFrame { ptr }
+        AvFrame { ptr, phantom: PhantomData }
     }
 
+    pub fn copy_props_from(&mut self, other: &AvFrame<Mt>) {
+        unsafe {
+            let rc = ff::av_frame_copy_props(self.as_mut_ptr(), other.as_ptr());
+
+            if rc != 0 {
+                panic!("av_frame_copy_props: {:?}", AvError(rc));
+            }
+        }
+    }
+
+    pub fn as_ptr(&self) -> *const ff::AVFrame {
+        self.ptr as *const _
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut ff::AVFrame {
+        self.ptr
+    }
+
+    fn as_underlying(&self) -> &ff::AVFrame {
+        unsafe { &*self.as_ptr() }
+    }
+
+    fn as_underlying_mut(&mut self) -> &mut ff::AVFrame {
+        unsafe { &mut *self.as_mut_ptr() }
+    }
+
+    pub fn decode_timestamp(&self) -> i64 {
+        self.as_underlying().pkt_dts
+    }
+
+    pub fn presentation_timestamp(&self) -> i64 {
+        self.as_underlying().pts
+    }
+
+    pub fn set_presentation_timestamp(&mut self, pts: i64) {
+        self.as_underlying_mut().pts = pts;
+    }
+
+    pub fn packet_duration(&self) -> i64 {
+        self.as_underlying().pkt_duration
+    }
+}
+
+impl AvFrame<Video> {
     pub fn blank(settings: &PictureSettings) -> Self {
         let mut frame = Self::new();
 
@@ -91,22 +137,6 @@ impl AvFrame {
         frame
     }
 
-    pub fn as_ptr(&self) -> *const ff::AVFrame {
-        self.ptr as *const _
-    }
-
-    pub fn as_mut_ptr(&mut self) -> *mut ff::AVFrame {
-        self.ptr
-    }
-
-    fn as_underlying(&self) -> &ff::AVFrame {
-        unsafe { &*self.as_ptr() }
-    }
-
-    fn as_underlying_mut(&mut self) -> &mut ff::AVFrame {
-        unsafe { &mut *self.as_mut_ptr() }
-    }
-
     pub fn coded_width(&self) -> usize {
         self.as_underlying().width.try_into().expect("width >= 0")
     }
@@ -147,37 +177,11 @@ impl AvFrame {
         self.as_underlying().colorspace
     }
 
-    pub fn decode_timestamp(&self) -> i64 {
-        self.as_underlying().pkt_dts
-    }
-
-    pub fn presentation_timestamp(&self) -> i64 {
-        self.as_underlying().pts
-    }
-
-    pub fn set_presentation_timestamp(&mut self, pts: i64) {
-        self.as_underlying_mut().pts = pts;
-    }
-
-    pub fn packet_duration(&self) -> i64 {
-        self.as_underlying().pkt_duration
-    }
-
     pub fn picture_settings(&self) -> PictureSettings {
         PictureSettings {
             width: self.coded_width(),
             height: self.coded_height(),
             pixel_format: self.pixel_format(),
-        }
-    }
-
-    pub fn copy_props_from(&mut self, other: &AvFrame) {
-        unsafe {
-            let rc = ff::av_frame_copy_props(self.as_mut_ptr(), other.as_ptr());
-
-            if rc != 0 {
-                panic!("av_frame_copy_props: {:?}", AvError(rc));
-            }
         }
     }
 
@@ -306,7 +310,7 @@ pub struct PictureData<'a> {
     pub(in crate::ffmpeg) picture: PictureSettings,
     pub(in crate::ffmpeg) data: PlanarData,
     pub(in crate::ffmpeg) stride: PlanarStride,
-    _phantom: PhantomData<&'a AvFrame>,
+    _phantom: PhantomData<&'a AvFrame<Video>>,
 }
 
 impl<'a> PictureData<'a> {
@@ -327,7 +331,7 @@ pub struct PictureDataMut<'a> {
     pub(in crate::ffmpeg) picture: PictureSettings,
     pub(in crate::ffmpeg) data: PlanarData,
     pub(in crate::ffmpeg) stride: PlanarStride,
-    _phantom: PhantomData<&'a mut AvFrame>,
+    _phantom: PhantomData<&'a mut AvFrame<Video>>,
 }
 
 impl<'a> PictureDataMut<'a> {
@@ -344,7 +348,7 @@ impl<'a> PictureDataMut<'a> {
     }
 }
 
-impl Clone for AvFrame {
+impl<Mt: MediaType> Clone for AvFrame<Mt> {
     fn clone(&self) -> Self {
         let ptr = unsafe { ff::av_frame_clone(self.ptr) };
 
@@ -352,11 +356,11 @@ impl Clone for AvFrame {
             panic!("av_frame_clone: ENOMEM")
         }
 
-        AvFrame { ptr }
+        AvFrame { ptr, phantom: PhantomData }
     }
 }
 
-impl Drop for AvFrame {
+impl<Mt: MediaType> Drop for AvFrame<Mt> {
     fn drop(&mut self) {
         unsafe {
             ff::av_frame_free(&mut self.ptr as *mut *mut _);

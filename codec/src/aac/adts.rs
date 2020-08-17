@@ -135,8 +135,8 @@ mod tests {
         };
 
         let dummy_payload = Bytes::from_static(&[0b0100_1110, 0b0010_1111, 0b1001_0011, 0b1111_0010]);
-        let adts = AudioDataTransportStream::new(dummy_payload, asc);
-        let actual: Bytes = adts.into();
+        let adts = AudioDataTransportStream::new(dummy_payload, &asc);
+        let actual: Bytes = adts.into_bytes();
 
         assert_eq!(expected[..], actual[..]);
     }

@@ -2,11 +2,9 @@ use derive_more::From;
 
 pub mod bitstream;
 pub mod dcr;
-pub mod decode;
 pub mod encode;
 pub mod nal;
 
-pub use decode::AvcDecoder;
 pub use encode::AvcEncoder;
 pub use dcr::DecoderConfigurationRecord;
 

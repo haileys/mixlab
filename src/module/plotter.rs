@@ -1,4 +1,4 @@
-use crate::engine::{InputRef, OutputRef};
+use crate::engine::{self, InputRef, OutputRef};
 use crate::module::ModuleT;
 
 use mixlab_protocol::{PlotterIndication, LineType, Terminal};
@@ -13,8 +13,9 @@ pub struct Plotter {
 impl ModuleT for Plotter {
     type Params = ();
     type Indication = PlotterIndication;
+    type Event = ();
 
-    fn create(_: Self::Params) -> (Self, Self::Indication) {
+    fn create(_: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (
             Self {
                 inputs: vec![LineType::Stereo.unlabeled()],

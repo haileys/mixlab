@@ -1,4 +1,4 @@
-use crate::engine::{InputRef, OutputRef};
+use crate::engine::{self, InputRef, OutputRef};
 use crate::module::{ModuleT, LineType, Terminal};
 
 #[derive(Debug)]
@@ -10,8 +10,9 @@ pub struct StereoPanner {
 impl ModuleT for StereoPanner {
     type Params = ();
     type Indication = ();
+    type Event = ();
 
-    fn create(_: Self::Params) -> (Self, Self::Indication) {
+    fn create(_: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {
             inputs: vec![LineType::Mono.labeled("L"), LineType::Mono.labeled("R")],
             outputs: vec![LineType::Stereo.unlabeled()],

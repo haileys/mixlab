@@ -63,7 +63,7 @@ pub struct MediaLibrary {
     pub items: Vec<MediaItem>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MediaId(pub i64);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -196,6 +196,7 @@ pub enum ModuleParams {
     Envelope(EnvelopeParams),
     EqThree(EqThreeParams),
     FmSine(FmSineParams),
+    MediaSource(MediaSourceParams),
     Mixer(MixerParams),
     Monitor(()),
     Oscillator(OscillatorParams),
@@ -215,6 +216,7 @@ pub enum Indication {
     Envelope(()),
     EqThree(()),
     FmSine(()),
+    MediaSource(()),
     Mixer(()),
     Monitor(MonitorIndication),
     Oscillator(()),
@@ -415,6 +417,11 @@ impl Default for VideoMixerParams {
             fader: 1.0, // start at A
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct MediaSourceParams {
+    pub media_id: Option<MediaId>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]

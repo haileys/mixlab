@@ -1169,6 +1169,8 @@ dependencies = [
  "ffmpeg-dev",
  "futures",
  "lewton",
+ "mixlab-util",
+ "num-rational",
  "ogg",
  "serde",
  "serde_derive",

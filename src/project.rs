@@ -1,3 +1,4 @@
+use std::fmt::{self, Debug};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -5,7 +6,7 @@ use derive_more::From;
 use futures::stream::{Stream, StreamExt};
 use rusqlite::{self, Connection, OptionalExtension};
 use tokio::sync::watch;
-use tokio::{fs, io, task, runtime};
+use tokio::{io, task, runtime};
 
 use mixlab_protocol as protocol;
 use mixlab_protocol::{WorkspaceState, PerformanceInfo};
@@ -25,6 +26,8 @@ pub struct ProjectHandle {
 }
 
 pub struct ProjectBase {
+    path: PathBuf,
+
     // must be Arc of a blocking Mutex because task::spawn_blocking requires
     // that the passed closure is 'static, so we are forced to lock the mutex
     // in the blocking context and pass it as an Arc rather than a reference
@@ -33,7 +36,13 @@ pub struct ProjectBase {
     notify: NotifyTx,
 }
 
-type ProjectBaseRef = Arc<ProjectBase>;
+impl Debug for ProjectBase {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ProjectBase({:?})", self.path)
+    }
+}
+
+pub type ProjectBaseRef = Arc<ProjectBase>;
 
 #[derive(From, Debug)]
 pub enum OpenError {
@@ -62,6 +71,7 @@ impl ProjectBase {
         let database = db::attach(sqlite_path).await?;
 
         Ok(ProjectBase {
+            path,
             database: Arc::new(std::sync::Mutex::new(database)),
             notify,
         })
@@ -97,36 +107,15 @@ impl ProjectBase {
 }
 
 pub async fn open_or_create(path: PathBuf) -> Result<ProjectHandle, OpenError> {
-    match fs::create_dir(&path).await {
-        Ok(_) => {}
-        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-            // TODO - this is racey! we need an atomic way of asserting that a directory exists
-            match fs::metadata(&path).await {
-                Ok(meta) if meta.is_dir() => {
-                    // already exists!
-                }
-                Ok(_) => {
-                    return Err(OpenError::NotDirectory);
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-        }
-        Err(e) => {
-            return Err(e.into());
-        }
-    }
-
     let (notify_tx, notify_rx) = notify();
     let base = ProjectBase::attach(path, notify_tx).await?;
     let workspace = base.read_workspace().await?;
 
+    let base = Arc::new(base);
+
     // start engine update thread
     let (embryo, mut persist_rx) = WorkspaceEmbryo::new(workspace);
-    let engine = engine::start(runtime::Handle::current(), embryo);
-
-    let base = Arc::new(base);
+    let engine = engine::start(runtime::Handle::current(), embryo, base.clone());
 
     task::spawn({
         let base = base.clone();
@@ -165,7 +154,7 @@ impl ProjectHandle {
     }
 
     pub async fn fetch_media_library(&self) -> Result<protocol::MediaLibrary, rusqlite::Error> {
-        media::library(self.base.clone()).await
+        media::library(&self.base).await
     }
 }
 

@@ -1,11 +1,12 @@
 use std::convert::TryInto;
 
 use derive_more::From;
+use mixlab_protocol::MediaId;
 use mixlab_protocol as protocol;
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 
 use crate::project::ProjectBaseRef;
-use crate::project::stream::{self, WriteStream};
+use crate::project::stream::{self, ReadStream, WriteStream, StreamId};
 
 pub struct UploadInfo {
     pub name: String,
@@ -57,7 +58,7 @@ impl MediaUpload {
     }
 }
 
-pub async fn library(base: ProjectBaseRef) -> Result<protocol::MediaLibrary, rusqlite::Error> {
+pub async fn library(base: &ProjectBaseRef) -> Result<protocol::MediaLibrary, rusqlite::Error> {
     #[derive(Debug)]
     struct Item {
         id: i64,
@@ -84,4 +85,18 @@ pub async fn library(base: ProjectBaseRef) -> Result<protocol::MediaLibrary, rus
     }).await?;
 
     Ok(protocol::MediaLibrary { items })
+}
+
+pub async fn open(base: ProjectBaseRef, media_id: MediaId) -> Result<Option<ReadStream>, rusqlite::Error> {
+    let stream_id = base.with_database(move |conn| -> Result<Option<StreamId>, rusqlite::Error> {
+        conn.query_row(r"SELECT media.stream_id FROM media WHERE id = ?",
+            params![media_id.0],
+            |row| Ok(StreamId(row.get(0)?))
+        ).optional()
+    }).await?;
+
+    match stream_id {
+        Some(stream_id) => ReadStream::open(base, stream_id).await,
+        None => Ok(None),
+    }
 }

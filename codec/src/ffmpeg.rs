@@ -6,50 +6,27 @@ use std::ptr;
 pub use ffmpeg_dev::sys as sys;
 use sys as ff;
 
+pub mod codec;
+pub mod media;
+mod format;
 mod frame;
+mod ioctx;
 mod packet;
 mod pixfmt;
 mod scale;
 
+pub use format::InputContainer;
 pub use frame::{AvFrame, PictureSettings, PictureData, PictureDataMut};
-pub use packet::AvPacket;
-pub use scale::SwsContext;
+pub use ioctx::{AvIoError, IoReader, AvIoReader};
+pub use packet::{AvPacket, AvPacketRef, PacketInfo};
 pub use pixfmt::{PixelFormat, PixFmtDescriptor, PlaneInfo, ColorFormat};
+pub use scale::SwsContext;
 
-#[derive(Debug)]
-pub struct AvCodecContext {
-    ptr: *mut ff::AVCodecContext,
-}
+pub const MIXLAB_IOCTX_ERROR: c_int = -0x6d786c00; // 'M' 'X' 'L' 0x00
+pub const MIXLAB_IOCTX_PANIC: c_int = -0x6d786c01; // 'M' 'X' 'L' 0x01
 
-unsafe impl Send for AvCodecContext {}
-
-impl AvCodecContext {
-    pub unsafe fn alloc(codec: *const ff::AVCodec) -> Self {
-        let ptr = ff::avcodec_alloc_context3(codec);
-
-        if ptr == ptr::null_mut() {
-            panic!("avcodec_alloc_context3: ENOMEM");
-        }
-
-        AvCodecContext { ptr }
-    }
-
-    pub fn as_ptr(&self) -> *const ff::AVCodecContext {
-        self.ptr as *const _
-    }
-
-    pub fn as_mut_ptr(&mut self) -> *mut ff::AVCodecContext {
-        self.ptr
-    }
-}
-
-impl Drop for AvCodecContext {
-    fn drop(&mut self) {
-        unsafe {
-            ff::avcodec_free_context(&mut self.ptr as *mut *mut _);
-        }
-    }
-}
+pub const AGAIN: c_int = -(ff::EAGAIN as c_int);
+pub const EOF: c_int = -0x20464f45; // 'EOF '
 
 pub struct AvError(pub(crate) c_int);
 

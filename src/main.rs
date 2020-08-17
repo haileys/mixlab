@@ -2,7 +2,6 @@ mod db;
 mod engine;
 mod icecast;
 mod listen;
-mod module;
 mod persist;
 mod project;
 mod rtmp;
@@ -11,6 +10,9 @@ mod source;
 mod throttle;
 mod util;
 mod video;
+
+#[macro_use]
+mod module;
 
 use structopt::StructOpt;
 

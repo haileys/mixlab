@@ -14,10 +14,11 @@ use tokio::sync::{oneshot, broadcast, watch};
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, WorkspaceState, ServerUpdate, Indication, ClientSequence, WorkspaceMessage, WorkspaceOp, PerformanceInfo};
 
-use crate::module::Module;
+use crate::project::ProjectBaseRef;
 use crate::util::Sequence;
 
 mod io;
+mod module;
 mod timing;
 mod workspace;
 
@@ -25,6 +26,7 @@ use timing::{EngineStat, TickStat};
 use workspace::SyncWorkspace;
 
 pub use io::{InputRef, OutputRef, Output, VideoFrame};
+pub use module::{ModuleCtx, DynModuleHost};
 pub use workspace::WorkspaceEmbryo;
 
 pub type Sample = f32;
@@ -68,23 +70,24 @@ pub struct EngineSession {
     cmd_tx: SyncSender<EngineMessage>,
 }
 
-pub fn start(tokio_runtime: runtime::Handle, workspace: WorkspaceEmbryo) -> EngineHandle {
+pub fn start(tokio_runtime: runtime::Handle, workspace: WorkspaceEmbryo, base: ProjectBaseRef) -> EngineHandle {
     let (cmd_tx, cmd_rx) = mpsc::sync_channel(8);
     let (log_tx, _) = broadcast::channel(64);
     let (perf_tx, perf_rx) = watch::channel(None);
 
     thread::spawn(move || {
-        let mut engine = Engine {
-            cmd_rx,
-            log_tx,
-            perf_tx,
-            session_seq: Sequence::new(),
-            workspace: workspace.spawn(),
-        };
-
         // enter the tokio runtime context for the engine thread
         // this allows modules to spawn async tasks
         tokio_runtime.enter(|| {
+            let mut engine = Engine {
+                cmd_rx,
+                log_tx,
+                perf_tx,
+                session_seq: Sequence::new(),
+                workspace: workspace.spawn(base.clone()),
+                base,
+            };
+
             engine.run();
         });
     });
@@ -155,6 +158,7 @@ pub struct Engine {
     perf_tx: watch::Sender<Option<Arc<PerformanceInfo>>>,
     session_seq: Sequence,
     workspace: SyncWorkspace,
+    base: ProjectBaseRef,
 }
 
 impl Engine {
@@ -281,7 +285,7 @@ impl Engine {
                 let op = {
                     let mut workspace = self.workspace.borrow_mut();
                     let id = ModuleId(workspace.module_seq.next());
-                    let (module, indication) = Module::create(params.clone());
+                    let (module, indication) = module::host(params.clone(), self.base.clone());
                     let inputs = module.inputs().to_vec();
                     let outputs = module.outputs().to_vec();
                     workspace.modules.insert(id, module);
@@ -426,7 +430,7 @@ impl Engine {
         }
 
         struct Topsort<'a> {
-            modules: &'a HashMap<ModuleId, Module>,
+            modules: &'a HashMap<ModuleId, DynModuleHost>,
             connections: &'a HashMap<InputId, OutputId>,
             run_order: Vec<ModuleId>,
             seen: HashSet<ModuleId>,

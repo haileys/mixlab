@@ -1,4 +1,4 @@
-use crate::engine::{InputRef, OutputRef, SAMPLE_RATE};
+use crate::engine::{self, InputRef, OutputRef, SAMPLE_RATE};
 use crate::module::{ModuleT, LineType, Terminal};
 
 use mixlab_protocol::EnvelopeParams;
@@ -68,8 +68,9 @@ pub struct Envelope {
 impl ModuleT for Envelope {
     type Params = EnvelopeParams;
     type Indication = ();
+    type Event = ();
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {
             params,
             state: EnvelopeState::Initial,

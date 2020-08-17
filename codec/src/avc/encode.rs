@@ -8,7 +8,9 @@ use bytes::Bytes;
 use ffmpeg_dev::sys as ff;
 
 use crate::avc::{bitstream, nal, AvcError, DecoderConfigurationRecord};
-use crate::ffmpeg::{AvCodecContext, AvFrame, AvError, AvDict, AvPacket, PixelFormat};
+use crate::ffmpeg::codec::AvCodecContext;
+use crate::ffmpeg::media::Video;
+use crate::ffmpeg::{AvFrame, AvError, AvDict, AvPacket, PixelFormat};
 
 #[derive(Debug)]
 pub struct AvcEncoder {
@@ -184,7 +186,7 @@ impl AvcEncoder {
         }
     }
 
-    pub fn send_frame(&mut self, frame: &AvFrame) -> Result<(), AvError> {
+    pub fn send_frame(&mut self, frame: &AvFrame<Video>) -> Result<(), AvError> {
         let rc = unsafe { ff::avcodec_send_frame(self.ctx.as_mut_ptr(), frame.as_ptr()) };
 
         if rc < 0 {

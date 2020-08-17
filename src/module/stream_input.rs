@@ -3,7 +3,7 @@ use std::cmp;
 use mixlab_protocol::{StreamInputParams, LineType, Terminal, StreamProtocol};
 use mixlab_util::time::{MediaTime, MediaDuration};
 
-use crate::engine::{InputRef, OutputRef, Sample, VideoFrame, SAMPLE_RATE};
+use crate::engine::{self, InputRef, OutputRef, Sample, VideoFrame, SAMPLE_RATE};
 use crate::icecast;
 use crate::module::ModuleT;
 use crate::rtmp;
@@ -30,12 +30,10 @@ struct SourceTiming {
 impl ModuleT for StreamInput {
     type Params = StreamInputParams;
     type Indication = ();
+    type Event = ();
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
-        let recv = params.mountpoint.as_ref().and_then(|mountpoint|
-            // TODO - listen returning an error means the mountpoint is already
-            // in use. tell the user this via an indication
-            icecast::listen(mountpoint).ok());
+    fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
+        let recv = listen_mountpoint(&params);
 
         let module = StreamInput {
             params,
@@ -138,14 +136,6 @@ impl ModuleT for StreamInput {
                 self.video_frame = Some(frame);
                 None
             } else {
-                // TODO
-                // let frame = Rc::new(AvcFrame {
-                //     data: frame.data,
-                //     tick_offset,
-                //     duration,
-                //     previous,
-                // });
-
                 Some(VideoFrame {
                     data: frame.data,
                     tick_offset,

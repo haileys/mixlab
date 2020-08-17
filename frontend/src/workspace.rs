@@ -5,13 +5,14 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlElement, HtmlCanvasElement, MouseEvent, Element};
 use yew::{html, Callback, Component, ComponentLink, Html, ShouldRender, Properties, NodeRef};
 
-use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, WorkspaceOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams, VideoMixerParams};
+use mixlab_protocol::{ModuleId, TerminalId, InputId, OutputId, ModuleParams, OscillatorParams, Waveform, WorkspaceOp, WindowGeometry, Coords, Indication, OutputDeviceParams, FmSineParams, AmplifierParams, GateState, LineType, EnvelopeParams, MixerParams, StreamInputParams, EqThreeParams, StreamOutputParams, VideoMixerParams, MediaSourceParams};
 
 use crate::component::midi_target::MidiUiMode;
 use crate::module::amplifier::Amplifier;
 use crate::module::envelope::Envelope;
 use crate::module::eq_three::EqThree;
 use crate::module::fm_sine::FmSine;
+use crate::module::media_source::MediaSource;
 use crate::module::mixer::Mixer;
 use crate::module::monitor::Monitor;
 use crate::module::oscillator::Oscillator;
@@ -22,7 +23,7 @@ use crate::module::stream_output::StreamOutput;
 use crate::module::trigger::Trigger;
 use crate::module::video_mixer::VideoMixer;
 use crate::util::{self, stop_propagation, prevent_default, Sequence};
-use crate::session::{WorkspaceStateRef, WorkspaceState};
+use crate::session::{WorkspaceStateRef, WorkspaceState, SessionRef};
 use crate::{App, AppMsg};
 
 pub struct Workspace {
@@ -38,6 +39,7 @@ pub struct Workspace {
 pub struct WorkspaceProps {
     pub app: ComponentLink<App>,
     pub state: WorkspaceStateRef,
+    pub session: SessionRef,
 }
 
 pub enum MouseMode {
@@ -375,6 +377,7 @@ impl Component for Workspace {
                             workspace={workspace}
                             geometry={geometry}
                             indication={indication.cloned()}
+                            session={self.props.session.clone()}
                         /> }
                     } else {
                         html! {}
@@ -480,6 +483,7 @@ impl Workspace {
             ("EQ Three", ModuleParams::EqThree(EqThreeParams::default())),
             ("Monitor", ModuleParams::Monitor(())),
             ("Video Mixer", ModuleParams::VideoMixer(VideoMixerParams::default())),
+            ("Media Source", ModuleParams::MediaSource(MediaSourceParams::default())),
         ];
 
         html! {
@@ -528,6 +532,7 @@ pub struct WindowProps {
     pub workspace: ComponentLink<Workspace>,
     pub refs: WindowRef,
     pub indication: Option<Indication>,
+    pub session: SessionRef,
 }
 
 #[derive(Clone, Debug)]
@@ -778,6 +783,9 @@ impl Window {
             }
             ModuleParams::VideoMixer(params) => {
                 html! { <VideoMixer id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
+            }
+            ModuleParams::MediaSource(params) => {
+                html! { <MediaSource id={self.props.id} module={self.link.clone()} params={params} session={self.props.session.clone()} /> }
             }
         }
     }

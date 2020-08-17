@@ -5,27 +5,28 @@ use tokio::sync::watch;
 
 use mixlab_protocol::{ModuleId, InputId, OutputId, TerminalId, WindowGeometry, Indication, LineType};
 
-use crate::module::Module;
+use crate::engine::module::{self, DynModuleHost};
 use crate::persist;
+use crate::project::ProjectBaseRef;
 use crate::util::Sequence;
 
 pub struct Workspace {
     pub(in crate::engine) module_seq: Sequence,
-    pub(in crate::engine) modules: HashMap<ModuleId, Module>,
+    pub(in crate::engine) modules: HashMap<ModuleId, DynModuleHost>,
     pub(in crate::engine) geometry: HashMap<ModuleId, WindowGeometry>,
     pub(in crate::engine) connections: HashMap<InputId, OutputId>,
     pub(in crate::engine) indications: HashMap<ModuleId, Indication>,
 }
 
 impl Workspace {
-    pub fn from_persist(save: &persist::Workspace) -> Self {
+    pub fn from_persist(save: &persist::Workspace, base: ProjectBaseRef) -> Self {
         let mut modules = HashMap::new();
         let mut geometry = HashMap::new();
         let mut indications = HashMap::new();
 
         // load modules and geometry
         for (module_id, saved_module) in &save.modules {
-            let (module, indication) = Module::create(saved_module.params.clone());
+            let (module, indication) = module::host(saved_module.params.clone(), base.clone());
             modules.insert(*module_id, module);
             geometry.insert(*module_id, saved_module.geometry.clone());
             indications.insert(*module_id, indication);
@@ -134,8 +135,8 @@ impl WorkspaceEmbryo {
         (WorkspaceEmbryo { workspace, persist_tx }, persist_rx)
     }
 
-    pub fn spawn(self) -> SyncWorkspace {
-        let workspace = Workspace::from_persist(&self.workspace);
+    pub fn spawn(self, base: ProjectBaseRef) -> SyncWorkspace {
+        let workspace = Workspace::from_persist(&self.workspace, base);
 
         SyncWorkspace {
             workspace,

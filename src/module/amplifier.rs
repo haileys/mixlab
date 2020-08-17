@@ -1,4 +1,4 @@
-use crate::engine::{Sample, InputRef, OutputRef};
+use crate::engine::{self, Sample, InputRef, OutputRef};
 use crate::module::{ModuleT, LineType, Terminal};
 
 use mixlab_protocol::AmplifierParams;
@@ -13,8 +13,9 @@ pub struct Amplifier {
 impl ModuleT for Amplifier {
     type Params = AmplifierParams;
     type Indication = ();
+    type Event = ();
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         (Self {
             params,
             inputs: vec![

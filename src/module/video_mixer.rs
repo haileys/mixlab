@@ -1,5 +1,6 @@
 use itertools::Itertools;
 
+use mixlab_codec::ffmpeg::media::Video;
 use mixlab_codec::ffmpeg::{AvFrame, PictureSettings, PixelFormat};
 use mixlab_protocol::{VideoMixerParams, LineType, Terminal, VIDEO_MIXER_CHANNELS};
 use mixlab_util::time::{MediaTime, MediaDuration};
@@ -27,14 +28,15 @@ struct Channel {
 struct StoredFrame {
     active_until: MediaTime,
     input_settings: PictureSettings,
-    frame: AvFrame,
+    frame: AvFrame<Video>,
 }
 
 impl ModuleT for VideoMixer {
     type Params = VideoMixerParams;
     type Indication = ();
+    type Event = ();
 
-    fn create(params: Self::Params) -> (Self, Self::Indication) {
+    fn create(params: Self::Params, _: engine::ModuleCtx<Self>) -> (Self, Self::Indication) {
         let mixer = VideoMixer {
             params,
             inputs: (0..VIDEO_MIXER_CHANNELS).map(|i|

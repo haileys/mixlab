@@ -1,8 +1,15 @@
+use std::convert::{TryInto, TryFrom};
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::ops::Deref;
 use std::os::raw::c_int;
-use std::convert::TryInto;
+use std::ptr;
 use std::slice;
+use std::mem::ManuallyDrop;
 
 use ffmpeg_dev::sys as ff;
+
+use crate::ffmpeg::AvError;
 
 #[derive(Debug)]
 pub struct AvPacket {
@@ -28,6 +35,10 @@ impl AvPacket {
 
     fn as_underlying(&self) -> &ff::AVPacket {
         unsafe { &*self.as_ptr() }
+    }
+
+    pub fn stream_index(&self) -> i32 {
+        self.as_underlying().stream_index
     }
 
     pub fn data(&self) -> &[u8] {
@@ -66,8 +77,64 @@ impl AvPacket {
     }
 }
 
+impl Clone for AvPacket {
+    fn clone(&self) -> Self {
+        unsafe {
+            let mut new_packet = MaybeUninit::uninit();
+            let rc = ff::av_packet_ref(new_packet.as_mut_ptr(), self.as_ptr());
+            if rc != 0 {
+                panic!("av_packet_ref: {:?}", AvError(rc));
+            }
+            AvPacket { packet: new_packet.assume_init() }
+        }
+    }
+}
+
 impl Drop for AvPacket {
     fn drop(&mut self) {
         unsafe { ff::av_packet_unref(self.as_mut_ptr()); }
     }
+}
+
+pub struct AvPacketRef<'a> {
+    packet: ManuallyDrop<AvPacket>,
+    phantom: PhantomData<&'a [u8]>
+}
+
+impl<'a> AvPacketRef<'a> {
+    pub fn borrowed(info: PacketInfo<'a>) -> Self {
+        let packet = ff::AVPacket {
+            buf: ptr::null_mut(),
+            pts: info.pts,
+            dts: info.dts,
+            data: info.data.as_ptr() as *mut _, // send_packet never mutates data
+            size: c_int::try_from(info.data.len()).expect("packet size too large for c_int"),
+            stream_index: 0,
+            flags: 0,
+            side_data: ptr::null_mut(),
+            side_data_elems: 0,
+            duration: 0,
+            pos: -1,
+            convergence_duration: 0,
+        };
+
+        AvPacketRef {
+            packet: ManuallyDrop::new(AvPacket { packet }),
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a> Deref for AvPacketRef<'a> {
+    type Target = AvPacket;
+
+    fn deref(&self) -> &AvPacket {
+        &self.packet
+    }
+}
+
+pub struct PacketInfo<'a> {
+    pub pts: i64,
+    pub dts: i64,
+    pub data: &'a [u8],
 }

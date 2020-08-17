@@ -1,5 +1,8 @@
+use std::convert::TryFrom;
 use std::thread;
 use std::time::{Duration, Instant};
+
+use mixlab_util::time::MediaTime;
 
 use crate::engine::SAMPLE_RATE;
 
@@ -28,5 +31,33 @@ impl AudioThrottle {
         }
 
         self.samples_sent += sample_count as u64;
+    }
+}
+
+pub struct MediaThrottle {
+    started: Option<Instant>,
+}
+
+impl MediaThrottle {
+    pub fn new() -> MediaThrottle {
+        MediaThrottle {
+            started: None,
+        }
+    }
+
+    pub fn wait_until(&mut self, time: MediaTime) {
+        let started = *self.started.get_or_insert_with(Instant::now);
+
+        let elapsed = Duration::from_micros(
+            u64::try_from(time.round_to_base(1_000_000))
+                .expect("elapsed is non-negative"));
+
+        let sleep_until = started + elapsed;
+
+        let now = Instant::now();
+
+        if now < sleep_until {
+            thread::sleep(sleep_until - now);
+        }
     }
 }
