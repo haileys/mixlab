@@ -26,6 +26,10 @@ impl<M: ModuleT> ModuleCtx<M> {
         self.link.clone()
     }
 
+    pub fn runtime(&self) -> runtime::Handle {
+        self.runtime.clone()
+    }
+
     pub fn spawn_async(&self, f: impl Future<Output = M::Event> + Send + 'static) {
         let mut link = self.link();
         self.runtime.spawn(async move {

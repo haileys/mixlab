@@ -4,17 +4,21 @@ use crate::video;
 
 use mixlab_codec::ffmpeg::AvFrame;
 use mixlab_codec::ffmpeg::media::Video;
+use mixlab_graphics::ShaderContext;
 use mixlab_protocol::{ShaderParams, LineType, Terminal};
 use mixlab_util::time::MediaDuration;
 
 #[derive(Debug)]
 pub struct Shader {
+    ctx: ModuleCtx<Self>,
+    shader: Option<ShaderContext>,
     frame: Option<AvFrame<Video>>,
     outputs: Vec<Terminal>,
 }
 
 pub enum ShaderEvent {
-    GpuFrame(AvFrame<Video>),
+    ShaderInit(ShaderContext),
+    // GpuFrame(AvFrame<Video>),
 }
 
 impl ModuleT for Shader {
@@ -24,11 +28,13 @@ impl ModuleT for Shader {
 
     fn create(_: Self::Params, ctx: ModuleCtx<Self>) -> (Self, Self::Indication) {
         ctx.spawn_async(async {
-            let frame = mixlab_graphics::render(1120, 700).await;
-            ShaderEvent::GpuFrame(frame)
+            let shader = ShaderContext::new(1120, 700).await;
+            ShaderEvent::ShaderInit(shader)
         });
 
         let module = Self {
+            ctx,
+            shader: None,
             frame: None,
             outputs: vec![LineType::Video.unlabeled()],
         };
@@ -42,7 +48,10 @@ impl ModuleT for Shader {
 
     fn receive_event(&mut self, ev: ShaderEvent) {
         match ev {
-            ShaderEvent::GpuFrame(frame) => { self.frame = Some(frame); }
+            ShaderEvent::ShaderInit(shader) => {
+                self.shader = Some(shader);
+            }
+            // ShaderEvent::GpuFrame(frame) => { self.frame = Some(frame); }
         }
     }
 
@@ -51,15 +60,17 @@ impl ModuleT for Shader {
     }
 
     fn run_tick(&mut self, _: u64, _: &[InputRef], outputs: &mut [OutputRef]) -> Option<Self::Indication> {
-        *outputs[0].expect_video() = self.frame.clone().map(|frame| {
-            VideoFrame {
+        if let Some(shader) = &mut self.shader {
+            let frame = self.ctx.runtime().block_on(shader.render());
+
+            *outputs[0].expect_video() = Some(VideoFrame {
                 data: video::Frame {
                     decoded: frame,
                     duration_hint: MediaDuration::new(1, TICKS_PER_SECOND as i64)
                 },
                 tick_offset: MediaDuration::new(0, 1),
-            }
-        });
+            });
+        }
 
         None
     }
