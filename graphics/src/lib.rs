@@ -306,12 +306,14 @@ unsafe impl Zeroable for Vertex {}
 fn create_vertices() -> (Vec<Vertex>, Vec<u16>) {
     let vertex_data = [
         Vertex([-1.0, -1.0]),
-        Vertex([0.0, 1.0]),
+        Vertex([-1.0, 1.0]),
         Vertex([1.0, -1.0]),
+        Vertex([1.0, 1.0]),
     ];
 
     let index_data: &[u16] = &[
-        0, 1, 2, 0
+        0, 1, 2,
+        1, 2, 3,
     ];
 
     (vertex_data.to_vec(), index_data.to_vec())
