@@ -103,12 +103,15 @@ impl ShaderContext {
         });
 
         // Create the render pipeline
-        let vs_module = device.create_shader_module(wgpu::include_spirv!("/Users/charlie/Downloads/wgpu-rs/examples/hello-triangle/shader.vert.spv"));
-        let fs_module = device.create_shader_module(wgpu::include_spirv!("/Users/charlie/Downloads/wgpu-rs/examples/hello-triangle/shader.frag.spv"));
-        // let fs_module = device.create_shader_module(
-        //     wgpu::ShaderModuleSource::SpirV(
-        //         Cow::Owned(
-        //             compile::fragment(include_str!("../red.glsl")))));
+        let vs_module = device.create_shader_module(
+            wgpu::ShaderModuleSource::SpirV(
+                Cow::Owned(
+                    compile::vertex("vert.glsl", include_str!("../vert.glsl")))));
+
+        let fs_module = device.create_shader_module(
+            wgpu::ShaderModuleSource::SpirV(
+                Cow::Owned(
+                    compile::fragment("frag.glsl", include_str!("../frag.glsl")))));
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
@@ -139,7 +142,17 @@ impl ShaderContext {
             depth_stencil_state: None,
             vertex_state: wgpu::VertexStateDescriptor {
                 index_format: wgpu::IndexFormat::Uint16,
-                vertex_buffers: &[],
+                vertex_buffers: &[wgpu::VertexBufferDescriptor {
+                    stride: vertex_size as wgpu::BufferAddress,
+                    step_mode: wgpu::InputStepMode::Vertex,
+                    attributes: &[
+                        wgpu::VertexAttributeDescriptor {
+                            format: wgpu::VertexFormat::Float2,
+                            offset: 0,
+                            shader_location: 0,
+                        },
+                    ],
+                }],
             },
             sample_count: 1,
             sample_mask: !0,
@@ -196,7 +209,7 @@ impl ShaderContext {
                 rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
                 rpass.pop_debug_group();
                 rpass.insert_debug_marker("Draw!");
-                rpass.draw(0..3, 0..1);
+                rpass.draw_indexed(0..self.index_count as u32, 0, 0..1);
             }
 
             // Copy the data from the texture to the buffer
@@ -285,73 +298,21 @@ impl BufferDimensions {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-struct Vertex {
-    _pos: [f32; 4],
-    _tex_coord: [f32; 2],
-}
+struct Vertex([f32; 2]);
 
 unsafe impl Pod for Vertex {}
 unsafe impl Zeroable for Vertex {}
 
-fn vertex(pos: [i8; 3], tc: [i8; 2]) -> Vertex {
-    Vertex {
-        _pos: [pos[0] as f32, pos[1] as f32, pos[2] as f32, 1.0],
-        _tex_coord: [tc[0] as f32, tc[1] as f32],
-    }
-}
-
 fn create_vertices() -> (Vec<Vertex>, Vec<u16>) {
     let vertex_data = [
-        vertex([1, 1, -1], [1, 0]),
-        vertex([-1, 1, -1], [0, 0]),
-        vertex([-1, 1, 1], [0, 1]),
-        vertex([1, 1, 1], [1, 1]),
+        Vertex([-1.0, -1.0]),
+        Vertex([0.0, 1.0]),
+        Vertex([1.0, -1.0]),
     ];
 
     let index_data: &[u16] = &[
-        0, 1, 2, 2, 3, 0,
+        0, 1, 2, 0
     ];
 
     (vertex_data.to_vec(), index_data.to_vec())
 }
-
-fn create_texels(size: usize) -> Vec<u8> {
-    use std::iter;
-
-    (0..size * size)
-        .flat_map(|id| {
-            // get high five for recognizing this ;)
-            let cx = 3.0 * (id % size) as f32 / (size - 1) as f32 - 2.0;
-            let cy = 2.0 * (id / size) as f32 / (size - 1) as f32 - 1.0;
-            let (mut x, mut y, mut count) = (cx, cy, 0);
-            while count < 0xFF && x * x + y * y < 4.0 {
-                let old_x = x;
-                x = x * x - y * y + cx;
-                y = 2.0 * old_x * y + cy;
-                count += 1;
-            }
-            iter::once(0xFF - (count * 5) as u8)
-                .chain(iter::once(0xFF - (count * 15) as u8))
-                .chain(iter::once(0xFF - (count * 50) as u8))
-                .chain(iter::once(1))
-        })
-        .collect()
-}
-
-fn generate_matrix(aspect_ratio: f32) -> cgmath::Matrix4<f32> {
-    let mx_projection = cgmath::perspective(cgmath::Deg(45f32), aspect_ratio, 1.0, 10.0);
-    let mx_view = cgmath::Matrix4::look_at(
-        cgmath::Point3::new(1.5f32, -5.0, 3.0),
-        cgmath::Point3::new(0f32, 0.0, 0.0),
-        cgmath::Vector3::unit_z(),
-    );
-    let mx_correction = OPENGL_TO_WGPU_MATRIX;
-    mx_correction * mx_projection * mx_view
-}
-
-const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 0.5, 0.0,
-    0.0, 0.0, 0.5, 1.0,
-);

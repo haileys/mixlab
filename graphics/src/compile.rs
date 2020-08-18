@@ -1,10 +1,18 @@
-pub fn fragment(source: &str) -> Vec<u32> {
-    let mut compiler = shaderc::Compiler::new().unwrap();
-    let options = shaderc::CompileOptions::new().unwrap();
+use shaderc::{Compiler, CompileOptions, ShaderKind};
 
-    let result = compiler.compile_into_spirv(
-        source, shaderc::ShaderKind::Fragment,
-        "shader.glsl", "main", Some(&options)).unwrap();
+pub fn vertex(filename: &str, source: &str) -> Vec<u32> {
+    compile(filename, source, ShaderKind::Vertex)
+}
+
+pub fn fragment(filename: &str, source: &str) -> Vec<u32> {
+    compile(filename, source, ShaderKind::Fragment)
+}
+
+fn compile(filename: &str, source: &str, kind: ShaderKind) -> Vec<u32> {
+    let mut compiler = Compiler::new().unwrap();
+    let options = CompileOptions::new().unwrap();
+
+    let result = compiler.compile_into_spirv(source, kind, filename, "main", Some(&options)).unwrap();
 
     result.as_binary().to_vec()
 }
