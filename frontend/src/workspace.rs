@@ -18,6 +18,7 @@ use crate::module::monitor::Monitor;
 use crate::module::oscillator::Oscillator;
 use crate::module::output_device::OutputDevice;
 use crate::module::plotter::Plotter;
+use crate::module::shader::Shader;
 use crate::module::stream_input::StreamInput;
 use crate::module::stream_output::StreamOutput;
 use crate::module::trigger::Trigger;
@@ -788,8 +789,8 @@ impl Window {
             ModuleParams::MediaSource(params) => {
                 html! { <MediaSource id={self.props.id} module={self.link.clone()} params={params} session={self.props.session.clone()} /> }
             }
-            ModuleParams::Shader(_) => {
-                html! {}
+            ModuleParams::Shader(params) => {
+                html! { <Shader id={self.props.id} module={self.link.clone()} params={params} midi_mode={self.midi_mode} /> }
             }
         }
     }

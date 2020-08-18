@@ -5,20 +5,22 @@ use crate::video;
 use mixlab_codec::ffmpeg::AvFrame;
 use mixlab_codec::ffmpeg::media::Video;
 use mixlab_graphics::ShaderContext;
+use mixlab_graphics::compile::FragmentShader;
 use mixlab_protocol::{ShaderParams, LineType, Terminal};
 use mixlab_util::time::MediaDuration;
 
 #[derive(Debug)]
 pub struct Shader {
     ctx: ModuleCtx<Self>,
+    params: ShaderParams,
     shader: Option<ShaderContext>,
     frame: Option<AvFrame<Video>>,
     outputs: Vec<Terminal>,
 }
 
 pub enum ShaderEvent {
-    ShaderInit(ShaderContext),
-    // GpuFrame(AvFrame<Video>),
+    NoOp,
+    SetShader(ShaderContext),
 }
 
 impl ModuleT for Shader {
@@ -26,14 +28,12 @@ impl ModuleT for Shader {
     type Indication = ();
     type Event = ShaderEvent;
 
-    fn create(_: Self::Params, ctx: ModuleCtx<Self>) -> (Self, Self::Indication) {
-        ctx.spawn_async(async {
-            let shader = ShaderContext::new(1120, 700).await;
-            ShaderEvent::ShaderInit(shader)
-        });
+    fn create(params: Self::Params, ctx: ModuleCtx<Self>) -> (Self, Self::Indication) {
+        ctx.spawn_async(compile_fragment_shader(params.fragment_shader_source.clone()));
 
         let module = Self {
             ctx,
+            params,
             shader: None,
             frame: None,
             outputs: vec![LineType::Video.unlabeled()],
@@ -43,19 +43,24 @@ impl ModuleT for Shader {
     }
 
     fn params(&self) -> Self::Params {
-        ShaderParams {}
+        self.params.clone()
     }
 
     fn receive_event(&mut self, ev: ShaderEvent) {
         match ev {
-            ShaderEvent::ShaderInit(shader) => {
+            ShaderEvent::NoOp => {}
+            ShaderEvent::SetShader(shader) => {
                 self.shader = Some(shader);
             }
-            // ShaderEvent::GpuFrame(frame) => { self.frame = Some(frame); }
         }
     }
 
-    fn update(&mut self, _: Self::Params) -> Option<Self::Indication> {
+    fn update(&mut self, new_params: Self::Params) -> Option<Self::Indication> {
+        if self.params.fragment_shader_source != new_params.fragment_shader_source {
+            self.params.fragment_shader_source = new_params.fragment_shader_source;
+            self.ctx.spawn_async(compile_fragment_shader(self.params.fragment_shader_source.clone()));
+        }
+
         None
     }
 
@@ -81,5 +86,18 @@ impl ModuleT for Shader {
 
     fn outputs(&self)-> &[Terminal] {
         &self.outputs
+    }
+}
+
+async fn compile_fragment_shader(source: String) -> ShaderEvent {
+    match FragmentShader::compile(&source) {
+        Ok(fragment_shader) => {
+            let shader = ShaderContext::new(1120, 700, fragment_shader).await;
+            ShaderEvent::SetShader(shader)
+        }
+        Err(e) => {
+            eprintln!("could not compile fragment shader:\n{:#?}", e);
+            ShaderEvent::NoOp
+        }
     }
 }

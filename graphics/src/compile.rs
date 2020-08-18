@@ -1,14 +1,30 @@
+use std::borrow::Cow;
+
 use shaderc::{Compiler, CompileOptions, ShaderKind};
+use wgpu::ShaderModuleSource;
 
-pub fn vertex(filename: &str, source: &str) -> Vec<u32> {
-    compile(filename, source, ShaderKind::Vertex)
+pub struct FragmentShader {
+    spirv: Vec<u32>,
 }
 
-pub fn fragment(filename: &str, source: &str) -> Vec<u32> {
-    compile(filename, source, ShaderKind::Fragment)
+impl FragmentShader {
+    pub fn compile(source: &str) -> Result<Self, shaderc::Error> {
+        let mut compiler = Compiler::new().unwrap();
+        let options = CompileOptions::new().unwrap();
+
+        let result = compiler.compile_into_spirv(source, ShaderKind::Fragment, "fragment-shader", "main", Some(&options))?;
+
+        Ok(FragmentShader {
+            spirv: result.as_binary().to_vec(),
+        })
+    }
+
+    pub fn module_source(&self) -> ShaderModuleSource<'_> {
+        ShaderModuleSource::SpirV(Cow::Borrowed(&self.spirv))
+    }
 }
 
-fn compile(filename: &str, source: &str, kind: ShaderKind) -> Vec<u32> {
+pub fn compile(filename: &str, source: &str, kind: ShaderKind) -> Vec<u32> {
     let mut compiler = Compiler::new().unwrap();
     let options = CompileOptions::new().unwrap();
 

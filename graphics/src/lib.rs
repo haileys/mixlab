@@ -28,7 +28,7 @@ pub struct ShaderContext {
 }
 
 impl ShaderContext {
-    pub async fn new(width: usize, height: usize) -> Self {
+    pub async fn new(width: usize, height: usize, fragment_shader: compile::FragmentShader) -> Self {
         let adapter = wgpu::Instance::new(wgpu::BackendBit::PRIMARY)
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
@@ -106,12 +106,9 @@ impl ShaderContext {
         let vs_module = device.create_shader_module(
             wgpu::ShaderModuleSource::SpirV(
                 Cow::Owned(
-                    compile::vertex("vert.glsl", include_str!("../vert.glsl")))));
+                    compile::compile("vert.glsl", include_str!("../vert.glsl"), shaderc::ShaderKind::Vertex))));
 
-        let fs_module = device.create_shader_module(
-            wgpu::ShaderModuleSource::SpirV(
-                Cow::Owned(
-                    compile::fragment("frag.glsl", include_str!("../frag.glsl")))));
+        let fs_module = device.create_shader_module(fragment_shader.module_source());
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,

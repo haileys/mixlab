@@ -426,8 +426,10 @@ pub struct MediaSourceParams {
     pub media_id: Option<MediaId>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct ShaderParams {}
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct ShaderParams {
+    pub fragment_shader_source: String,
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Coords {
