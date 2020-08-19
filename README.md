@@ -2,6 +2,8 @@
 
 Digital audio/video workstation. AGPLv3.
 
+![](/screenshot.png)
+
 ## Building
 
 Make sure you have wasm-pack installed first: `cargo install wasm-pack`
