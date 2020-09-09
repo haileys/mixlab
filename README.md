@@ -21,6 +21,8 @@ $ make run       # build frontend and run backend
 
 1. Install Microsoft Visual C++
 
+2. Install LLVM as per [the rust-bindgen documentation](https://rust-lang.github.io/rust-bindgen/print.html#windows). Do not install the Mingw64 version from MSYS2's `pacman`.
+
 2. Install MSYS2 - a distribution of core GNU utilities for Windows. Required for dependencies that have unixy build systems with configure scripts and such.
 
     https://www.msys2.org/
