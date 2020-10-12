@@ -23,6 +23,7 @@ httparse = "1.3"
 hyper = "0.13"
 itertools = "0.9"
 lazy_static = "1.4"
+libsqlite3-sys = { features = ["bundled"] }
 mpeg2ts = "0.1"
 num-rational = "0.2"
 packed_simd = { version = "0.3.4", package = "packed_simd_2" }
