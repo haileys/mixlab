@@ -516,7 +516,7 @@ dependencies = [
 [[package]]
 name = "ffmpeg-dev"
 version = "0.3.8"
-source = "git+https://github.com/charliesome/ffmpeg-dev-rs?rev=a9bdafb368ec8a049232f91efaf7560c9dd035fb#a9bdafb368ec8a049232f91efaf7560c9dd035fb"
+source = "git+https://github.com/haileysome/ffmpeg-dev-rs?rev=372167ae60f1d6c4dad636031ba5ce248b64ed24#372167ae60f1d6c4dad636031ba5ce248b64ed24"
 dependencies = [
  "bindgen 0.51.1",
  "cc",
@@ -1231,7 +1231,7 @@ dependencies = [
 [[package]]
 name = "mse_fmp4"
 version = "0.1.3"
-source = "git+https://github.com/charliesome/mse_fmp4?rev=59b19c8fc715e118a98b758456dad22b0bcf7614#59b19c8fc715e118a98b758456dad22b0bcf7614"
+source = "git+https://github.com/haileysome/mse_fmp4?rev=59b19c8fc715e118a98b758456dad22b0bcf7614#59b19c8fc715e118a98b758456dad22b0bcf7614"
 dependencies = [
  "byteorder",
  "mpeg2ts",
@@ -2594,7 +2594,7 @@ dependencies = [
 [[package]]
 name = "x264-dev"
 version = "0.2.0"
-source = "git+https://github.com/charliesome/x264-dev?rev=fe1905a13a00e6a4e0381f97211b514f53ebc032#fe1905a13a00e6a4e0381f97211b514f53ebc032"
+source = "git+https://github.com/haileysome/x264-dev?rev=fe1905a13a00e6a4e0381f97211b514f53ebc032#fe1905a13a00e6a4e0381f97211b514f53ebc032"
 dependencies = [
  "bindgen 0.50.1",
  "glob",
