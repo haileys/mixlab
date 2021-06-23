@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn basic_probe() {
-        let file = File::open("/Users/charlie/Movies/Real Scenes - Melbourne _ Resident Advisor-cs1Iw-r0YI8.mp4").unwrap();
+        let file = File::open("/Users/hailey/Movies/Real Scenes - Melbourne _ Resident Advisor-cs1Iw-r0YI8.mp4").unwrap();
         let avio = AvIoReader::new(file);
         let fmt = InputContainer::open(avio).unwrap();
 

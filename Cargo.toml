@@ -1,7 +1,7 @@
 [package]
 name = "mixlab"
 version = "0.0.0"
-authors = ["Charlie Somerville <charlie@charlie.bz>"]
+authors = ["Hailey Somerville <hailey@hailey.lol>"]
 edition = "2018"
 
 [dependencies]
@@ -26,7 +26,7 @@ lazy_static = "1.4"
 libsqlite3-sys = { features = ["bundled"] }
 mpeg2ts = "0.1"
 num-rational = "0.2"
-packed_simd = { version = "0.3.4", package = "packed_simd_2" }
+packed_simd = { version = "0.3.5", package = "packed_simd_2" }
 percent-encoding = "2.1"
 ringbuf = "0.2"
 rusqlite = { version = "0.23" }

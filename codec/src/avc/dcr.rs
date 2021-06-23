@@ -2,8 +2,8 @@
 // https://github.com/valeth/javelin
 // Copyright (C) 2018  Patrick Auernig
 
-// Modified by Charlie Somerville for Mixlab
-// https://github.com/charliesome/mixlab
+// Modified by Hailey Somerville for Mixlab
+// https://github.com/haileysome/mixlab
 
 use bytes::{Bytes, Buf, BufMut};
 use serde_derive::{Deserialize, Serialize};

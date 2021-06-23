@@ -1,7 +1,7 @@
 [package]
 name = "mixlab-codec"
 version = "0.0.0"
-authors = ["Charlie Somerville <charlie@charlie.bz>"]
+authors = ["Hailey Somerville <hailey@hailey.lol>"]
 edition = "2018"
 
 [dependencies]
